@@ -11,6 +11,7 @@ struct SettingsView: View {
     let lastTranscript: String?
     let liveTranscript: String?
     let copyLastTranscript: () -> Void
+    let shortcutRecordingChanged: (Bool) -> Void
     let refreshPermissions: () -> Void
     let quit: () -> Void
 
@@ -27,8 +28,8 @@ struct SettingsView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 SettingsRow(title: "Status", value: statusText)
-                SettingsRow(title: "Hotkey", value: hotkeyStatus)
-                SettingsRow(title: "Gesture", value: "Right Command: hold or tap")
+                SettingsRow(title: "Hotkeys", value: hotkeyStatus)
+                SettingsRow(title: "Gesture", value: "Hold or tap dictation shortcut")
                 Picker("Backend", selection: $config.preferredBackend) {
                     ForEach(ASRBackend.allCases, id: \.self) { backend in
                         Text(backend.displayName).tag(backend)
@@ -38,12 +39,32 @@ struct SettingsView: View {
                 Toggle("End recording on silence", isOn: $config.silenceAutoStopEnabled)
                 Toggle("Press Enter after pasting", isOn: $config.pressEnterAfterPaste)
                 Toggle("Ambient mode", isOn: $config.ambientModeEnabled)
-                Text("Ambient mode keeps the mic on and starts dictation when voice crosses the silence threshold.")
+                Text("Ambient mode keeps the mic on and starts dictation with Apple voice activity detection.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                SettingsRow(title: "Telemetry", value: config.telemetryEnabled ? "On" : "Off")
-                SettingsRow(title: "Cloud ASR", value: config.cloudTranscriptionEnabled ? "On" : "Off")
                 SettingsRow(title: "Model download", value: config.modelDownloadEnabled ? "On first run" : "Off")
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Shortcuts")
+                    .foregroundStyle(.secondary)
+                ShortcutRecorderRow(
+                    title: "Dictation",
+                    help: "Hold to record, tap to toggle recording.",
+                    shortcut: $config.dictationShortcut,
+                    onRecordingChanged: shortcutRecordingChanged
+                )
+                ShortcutRecorderRow(
+                    title: "Ambient toggle",
+                    help: "Turn ambient mode on or off system-wide.",
+                    shortcut: $config.ambientToggleShortcut,
+                    onRecordingChanged: shortcutRecordingChanged
+                )
+                if config.dictationShortcut == config.ambientToggleShortcut {
+                    Text("Shortcuts match. Ambient toggle is ignored when it matches dictation.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
             }
 
             VStack(alignment: .leading, spacing: 10) {
@@ -151,6 +172,120 @@ struct SettingsView: View {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
             NSWorkspace.shared.open(url)
         }
+    }
+}
+
+private struct ShortcutRecorderRow: View {
+    let title: String
+    let help: String
+    @Binding var shortcut: SokkiShortcut
+    let onRecordingChanged: (Bool) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title)
+                    .frame(width: 130, alignment: .leading)
+                ShortcutRecorderButton(
+                    shortcut: $shortcut,
+                    onRecordingChanged: onRecordingChanged
+                )
+                Text(shortcut.displayName)
+                    .foregroundStyle(.secondary)
+            }
+            Text(help)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.leading, 130)
+        }
+    }
+}
+
+private struct ShortcutRecorderButton: View {
+    @Binding var shortcut: SokkiShortcut
+    let onRecordingChanged: (Bool) -> Void
+    @StateObject private var recorder = ShortcutRecorder()
+
+    var body: some View {
+        Button(recorder.isRecording ? "Press shortcut…" : "Change") {
+            if recorder.isRecording {
+                recorder.stop()
+                onRecordingChanged(false)
+            } else {
+                onRecordingChanged(true)
+                recorder.start(
+                    onCapture: { shortcut in
+                        self.shortcut = shortcut
+                    },
+                    onFinish: {
+                        onRecordingChanged(false)
+                    }
+                )
+            }
+        }
+        .onDisappear {
+            if recorder.isRecording {
+                recorder.stop()
+                onRecordingChanged(false)
+            }
+        }
+    }
+}
+
+@MainActor
+private final class ShortcutRecorder: ObservableObject {
+    @Published private(set) var isRecording = false
+    private var monitor: Any?
+    private var pendingModifierShortcut: SokkiShortcut?
+    private var sawKeyDown = false
+
+    func start(onCapture: @escaping (SokkiShortcut) -> Void, onFinish: @escaping () -> Void) {
+        stop()
+        isRecording = true
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
+            guard let self else { return event }
+            switch event.type {
+            case .keyDown:
+                if event.keyCode == 53 { // Escape cancels recording.
+                    self.stop()
+                    onFinish()
+                    return nil
+                }
+                self.sawKeyDown = true
+                guard let shortcut = SokkiShortcut.from(event: event) else { return event }
+                onCapture(shortcut)
+                self.stop()
+                onFinish()
+                return nil
+            case .flagsChanged:
+                guard let flag = SokkiShortcut.modifierFlag(forKeyCode: Int(event.keyCode)) else { return event }
+                if event.modifierFlags.contains(flag) {
+                    self.pendingModifierShortcut = SokkiShortcut(keyCode: Int(event.keyCode), modifierFlagsRaw: flag.rawValue)
+                    return nil
+                }
+                if !self.sawKeyDown,
+                   let shortcut = self.pendingModifierShortcut,
+                   shortcut.keyCode == Int(event.keyCode) {
+                    onCapture(shortcut)
+                    self.stop()
+                    onFinish()
+                    return nil
+                }
+                return nil
+            default:
+                return event
+            }
+        }
+    }
+
+    func stop() {
+        if let monitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        monitor = nil
+        pendingModifierShortcut = nil
+        sawKeyDown = false
+        isRecording = false
     }
 }
 

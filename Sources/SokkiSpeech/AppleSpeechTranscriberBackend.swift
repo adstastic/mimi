@@ -42,13 +42,16 @@ public enum AppleSpeechTranscriberError: LocalizedError, Sendable {
 
 public actor AppleSpeechTranscriberBackend {
     public typealias EventHandler = @Sendable (AppleSpeechStreamEvent) -> Void
+    public typealias DetectionHandler = @Sendable (Bool) -> Void
 
     private let requestedLocale: Locale
     private var resolvedLocale: Locale?
     private var analyzer: SpeechAnalyzer?
     private var transcriber: SpeechTranscriber?
+    private var detector: SpeechDetector?
     private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
     private var resultTask: Task<Void, Error>?
+    private var detectorTask: Task<Void, Error>?
     private var analyzerFormat: AVAudioFormat?
     private var converter: AVAudioConverter?
     private var converterInputFormat: AVAudioFormat?
@@ -66,19 +69,51 @@ public actor AppleSpeechTranscriberBackend {
         try await ensureAssets(for: module)
     }
 
-    public func startStream(onEvent: @escaping EventHandler) async throws {
+    public func transcribe(audioURL: URL) async throws -> String {
+        let locale = try await locale()
+        let module = makeTranscriber(locale: locale)
+        try await ensureAssets(for: module)
+        let file = try AVAudioFile(forReading: audioURL)
+        let analyzer = SpeechAnalyzer(
+            modules: [module],
+            options: SpeechAnalyzer.Options(priority: .userInitiated, modelRetention: .processLifetime)
+        )
+
+        async let transcript = collectTranscript(from: module)
+        if let lastSampleTime = try await analyzer.analyzeSequence(from: file) {
+            try await analyzer.finalizeAndFinish(through: lastSampleTime)
+        } else {
+            await analyzer.cancelAndFinishNow()
+        }
+        return try await transcript
+    }
+
+    public func startStream(
+        detectSpeech: Bool = false,
+        onEvent: @escaping EventHandler,
+        onDetection: DetectionHandler? = nil
+    ) async throws {
         guard analyzer == nil else { throw AppleSpeechTranscriberError.streamAlreadyActive }
 
         let locale = try await locale()
         let module = makeTranscriber(locale: locale)
-        try await ensureAssets(for: module)
+        let detector = detectSpeech ? SpeechDetector(
+            detectionOptions: SpeechDetector.DetectionOptions(sensitivityLevel: .low),
+            reportResults: true
+        ) : nil
+        let modules: [any SpeechModule] = if let detector {
+            [detector, module]
+        } else {
+            [module]
+        }
+        try await ensureAssets(for: modules)
 
-        guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [module]) else {
+        guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: modules) else {
             throw AppleSpeechTranscriberError.noCompatibleAudioFormat
         }
 
         let analyzer = SpeechAnalyzer(
-            modules: [module],
+            modules: modules,
             options: SpeechAnalyzer.Options(priority: .userInitiated, modelRetention: .processLifetime)
         )
         try await analyzer.prepareToAnalyze(in: format)
@@ -86,6 +121,7 @@ public actor AppleSpeechTranscriberBackend {
         let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
         self.analyzer = analyzer
         transcriber = module
+        self.detector = detector
         inputContinuation = continuation
         analyzerFormat = format
         converter = nil
@@ -97,6 +133,15 @@ public actor AppleSpeechTranscriberBackend {
         resultTask = Task { [module] in
             for try await result in module.results {
                 self.consume(result, onEvent: onEvent)
+            }
+        }
+
+        if let detector {
+            detectorTask = Task { [detector] in
+                for try await result in detector.results {
+                    DebugLog.write("speech detector result speech=\(result.speechDetected)")
+                    onDetection?(result.speechDetected)
+                }
             }
         }
 
@@ -124,6 +169,7 @@ public actor AppleSpeechTranscriberBackend {
         do {
             try await analyzer.finalizeAndFinishThroughEndOfInput()
             try await resultTask?.value
+            try? await detectorTask?.value
             let text = currentTranscript(includePartial: false)
             await cleanupAfterStream()
             return text
@@ -137,6 +183,7 @@ public actor AppleSpeechTranscriberBackend {
         inputContinuation?.finish()
         await analyzer?.cancelAndFinishNow()
         resultTask?.cancel()
+        detectorTask?.cancel()
         await cleanupAfterStream()
     }
 
@@ -154,6 +201,22 @@ public actor AppleSpeechTranscriberBackend {
         return locale
     }
 
+    private func collectTranscript(from module: SpeechTranscriber) async throws -> String {
+        var finalParts: [String] = []
+        var latestVolatile = ""
+        for try await result in module.results {
+            let text = normalized(result.text)
+            guard !text.isEmpty else { continue }
+            if result.isFinal {
+                finalParts.append(text)
+            } else {
+                latestVolatile = text
+            }
+        }
+        let final = normalized(finalParts.joined(separator: " "))
+        return final.isEmpty ? latestVolatile : final
+    }
+
     private func makeTranscriber(locale: Locale) -> SpeechTranscriber {
         SpeechTranscriber(
             locale: locale,
@@ -164,19 +227,23 @@ public actor AppleSpeechTranscriberBackend {
     }
 
     private func ensureAssets(for module: SpeechTranscriber) async throws {
+        try await ensureAssets(for: [module])
+    }
+
+    private func ensureAssets(for modules: [any SpeechModule]) async throws {
         _ = try await AssetInventory.reserve(locale: try await locale())
 
-        let status = await AssetInventory.status(forModules: [module])
+        let status = await AssetInventory.status(forModules: modules)
         switch status {
         case .installed:
             return
         case .unsupported:
             throw AppleSpeechTranscriberError.assetUnsupported
         case .supported, .downloading:
-            if let request = try await AssetInventory.assetInstallationRequest(supporting: [module]) {
+            if let request = try await AssetInventory.assetInstallationRequest(supporting: modules) {
                 try await request.downloadAndInstall()
             }
-            let updatedStatus = await AssetInventory.status(forModules: [module])
+            let updatedStatus = await AssetInventory.status(forModules: modules)
             guard updatedStatus == .installed else {
                 throw AppleSpeechTranscriberError.assetNotInstalled(String(describing: updatedStatus))
             }
@@ -188,6 +255,7 @@ public actor AppleSpeechTranscriberBackend {
     private func consume(_ result: SpeechTranscriber.Result, onEvent: EventHandler) {
         let text = normalized(result.text)
         guard !text.isEmpty else { return }
+        DebugLog.write("speech transcriber result final=\(result.isFinal) chars=\(text.count)")
 
         let start = result.range.start.seconds
         if result.isFinal {
@@ -269,8 +337,10 @@ public actor AppleSpeechTranscriberBackend {
     private func cleanupAfterStream() async {
         analyzer = nil
         transcriber = nil
+        detector = nil
         inputContinuation = nil
         resultTask = nil
+        detectorTask = nil
         analyzerFormat = nil
         converter = nil
         converterInputFormat = nil

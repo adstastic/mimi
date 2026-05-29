@@ -30,8 +30,10 @@ final class AudioCapture {
     private var ringCapacity = 0
     private var recording = false
     private var recordingBufferHandler: ((AVAudioPCMBuffer) -> Void)?
+    private var monitorBufferHandler: ((AVAudioPCMBuffer) -> Void)?
     private var sampleRate: Double = 48_000
     private var latestDBFS: Double = -120
+    private var lastMonitorLogAt = Date.distantPast
 
     func start(preRollMilliseconds: Int) async throws {
         guard try await Self.requestMicrophoneAccess() else {
@@ -58,7 +60,16 @@ final class AudioCapture {
         try engine.start()
     }
 
-    func beginRecording(bufferHandler: ((AVAudioPCMBuffer) -> Void)? = nil) {
+    func setMonitorBufferHandler(_ handler: ((AVAudioPCMBuffer) -> Void)?) {
+        lock.lock()
+        monitorBufferHandler = handler
+        lock.unlock()
+    }
+
+    func beginRecording(
+        bufferHandler: ((AVAudioPCMBuffer) -> Void)? = nil,
+        replayPreRollToHandler: Bool = true
+    ) {
         let preRollSamples: [Float]
         let rate: Double
 
@@ -70,7 +81,8 @@ final class AudioCapture {
         recording = true
         lock.unlock()
 
-        if let bufferHandler,
+        if replayPreRollToHandler,
+           let bufferHandler,
            let preRollBuffer = Self.makeBuffer(samples: preRollSamples, sampleRate: rate) {
             bufferHandler(preRollBuffer)
         }
@@ -114,6 +126,7 @@ final class AudioCapture {
         recordingSamples = []
         ringSamples = []
         recordingBufferHandler = nil
+        monitorBufferHandler = nil
         latestDBFS = -120
         lock.unlock()
     }
@@ -149,13 +162,16 @@ final class AudioCapture {
         let copiedBuffer = buffer.copy() as? AVAudioPCMBuffer
 
         let handler: ((AVAudioPCMBuffer) -> Void)?
+        let monitorHandler: ((AVAudioPCMBuffer) -> Void)?
         lock.lock()
         latestDBFS = max(-120, dbfs)
         if recording {
             recordingSamples.append(contentsOf: samples)
             handler = recordingBufferHandler
+            monitorHandler = nil
         } else {
             handler = nil
+            monitorHandler = monitorBufferHandler
             ringSamples.append(contentsOf: samples)
             if ringSamples.count > ringCapacity {
                 ringSamples.removeFirst(ringSamples.count - ringCapacity)
@@ -163,8 +179,17 @@ final class AudioCapture {
         }
         lock.unlock()
 
-        if let handler, let copiedBuffer {
-            handler(copiedBuffer)
+        if let copiedBuffer {
+            if let handler {
+                handler(copiedBuffer)
+            } else if let monitorHandler {
+                let now = Date()
+                if now.timeIntervalSince(lastMonitorLogAt) >= 1 {
+                    lastMonitorLogAt = now
+                    DebugLog.write(String(format: "audio monitor buffer frames=%d dbfs=%.1f", copiedBuffer.frameLength, latestDBFS))
+                }
+                monitorHandler(copiedBuffer)
+            }
         }
     }
 

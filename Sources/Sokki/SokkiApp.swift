@@ -17,6 +17,7 @@ struct SokkiApp: App {
                 lastTranscript: appModel.lastTranscript,
                 liveTranscript: appModel.liveTranscript,
                 copyLastTranscript: { appModel.copyLastTranscript() },
+                shortcutRecordingChanged: { appModel.setShortcutRecording($0) },
                 refreshPermissions: { appModel.refreshPermissions() },
                 quit: { NSApplication.shared.terminate(nil) }
             )

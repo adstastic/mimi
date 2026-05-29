@@ -2,18 +2,17 @@ import XCTest
 @testable import Sokki
 
 final class ConfigDefaultsTests: XCTestCase {
-    func testDefaultConfigIsLocalNoTelemetryAppleSpeechWithSaneThresholds() {
+    func testDefaultConfigUsesAppleSpeechWithSaneThresholds() {
         let config = SokkiConfig.defaults
 
         XCTAssertEqual(config.preferredBackend, .appleSpeechTranscriber)
         XCTAssertFalse(config.ambientModeEnabled)
-        XCTAssertFalse(config.telemetryEnabled)
-        XCTAssertFalse(config.cloudTranscriptionEnabled)
         XCTAssertTrue(config.modelDownloadEnabled)
         XCTAssertTrue(config.silenceAutoStopEnabled)
         XCTAssertTrue(config.pressEnterAfterPaste)
         XCTAssertEqual(config.hotkeyKeyCode, 54)
-        XCTAssertTrue(config.isLocalOnlyNoTelemetry)
+        XCTAssertEqual(config.dictationShortcut, .rightCommand)
+        XCTAssertEqual(config.ambientToggleShortcut, .ambientToggleDefault)
 
         XCTAssertEqual(config.silenceThresholdDBFS, -50)
         XCTAssertLessThan(config.silenceThresholdDBFS, 0)
@@ -49,5 +48,38 @@ final class ConfigDefaultsTests: XCTestCase {
         let secondLoad = SokkiConfig.load(userDefaults: userDefaults)
         XCTAssertEqual(secondLoad.preferredBackend, .appleSpeechTranscriber)
         XCTAssertEqual(secondLoad.silenceThresholdDBFS, -50)
+    }
+
+    func testLoadMigratesLegacyHotkeyToDictationShortcut() throws {
+        let suiteName = "SokkiTests.\(UUID().uuidString)"
+        guard let userDefaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults")
+            return
+        }
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let json = """
+        {
+          "preferredBackend": "appleSpeechTranscriber",
+          "silenceAutoStopEnabled": true,
+          "silenceThresholdDBFS": -50,
+          "silenceDurationMilliseconds": 2000,
+          "minUtteranceMilliseconds": 350,
+          "preRollMilliseconds": 700,
+          "tapThresholdMilliseconds": 220,
+          "hotkeyKeyCode": 54,
+          "ambientModeEnabled": false,
+          "pressEnterAfterPaste": true,
+          "postPasteEnterDelayMilliseconds": 150,
+          "modelDownloadEnabled": true
+        }
+        """
+        userDefaults.set(Data(json.utf8), forKey: "SokkiConfig.v4")
+        userDefaults.set(true, forKey: "SokkiConfig.appleStreamingDefault.v1")
+
+        let config = SokkiConfig.load(userDefaults: userDefaults)
+
+        XCTAssertEqual(config.dictationShortcut, .rightCommand)
+        XCTAssertEqual(config.ambientToggleShortcut, .ambientToggleDefault)
     }
 }

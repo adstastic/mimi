@@ -18,9 +18,17 @@ final class AppModel: ObservableObject {
                 modelReady = false
                 modelLoading = true
                 dictationController.prepareASR()
+                if config.ambientModeEnabled {
+                    dictationController.updateAmbientMode()
+                }
             }
             if oldValue.ambientModeEnabled != config.ambientModeEnabled {
                 dictationController.updateAmbientMode()
+            }
+            if !shortcutRecording,
+               oldValue.dictationShortcut != config.dictationShortcut
+                || oldValue.ambientToggleShortcut != config.ambientToggleShortcut {
+                restartHotkeyMonitor()
             }
         }
     }
@@ -34,6 +42,7 @@ final class AppModel: ObservableObject {
     private var dictationController: DictationController!
     private var hotkeyMonitor: HotkeyMonitor!
     private var started = false
+    private var shortcutRecording = false
 
     init() {
         config = SokkiConfig.load()
@@ -55,9 +64,11 @@ final class AppModel: ObservableObject {
             onPartialTranscript: { [weak self] transcript in self?.liveTranscript = transcript }
         )
         hotkeyMonitor = HotkeyMonitor(
-            keyCode: config.hotkeyKeyCode,
-            onKeyDown: { [weak self] in self?.dictationController.hotkeyDown() },
-            onKeyUp: { [weak self] in self?.dictationController.hotkeyUp() },
+            dictationShortcut: config.dictationShortcut,
+            ambientToggleShortcut: config.ambientToggleShortcut,
+            onDictationDown: { [weak self] in self?.dictationController.hotkeyDown() },
+            onDictationUp: { [weak self] in self?.dictationController.hotkeyUp() },
+            onAmbientToggle: { [weak self] in self?.toggleAmbientModeFromShortcut() },
             onCancel: { [weak self] in self?.dictationController.cancelRecording() }
         )
 
@@ -75,7 +86,7 @@ final class AppModel: ObservableObject {
         do {
             refreshPermissions()
             try hotkeyMonitor.start()
-            hotkeyStatus = "Right Command active"
+            hotkeyStatus = hotkeyMonitor.statusText
             refreshPermissions()
         } catch {
             refreshPermissions()
@@ -103,6 +114,43 @@ final class AppModel: ObservableObject {
         } else if lowercased.contains("asr error") || lowercased.contains("mlx error") || lowercased.contains("apple speech error") {
             modelLoading = false
             modelReady = false
+        }
+    }
+
+    private func restartHotkeyMonitor() {
+        hotkeyMonitor.update(
+            dictationShortcut: config.dictationShortcut,
+            ambientToggleShortcut: config.ambientToggleShortcut
+        )
+        guard started else {
+            hotkeyStatus = hotkeyMonitor.statusText
+            return
+        }
+        hotkeyMonitor.stop()
+        do {
+            try hotkeyMonitor.start()
+            hotkeyStatus = hotkeyMonitor.statusText
+        } catch {
+            applyStatus("Hotkey error: \(error.localizedDescription)", updateModelState: false)
+            hotkeyStatus = "Needs Input Monitoring permission"
+            overlay.show("Hotkey error", detail: error.localizedDescription)
+        }
+    }
+
+    private func toggleAmbientModeFromShortcut() {
+        config.ambientModeEnabled.toggle()
+        let enabled = config.ambientModeEnabled
+        overlay.show(enabled ? "Ambient mode on" : "Ambient mode off")
+        overlay.hide(after: 900)
+    }
+
+    func setShortcutRecording(_ recording: Bool) {
+        shortcutRecording = recording
+        if recording {
+            hotkeyMonitor.stop()
+            hotkeyStatus = "Recording shortcut…"
+        } else if started {
+            restartHotkeyMonitor()
         }
     }
 

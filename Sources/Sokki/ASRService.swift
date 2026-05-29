@@ -57,12 +57,22 @@ actor ASRService {
         }
     }
 
-    func startAppleStream(onEvent: @escaping AppleSpeechTranscriberBackend.EventHandler) async throws {
+    func transcribeApple(audioURL: URL) async throws -> String {
+        try await appleBackend.transcribe(audioURL: audioURL)
+    }
+
+    func startAppleStream(
+        detectSpeech: Bool = false,
+        onEvent: @escaping AppleSpeechTranscriberBackend.EventHandler,
+        onDetection: AppleSpeechTranscriberBackend.DetectionHandler? = nil
+    ) async throws {
         appleStreamStarting = true
         appleStreamActive = false
         applePendingBuffers = []
         do {
-            try await appleBackend.startStream(onEvent: onEvent)
+            DebugLog.write("apple stream starting detectSpeech=\(detectSpeech)")
+            try await appleBackend.startStream(detectSpeech: detectSpeech, onEvent: onEvent, onDetection: onDetection)
+            DebugLog.write("apple stream started detectSpeech=\(detectSpeech)")
             appleStreamActive = true
             appleStreamStarting = false
             let buffers = applePendingBuffers

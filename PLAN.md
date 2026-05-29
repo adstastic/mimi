@@ -11,7 +11,7 @@ Implemented:
 - Right Command global hotkey:
   - hold → record while held → release to transcribe/paste
   - tap → start recording → tap again or silence stop to transcribe/paste
-- Mic starts only while recording by default; optional ambient mode keeps mic armed for threshold VAD.
+- Mic starts only while recording by default; optional ambient mode keeps mic armed and uses Apple SpeechDetector plus level gate for VAD.
 - Apple SpeechTranscriber streaming backend is default and emits live partial transcripts.
 - MLX Parakeet v2 sidecar remains fallback through `uv run --python 3.12 --script`.
 - Local paths: Apple streams buffers → partials/final; MLX records WAV → sidecar transcribes → paste.
