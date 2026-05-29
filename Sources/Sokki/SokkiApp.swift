@@ -3,36 +3,32 @@ import SwiftUI
 
 @main
 struct SokkiApp: App {
-    @Environment(\.openWindow) private var openWindow
-
-    private let config = SokkiConfig.defaults
+    @StateObject private var appModel = AppModel()
 
     var body: some Scene {
-        MenuBarExtra("Sokki", systemImage: "mic") {
-            Button("Settings...") {
-                NSApp.activate(ignoringOtherApps: true)
-                openWindow(id: SettingsWindow.identifier)
-            }
-
-            Button("Retry Last Insert") {}
-                .disabled(true)
-
-            Divider()
-
-            Button("Quit") {
-                NSApplication.shared.terminate(nil)
-            }
-            .keyboardShortcut("q")
+        WindowGroup("Sokki") {
+            SettingsView(
+                config: $appModel.config,
+                statusText: appModel.statusText,
+                hotkeyStatus: appModel.hotkeyStatus,
+                permissionStatus: appModel.permissionStatus,
+                modelLoading: appModel.modelLoading,
+                modelReady: appModel.modelReady,
+                lastTranscript: appModel.lastTranscript,
+                retryLastInsert: { appModel.retryLastInsert() },
+                copyLastTranscript: { appModel.copyLastTranscript() },
+                refreshPermissions: { appModel.refreshPermissions() },
+                quit: { NSApplication.shared.terminate(nil) }
+            )
         }
-        .menuBarExtraStyle(.menu)
-
-        Window("Settings", id: SettingsWindow.identifier) {
-            SettingsView(config: config)
+        .defaultSize(width: 680, height: 820)
+        .commands {
+            CommandGroup(replacing: .appTermination) {
+                Button("Quit Sokki") {
+                    NSApplication.shared.terminate(nil)
+                }
+                .keyboardShortcut("q")
+            }
         }
-        .defaultSize(width: 420, height: 260)
     }
-}
-
-private enum SettingsWindow {
-    static let identifier = "settings"
 }

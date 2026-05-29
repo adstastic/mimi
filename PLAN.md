@@ -141,7 +141,7 @@ No ASR backend dependency is included in Slice 0. After Slice 1 benchmark, wire 
 Reasons:
 
 - v2 is English-only; avoids Parakeet v3 multilingual hallucinations.
-- Local-only runtime; no telemetry, cloud, or background network.
+- Local-only transcription; no telemetry or cloud ASR. First-run model/package download may use network until cached.
 - Batch transcription should be fast enough for short dictation.
 
 Open question for Slice 1: exact sidecar/API shape and benchmark winner must be verified before backend integration.
@@ -187,7 +187,7 @@ No nested feature modules unless code growth forces it.
 `Codable`/UserDefaults-backed config:
 
 - preferred backend default `mlxParakeetV2`
-- local/no-telemetry defaults and runtime network off
+- local/no-telemetry defaults, cloud transcription off, model download explicit
 - hotkey keyCode/modifiers or fixed first version
 - tap/hold thresholds
 - silence threshold/delay
@@ -205,7 +205,7 @@ Creates:
 - `history.jsonl`
 - temp audio dir if needed
 
-No network config, no telemetry paths.
+No telemetry paths. First-run model download/cache paths are explicit.
 
 ### `ASRService.swift`
 
@@ -362,7 +362,7 @@ Settings/menu should expose permission status and “Open System Settings” but
 7. Auto-enter works in selected coding app only.
 8. Ambient mode off by default.
 9. Ambient mode on: starts on voice, stops on silence, uses pre-roll.
-10. Runtime network check: no outbound expected.
+10. After model/package cache exists, no outbound expected during dictation.
 
 ## Implementation slices
 

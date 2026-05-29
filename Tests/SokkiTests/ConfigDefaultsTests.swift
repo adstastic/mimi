@@ -8,7 +8,10 @@ final class ConfigDefaultsTests: XCTestCase {
         XCTAssertEqual(config.preferredBackend, .mlxParakeetV2)
         XCTAssertFalse(config.ambientModeEnabled)
         XCTAssertFalse(config.telemetryEnabled)
-        XCTAssertFalse(config.allowsNetworkAccess)
+        XCTAssertFalse(config.cloudTranscriptionEnabled)
+        XCTAssertTrue(config.modelDownloadEnabled)
+        XCTAssertEqual(config.autoEnterMode, .off)
+        XCTAssertEqual(config.hotkeyKeyCode, 61)
         XCTAssertTrue(config.isLocalOnlyNoTelemetry)
 
         XCTAssertLessThan(config.silenceThresholdDBFS, 0)
@@ -20,5 +23,7 @@ final class ConfigDefaultsTests: XCTestCase {
         XCTAssertLessThanOrEqual(config.minUtteranceMilliseconds, 1_000)
         XCTAssertGreaterThanOrEqual(config.preRollMilliseconds, 250)
         XCTAssertLessThanOrEqual(config.preRollMilliseconds, 1_500)
+        XCTAssertGreaterThanOrEqual(config.tapThresholdMilliseconds, 120)
+        XCTAssertLessThanOrEqual(config.tapThresholdMilliseconds, 500)
     }
 }

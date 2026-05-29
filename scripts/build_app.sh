@@ -17,6 +17,7 @@ rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp "$EXECUTABLE" "$MACOS_DIR/Sokki"
 chmod +x "$MACOS_DIR/Sokki"
+cp -R "$ROOT_DIR/Sidecars" "$RESOURCES_DIR/Sidecars"
 
 cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -41,16 +42,27 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
-    <key>LSUIElement</key>
-    <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Sokki will use the microphone for local dictation in a later slice.</string>
+    <string>Sokki uses the microphone for local dictation.</string>
+    <key>NSInputMonitoringUsageDescription</key>
+    <string>Sokki uses the Right Option key as a global dictation hotkey.</string>
 </dict>
 </plist>
 PLIST
 
-codesign --force --deep --sign - "$APP_DIR"
+SIGN_IDENTITY="${SOKKI_CODESIGN_IDENTITY:-}"
+if [[ -z "$SIGN_IDENTITY" ]]; then
+  SIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Apple Development:/{print $2; exit}')"
+fi
+
+if [[ -n "$SIGN_IDENTITY" ]]; then
+  codesign --force --deep --timestamp=none --sign "$SIGN_IDENTITY" "$APP_DIR"
+  echo "Signed with $SIGN_IDENTITY"
+else
+  codesign --force --deep --sign - "$APP_DIR"
+  echo "Signed ad-hoc; Accessibility permission may reset after rebuilds."
+fi
 
 echo "Built $APP_DIR"

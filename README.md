@@ -2,23 +2,31 @@
 
 Minimal local English dictation app for macOS.
 
-Planned core:
+Current usable path:
 
-- preferred local ASR backend default: `mlxParakeetV2` (MLX Parakeet v2)
-- Slice 1 benchmark: MLX Parakeet v2 sidecar vs FluidAudio/CoreML v2
-- global hotkey: hold-to-record and tap-to-toggle
-- configurable silence auto-stop
-- configurable post-paste Return
-- recent transcript retry
+- MLX Parakeet v2 English ASR sidecar (`parakeet-mlx` via `uv`)
+- global Right Option hotkey:
+  - hold Right Option, speak, release to transcribe/insert
+  - tap Right Option, speak, pause or tap again to transcribe/insert
+- silence auto-stop
+- normal Dock app window
 - bottom recording overlay
-- no telemetry, no cloud, runtime network off by default
+- recent transcript retry/copy from menu
+- no telemetry, no cloud app service
 
-Slice 0 builds menu bar skeleton only. No ASR, audio, hotkeys, or overlay yet.
+First run may download the local model from Hugging Face through `uv`/`parakeet-mlx`. After cache, dictation is local.
+
+## Run
 
 ```bash
-swift test
-scripts/build_app.sh
 scripts/run_app.sh
 ```
+
+Grant:
+
+- Microphone permission
+- Accessibility permission
+
+Then focus a text field and use Right Option.
 
 See [PLAN.md](PLAN.md).
