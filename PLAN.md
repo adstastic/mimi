@@ -42,14 +42,15 @@ open /Applications/Sokki.app
 
 ## Next milestone: Apple on-device streaming backend
 
-Goal: compare Apple built-in speech streaming against MLX Parakeet v2 batch dictation, without breaking the current Parakeet path.
+Goal: make streaming dictation work. Apple SpeechTranscriber should produce live partial transcript updates during recording; Sokki should still paste final text only by default. MLX Parakeet v2 remains batch fallback and accuracy baseline.
 
-Questions to answer with code, not guesses:
+Success criteria:
 
-1. Can Apple Speech stream partial English transcripts locally on this Mac?
-2. Is startup/first-token latency better than current MLX batch path?
-3. Is final accuracy good enough for coding/chat dictation?
-4. Can Sokki show live partial text while still pasting only final text?
+1. Live partial transcript appears in overlay/settings while audio is still being fed.
+2. `SokkiSmoke apple-stream-file` records at least one partial before final transcript.
+3. First-partial latency and finalization latency are printed by smoke tests.
+4. Final transcript pastes through existing insertion path.
+5. No cloud fallback; if local streaming unavailable, UI says unsupported and MLX remains usable.
 
 ## Backend strategy
 
@@ -64,17 +65,22 @@ enum ASRBackend {
 
 Keep MLX Parakeet as known-good final/batch fallback.
 
-Implement Apple backend with the stable Speech framework first:
+Implement Apple backend with the newer SpeechAnalyzer/SpeechTranscriber APIs first:
+
+- Use Apple Speech framework's `SpeechAnalyzer` / `SpeechTranscriber` API when available in the local SDK.
+- Configure English locale (`en_US`) and on-device assets only.
+- Install/download required Apple on-device speech assets if API exposes that flow; surface clear status in UI.
+- Consume audio buffers directly from `AudioCapture` rather than writing files.
+- Emit partial/final transcript events for overlay/settings.
+- Do not fall back to cloud recognition.
+
+Fallback only if SpeechTranscriber is unavailable in the installed SDK/runtime:
 
 - `SFSpeechRecognizer(locale: Locale(identifier: "en_US"))`
 - `SFSpeechAudioBufferRecognitionRequest`
 - `request.requiresOnDeviceRecognition = true`
 - fail clearly if `supportsOnDeviceRecognition == false`
 - no cloud fallback
-- consume audio buffers directly from `AudioCapture`
-- emit partial and final transcript events
-
-If the local SDK exposes newer SpeechAnalyzer/SpeechTranscriber APIs, spike them after SFSpeech works. Do not make that the first dependency unless SFSpeech cannot satisfy local streaming.
 
 ## Required architecture changes
 
@@ -100,7 +106,8 @@ protocol StreamingASRBackend {
 Adapters:
 
 - `MLXParakeetBackend`: existing JSON-lines sidecar batch path.
-- `AppleSpeechStreamingBackend`: on-device Apple streaming path.
+- `AppleSpeechTranscriberBackend`: primary on-device Apple streaming path using SpeechAnalyzer/SpeechTranscriber.
+- `AppleSFSpeechBackend`: fallback on-device streaming path only if SpeechTranscriber unavailable.
 
 ### `AudioCapture`
 
@@ -242,12 +249,13 @@ swift run SokkiSmoke mlx-file /tmp/sokki-streaming-smoke.wav
 
 Verify: MLX smoke transcribes generated `say` audio.
 
-### Slice C — Apple Speech streaming backend
+### Slice C — Apple SpeechTranscriber streaming backend
 
-- Implement `AppleSpeechStreamingBackend`.
-- Force local/on-device recognition.
-- Surface unsupported/missing permission status clearly.
+- Implement `AppleSpeechTranscriberBackend` using SpeechAnalyzer/SpeechTranscriber.
+- Force local/on-device assets/recognition only.
+- Surface unsupported/missing model/permission status clearly.
 - Implement `SokkiSmoke apple-stream-file`.
+- Add `AppleSFSpeechBackend` fallback only if SpeechTranscriber cannot compile/run on this SDK/runtime.
 
 Verify:
 
@@ -257,7 +265,7 @@ swift run SokkiSmoke apple-stream-file /tmp/sokki-streaming-smoke.wav
 
 Pass criteria:
 
-- at least one partial transcript before final
+- at least one partial transcript before final while file chunks are still being fed
 - final transcript contains expected keywords
 - printed first-partial and finalization timings
 - no cloud fallback
@@ -295,7 +303,7 @@ No files/network upload. In-memory only initially.
 
 ### Apple on-device availability
 
-`SFSpeechRecognizer` may not support on-device recognition for the current locale/OS state. If unsupported, fail clearly and keep MLX default.
+SpeechTranscriber/SpeechAnalyzer may require newer SDK/runtime APIs or downloadable on-device assets. If unavailable, try SFSpeech on-device fallback; if that also fails, fail clearly and keep MLX default.
 
 ### Apple Speech permission friction
 
@@ -315,4 +323,4 @@ Apple may be faster but less accurate for code-ish prose. Keep backend picker an
 
 ## Compact handoff prompt
 
-Continue Sokki from `PLAN.md`. Current app works with MLX Parakeet v2 batch dictation. Next milestone: add Apple on-device streaming backend without regressing MLX. First extract backend protocol and add `SokkiSmoke` target. Implement deterministic e2e tests with generated `say` WAV: `mlx-file`, `apple-stream-file`, and `end-to-end-textedit`. Apple backend must use local/on-device recognition only (`requiresOnDeviceRecognition = true`) and surface unsupported status instead of falling back to cloud. Show partial transcripts in overlay/settings, paste final only. After automated smoke passes, build/install `/Applications/Sokki.app` for manual dogfood.
+Continue Sokki from `PLAN.md`. Current app works with MLX Parakeet v2 batch dictation. Next milestone: add Apple on-device streaming backend without regressing MLX. Use the new SpeechAnalyzer/SpeechTranscriber APIs first, with SFSpeechRecognizer on-device fallback only if the new APIs are unavailable. First extract backend protocol and add `SokkiSmoke` target. Implement deterministic e2e tests with generated `say` WAV: `mlx-file`, `apple-stream-file`, and `end-to-end-textedit`. Apple backend must use local/on-device recognition/assets only and surface unsupported status instead of falling back to cloud. Show partial transcripts in overlay/settings, paste final only. After automated smoke passes, build/install `/Applications/Sokki.app` for manual dogfood.
