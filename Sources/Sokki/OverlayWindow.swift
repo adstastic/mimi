@@ -17,8 +17,8 @@ final class OverlayWindowController {
         positionPanel()
         panel?.orderFrontRegardless()
 
-        let lowercased = message.lowercased()
-        if lowercased.contains("error") {
+        let lowercased = "\(message) \(detail ?? "")".lowercased()
+        if lowercased.contains("error") || lowercased.contains("no speech") {
             hide(after: 4_000)
         } else if lowercased.contains("inserted")
             || lowercased.contains("retried")
@@ -62,7 +62,9 @@ final class OverlayWindowController {
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         panel.hidesOnDeactivate = false
-        panel.contentView = NSHostingView(rootView: OverlayPillView(state: state))
+        panel.contentView = NSHostingView(rootView: OverlayPillView(state: state) { [weak self] in
+            self?.hide()
+        })
         self.panel = panel
     }
 
@@ -89,6 +91,7 @@ private final class OverlayState: ObservableObject {
 
 private struct OverlayPillView: View {
     @ObservedObject var state: OverlayState
+    let dismiss: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -113,6 +116,15 @@ private struct OverlayPillView: View {
                 LevelMeter(level: level)
                     .frame(width: 72, height: 10)
             }
+
+            if showsDismissButton {
+                Button(action: dismiss) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
@@ -120,6 +132,11 @@ private struct OverlayPillView: View {
         .background(.ultraThinMaterial, in: Capsule())
         .overlay(Capsule().stroke(Color.white.opacity(0.16), lineWidth: 1))
         .opacity(state.isVisible ? 1 : 0)
+    }
+
+    private var showsDismissButton: Bool {
+        let text = "\(state.message) \(state.detail ?? "")".lowercased()
+        return text.contains("error") || text.contains("no speech")
     }
 
     private var dotColor: Color {
