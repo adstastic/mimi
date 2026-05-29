@@ -15,7 +15,8 @@ struct SettingsView: View {
     let quit: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("Sokki")
                     .font(.title2)
@@ -27,10 +28,11 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 8) {
                 SettingsRow(title: "Status", value: statusText)
                 SettingsRow(title: "Hotkey", value: hotkeyStatus)
-                SettingsRow(title: "Gesture", value: "Right Option: hold or tap")
+                SettingsRow(title: "Gesture", value: "Right Command: hold or tap")
                 SettingsRow(title: "Backend", value: config.preferredBackend.displayName)
                 SettingsRow(title: "Pre-roll", value: "\(config.preRollMilliseconds) ms")
-                SettingsRow(title: "Auto Enter", value: config.autoEnterMode == .always ? "Always" : "Off")
+                Toggle("End recording on silence", isOn: $config.silenceAutoStopEnabled)
+                Toggle("Press Enter after pasting", isOn: $config.pressEnterAfterPaste)
                 SettingsRow(title: "Ambient mode", value: config.ambientModeEnabled ? "On" : "Off")
                 SettingsRow(title: "Telemetry", value: config.telemetryEnabled ? "On" : "Off")
                 SettingsRow(title: "Cloud ASR", value: config.cloudTranscriptionEnabled ? "On" : "Off")
@@ -108,26 +110,26 @@ struct SettingsView: View {
                 }
             }
 
-            HStack {
-                Button("Retry Last Insert", action: retryLastInsert)
-                    .disabled(lastTranscript == nil)
-                Button("Copy Last Transcript", action: copyLastTranscript)
-                    .disabled(lastTranscript == nil)
-            }
-
             if let lastTranscript {
                 Divider()
-                Text("Last transcript")
-                    .foregroundStyle(.secondary)
+                HStack {
+                    Text("Last transcript")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Retry Insert", action: retryLastInsert)
+                    Button("Copy", action: copyLastTranscript)
+                }
                 Text(lastTranscript)
                     .lineLimit(4)
                     .textSelection(.enabled)
             }
 
-            Spacer(minLength: 0)
+                Spacer(minLength: 0)
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(24)
-        .frame(width: 680, height: 820, alignment: .topLeading)
+        .frame(width: 760, height: 900, alignment: .topLeading)
     }
 
     private func openPrivacyPane(_ pane: String) {

@@ -6,7 +6,7 @@ import Foundation
 final class AppModel: ObservableObject {
     @Published private(set) var statusText = "Starting…"
     @Published private(set) var lastTranscript: String?
-    @Published private(set) var hotkeyStatus = "Right Option"
+    @Published private(set) var hotkeyStatus = "Right Command"
     @Published private(set) var permissionStatus = PermissionStatus.current()
     @Published private(set) var modelLoading = false
     @Published private(set) var modelReady = false
@@ -75,7 +75,7 @@ final class AppModel: ObservableObject {
         do {
             refreshPermissions()
             try hotkeyMonitor.start()
-            hotkeyStatus = "Right Option active"
+            hotkeyStatus = "Right Command active"
             refreshPermissions()
         } catch {
             refreshPermissions()

@@ -5,10 +5,11 @@ Minimal local English dictation app for macOS.
 Current usable path:
 
 - MLX Parakeet v2 English ASR sidecar (`parakeet-mlx` via `uv`)
-- global Right Option hotkey:
-  - hold Right Option, speak, release to transcribe/insert
-  - tap Right Option, speak, pause or tap again to transcribe/insert
+- global Right Command hotkey:
+  - hold Right Command, speak, release to transcribe/insert
+  - tap Right Command, speak, pause or tap again to transcribe/insert
 - silence auto-stop
+- independently configurable silence auto-stop and Return-after-paste
 - normal Dock app window
 - bottom recording overlay
 - recent transcript retry/copy from menu
@@ -27,6 +28,6 @@ Grant:
 - Microphone permission
 - Accessibility permission
 
-Then focus a text field and use Right Option.
+Then focus a text field and use Right Command.
 
 See [PLAN.md](PLAN.md).

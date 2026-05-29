@@ -13,6 +13,12 @@ final class DictationController {
         case processing
     }
 
+    private enum StopReason: String {
+        case released = "Released"
+        case stopped = "Stopped"
+        case silence = "Silence"
+    }
+
     private let configProvider: () -> SokkiConfig
     private let audioCapture: AudioCapture
     private let asrService: ASRService
@@ -52,7 +58,7 @@ final class DictationController {
             do {
                 onStatus("Loading MLX Parakeet v2…")
                 try await asrService.prepare()
-                onStatus("Ready — hold Right Option to dictate")
+                onStatus("Ready — hold Right Command to dictate")
             } catch {
                 onStatus("ASR error: \(error.localizedDescription)")
                 overlay.show("Sokki error", detail: error.localizedDescription)
@@ -65,7 +71,7 @@ final class DictationController {
         case .idle:
             startRecording(mode: .pressing(startedAt: Date()))
         case .recording(.toggle):
-            Task { await stopAndTranscribe(reason: "Stopped") }
+            Task { await stopAndTranscribe(reason: .stopped) }
         case .recording(.pressing), .processing:
             break
         }
@@ -77,10 +83,10 @@ final class DictationController {
         let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1_000)
         if elapsedMs < configProvider().tapThresholdMilliseconds {
             state = .recording(.toggle)
-            onStatus("Recording — tap Right Option again to stop")
-            overlay.show("Recording", detail: "Tap Right Option again or pause", level: audioCapture.currentDBFS())
+            onStatus("Recording — tap Right Command again to stop")
+            overlay.show("Recording", detail: "Tap Right Command again or pause", level: audioCapture.currentDBFS())
         } else {
-            Task { await stopAndTranscribe(reason: "Released") }
+            Task { await stopAndTranscribe(reason: .released) }
         }
     }
 
@@ -127,13 +133,13 @@ final class DictationController {
         startSilenceLoop()
     }
 
-    private func stopAndTranscribe(reason: String) async {
+    private func stopAndTranscribe(reason: StopReason) async {
         guard case .recording = state else { return }
         silenceTask?.cancel()
         silenceTask = nil
         state = .processing
         onStatus("Transcribing…")
-        overlay.show("Transcribing…", detail: reason)
+        overlay.show("Transcribing…", detail: reason.rawValue)
 
         do {
             let audioURL = try audioCapture.finishRecording()
@@ -148,7 +154,7 @@ final class DictationController {
             let config = configProvider()
             try await textInserter.insert(
                 text,
-                autoEnterMode: config.autoEnterMode,
+                pressReturn: config.pressEnterAfterPaste,
                 enterDelayMilliseconds: config.postPasteEnterDelayMilliseconds
             )
             state = .idle
@@ -180,6 +186,7 @@ final class DictationController {
 
         let now = Date()
         let config = configProvider()
+        guard config.silenceAutoStopEnabled else { return }
         if level >= config.silenceThresholdDBFS {
             sawSpeech = true
             silenceBeganAt = nil
@@ -194,7 +201,7 @@ final class DictationController {
 
         let silenceMs = Int(now.timeIntervalSince(silenceBeganAt ?? now) * 1_000)
         if silenceMs >= config.silenceDurationMilliseconds {
-            Task { await stopAndTranscribe(reason: "Silence") }
+            Task { await stopAndTranscribe(reason: .silence) }
         }
     }
 

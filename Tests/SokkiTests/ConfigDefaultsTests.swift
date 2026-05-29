@@ -10,8 +10,9 @@ final class ConfigDefaultsTests: XCTestCase {
         XCTAssertFalse(config.telemetryEnabled)
         XCTAssertFalse(config.cloudTranscriptionEnabled)
         XCTAssertTrue(config.modelDownloadEnabled)
-        XCTAssertEqual(config.autoEnterMode, .off)
-        XCTAssertEqual(config.hotkeyKeyCode, 61)
+        XCTAssertTrue(config.silenceAutoStopEnabled)
+        XCTAssertTrue(config.pressEnterAfterPaste)
+        XCTAssertEqual(config.hotkeyKeyCode, 54)
         XCTAssertTrue(config.isLocalOnlyNoTelemetry)
 
         XCTAssertLessThan(config.silenceThresholdDBFS, 0)

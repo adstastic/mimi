@@ -26,6 +26,10 @@ actor ASRService {
 
     private var process: Process?
     private var inputPipe: Pipe?
+    private var outputPipe: Pipe?
+    private var errorPipe: Pipe?
+    private var outputReaderTask: Task<Void, Never>?
+    private var errorReaderTask: Task<Void, Never>?
     private var outputBuffer = Data()
     private var ready = false
     private var readyContinuation: CheckedContinuation<Void, Error>?
@@ -80,7 +84,7 @@ actor ASRService {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: uvPath)
-        process.arguments = ["run", "--script", sidecarURL.path]
+        process.arguments = ["run", "--python", "3.12", "--script", sidecarURL.path]
 
         var environment = ProcessInfo.processInfo.environment
         environment["PYTHONUNBUFFERED"] = "1"
@@ -103,17 +107,26 @@ actor ASRService {
         process.standardInput = stdin
         process.standardOutput = stdout
         process.standardError = stderr
+        inputPipe = stdin
+        outputPipe = stdout
+        errorPipe = stderr
 
-        stdout.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            guard !data.isEmpty else { return }
-            Task { await self?.consumeOutput(data) }
+        outputReaderTask = Task.detached { [weak self, stdout] in
+            while !Task.isCancelled {
+                let data = stdout.fileHandleForReading.availableData
+                guard !data.isEmpty else { break }
+                await self?.consumeOutput(data)
+            }
         }
 
-        stderr.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
-            NSLog("Sokki MLX: %@", text.trimmingCharacters(in: .whitespacesAndNewlines))
+        errorReaderTask = Task.detached { [stderr] in
+            while !Task.isCancelled {
+                let data = stderr.fileHandleForReading.availableData
+                guard !data.isEmpty else { break }
+                if let text = String(data: data, encoding: .utf8) {
+                    NSLog("Sokki MLX: %@", text.trimmingCharacters(in: .whitespacesAndNewlines))
+                }
+            }
         }
 
         process.terminationHandler = { [weak self] process in
@@ -122,7 +135,6 @@ actor ASRService {
 
         try process.run()
         self.process = process
-        self.inputPipe = stdin
     }
 
     private func consumeOutput(_ data: Data) {
@@ -144,6 +156,8 @@ actor ASRService {
             onStatus("Unexpected MLX output")
             return
         }
+
+        NSLog("Sokki MLX event: %@", event)
 
         switch event {
         case "loading":
@@ -173,8 +187,14 @@ actor ASRService {
 
     private func handleTermination(status: Int32) {
         ready = false
+        outputReaderTask?.cancel()
+        errorReaderTask?.cancel()
         process = nil
         inputPipe = nil
+        outputPipe = nil
+        errorPipe = nil
+        outputReaderTask = nil
+        errorReaderTask = nil
         let error = ASRError.sidecarError("MLX sidecar exited with status \(status).")
         readyContinuation?.resume(throwing: error)
         readyContinuation = nil

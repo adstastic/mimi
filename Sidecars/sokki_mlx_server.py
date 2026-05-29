@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.11,<3.13"
 # dependencies = ["parakeet-mlx==0.5.1"]
 # ///
 

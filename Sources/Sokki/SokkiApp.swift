@@ -21,7 +21,7 @@ struct SokkiApp: App {
                 quit: { NSApplication.shared.terminate(nil) }
             )
         }
-        .defaultSize(width: 680, height: 820)
+        .defaultSize(width: 760, height: 900)
         .commands {
             CommandGroup(replacing: .appTermination) {
                 Button("Quit Sokki") {

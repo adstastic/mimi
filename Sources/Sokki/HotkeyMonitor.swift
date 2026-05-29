@@ -1,126 +1,83 @@
-import ApplicationServices
+import AppKit
 import Foundation
 
 final class HotkeyMonitor {
     enum HotkeyError: LocalizedError {
-        case accessibilityNotTrusted
-        case eventTapCreationFailed
+        case monitorCreationFailed
 
         var errorDescription: String? {
             switch self {
-            case .accessibilityNotTrusted:
-                "Accessibility permission is required for the global hotkey."
-            case .eventTapCreationFailed:
-                "Could not create global keyboard event tap."
+            case .monitorCreationFailed:
+                "Could not create global keyboard monitor. Check Input Monitoring permission."
             }
         }
     }
 
-    private let keyCode: Int64
+    private let keyCode: UInt16
     private let onKeyDown: @MainActor () -> Void
     private let onKeyUp: @MainActor () -> Void
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
+    private var globalMonitor: Any?
+    private var localMonitor: Any?
     private var pressed = false
 
     init(keyCode: Int, onKeyDown: @escaping @MainActor () -> Void, onKeyUp: @escaping @MainActor () -> Void) {
-        self.keyCode = Int64(keyCode)
+        self.keyCode = UInt16(keyCode)
         self.onKeyDown = onKeyDown
         self.onKeyUp = onKeyUp
     }
 
     func start() throws {
-        if eventTap != nil { return }
+        if globalMonitor != nil || localMonitor != nil { return }
 
-        let mask = (1 << CGEventType.keyDown.rawValue)
-            | (1 << CGEventType.keyUp.rawValue)
-            | (1 << CGEventType.flagsChanged.rawValue)
-            | (1 << CGEventType.tapDisabledByTimeout.rawValue)
-            | (1 << CGEventType.tapDisabledByUserInput.rawValue)
-
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .listenOnly,
-            eventsOfInterest: CGEventMask(mask),
-            callback: Self.eventTapCallback,
-            userInfo: Unmanaged.passUnretained(self).toOpaque()
-        ) else {
-            throw HotkeyError.eventTapCreationFailed
+        let mask: NSEvent.EventTypeMask = [.flagsChanged, .keyDown, .keyUp]
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] event in
+            self?.handle(event)
+        }
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+            self?.handle(event)
+            return event
         }
 
-        guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
-            throw HotkeyError.eventTapCreationFailed
+        guard globalMonitor != nil || localMonitor != nil else {
+            throw HotkeyError.monitorCreationFailed
         }
-
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
-        eventTap = tap
-        runLoopSource = source
     }
 
     func stop() {
-        if let eventTap {
-            CGEvent.tapEnable(tap: eventTap, enable: false)
+        if let globalMonitor {
+            NSEvent.removeMonitor(globalMonitor)
         }
-        if let runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
+        if let localMonitor {
+            NSEvent.removeMonitor(localMonitor)
         }
-        eventTap = nil
-        runLoopSource = nil
+        globalMonitor = nil
+        localMonitor = nil
         pressed = false
     }
 
-    private nonisolated static let eventTapCallback: CGEventTapCallBack = { _, type, event, refcon in
-        guard let refcon else { return Unmanaged.passUnretained(event) }
-        let monitor = Unmanaged<HotkeyMonitor>.fromOpaque(refcon).takeUnretainedValue()
-        return monitor.handle(type: type, event: event)
-    }
+    private func handle(_ event: NSEvent) {
+        guard event.keyCode == keyCode else { return }
 
-    private nonisolated func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            Task { @MainActor in
-                if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: true) }
-            }
-            return Unmanaged.passUnretained(event)
-        }
-
-        let eventKeyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        guard eventKeyCode == keyCode else {
-            return Unmanaged.passUnretained(event)
-        }
-
-        switch type {
+        switch event.type {
         case .flagsChanged:
-            let isDown = event.flags.contains(.maskAlternate)
-            Task { @MainActor in
-                if isDown, !pressed {
-                    pressed = true
-                    onKeyDown()
-                } else if !isDown, pressed {
-                    pressed = false
-                    onKeyUp()
-                }
-            }
-            return Unmanaged.passUnretained(event)
-        case .keyDown:
-            let autorepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
-            guard !autorepeat else { return Unmanaged.passUnretained(event) }
-            Task { @MainActor in
-                guard !pressed else { return }
+            let isDown = event.modifierFlags.contains(.command)
+            if isDown, !pressed {
                 pressed = true
-                onKeyDown()
-            }
-            return Unmanaged.passUnretained(event)
-        case .keyUp:
-            Task { @MainActor in
-                guard pressed else { return }
+                Task { @MainActor in onKeyDown() }
+            } else if !isDown, pressed {
                 pressed = false
-                onKeyUp()
+                Task { @MainActor in onKeyUp() }
             }
-            return Unmanaged.passUnretained(event)
+        case .keyDown:
+            guard !event.isARepeat, !pressed else { return }
+            pressed = true
+            Task { @MainActor in onKeyDown() }
+        case .keyUp:
+            guard pressed else { return }
+            pressed = false
+            Task { @MainActor in onKeyUp() }
         default:
-            return Unmanaged.passUnretained(event)
+            break
         }
     }
 }

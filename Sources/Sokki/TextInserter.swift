@@ -17,12 +17,12 @@ final class TextInserter {
         }
     }
 
-    func insert(_ text: String, autoEnterMode: AutoEnterMode, enterDelayMilliseconds: Int) async throws {
+    func insert(_ text: String, pressReturn: Bool, enterDelayMilliseconds: Int) async throws {
         try pasteViaClipboard(text)
 
-        if autoEnterMode == .always {
+        if pressReturn {
             try await sleep(milliseconds: enterDelayMilliseconds)
-            try pressReturn()
+            try pressReturnKey()
         }
     }
 
@@ -81,7 +81,7 @@ final class TextInserter {
         }
     }
 
-    private func pressReturn() throws {
+    private func pressReturnKey() throws {
         try sendKey(virtualKey: 36, flags: [])
     }
 
