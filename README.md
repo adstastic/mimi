@@ -25,6 +25,12 @@ Apple SpeechTranscriber may download Apple-managed on-device speech assets. MLX 
 scripts/run_app.sh
 ```
 
+Safe streaming smoke test (no UI focus stealing):
+
+```bash
+scripts/smoke_streaming.sh
+```
+
 Grant:
 
 - Microphone permission
