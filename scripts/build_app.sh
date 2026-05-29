@@ -4,9 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+APP_NAME="${MIMI_APP_NAME:-mimi}"
+BUNDLE_ID="${MIMI_BUNDLE_ID:-com.ad1.sokki}"
 BIN_DIR="$(swift build -c release --show-bin-path)"
 EXECUTABLE="$BIN_DIR/Sokki"
-APP_DIR="$ROOT_DIR/build/Sokki.app"
+APP_DIR="$ROOT_DIR/build/$APP_NAME.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
@@ -15,11 +17,11 @@ swift build -c release
 
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
-cp "$EXECUTABLE" "$MACOS_DIR/Sokki"
-chmod +x "$MACOS_DIR/Sokki"
+cp "$EXECUTABLE" "$MACOS_DIR/$APP_NAME"
+chmod +x "$MACOS_DIR/$APP_NAME"
 cp -R "$ROOT_DIR/Sidecars" "$RESOURCES_DIR/Sidecars"
 
-cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
+cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -27,13 +29,15 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleExecutable</key>
-    <string>Sokki</string>
+    <string>$APP_NAME</string>
     <key>CFBundleIdentifier</key>
-    <string>com.adityam.sokki</string>
+    <string>$BUNDLE_ID</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>Sokki</string>
+    <string>$APP_NAME</string>
+    <key>CFBundleDisplayName</key>
+    <string>$APP_NAME</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -45,11 +49,11 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Sokki uses the microphone for local dictation.</string>
+    <string>$APP_NAME uses the microphone for local dictation.</string>
     <key>NSInputMonitoringUsageDescription</key>
-    <string>Sokki uses the Right Command key as a global dictation hotkey.</string>
+    <string>$APP_NAME uses global keyboard shortcuts for dictation.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
-    <string>Sokki uses Apple on-device speech transcription when selected.</string>
+    <string>$APP_NAME uses Apple on-device speech transcription when selected.</string>
 </dict>
 </plist>
 PLIST

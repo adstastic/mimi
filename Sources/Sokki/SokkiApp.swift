@@ -6,7 +6,7 @@ struct SokkiApp: App {
     @StateObject private var appModel = AppModel()
 
     var body: some Scene {
-        WindowGroup("Sokki") {
+        WindowGroup(AppBrand.name) {
             SettingsView(
                 config: $appModel.config,
                 statusText: appModel.statusText,
@@ -25,7 +25,7 @@ struct SokkiApp: App {
         .defaultSize(width: 760, height: 900)
         .commands {
             CommandGroup(replacing: .appTermination) {
-                Button("Quit Sokki") {
+                Button("Quit \(AppBrand.name)") {
                     NSApplication.shared.terminate(nil)
                 }
                 .keyboardShortcut("q")

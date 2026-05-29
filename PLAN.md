@@ -1,8 +1,8 @@
-# Sokki Plan
+# mimi Plan
 
 ## Current baseline
 
-Sokki is a minimal macOS Dock app for local dictation.
+mimi is a minimal macOS Dock app for local dictation.
 
 Implemented:
 
@@ -23,7 +23,7 @@ Implemented:
   - ambient mode
 - Configurable silence threshold and silence duration; defaults are -50 dBFS and 2.0s.
 - Permission status lights + buttons for Microphone, Accessibility, Input Monitoring.
-- Stable `/Applications/Sokki.app` build signed with Apple Development identity when available.
+- Stable `/Applications/mimi.app` build signed with Apple Development identity when available.
 - No telemetry, no cloud ASR. First-run dependency/model download may use network until cached.
 
 Current verification commands:
@@ -36,15 +36,15 @@ scripts/build_app.sh
 Current manual install/run:
 
 ```bash
-pkill -x Sokki || true
-rm -rf /Applications/Sokki.app
-cp -R build/Sokki.app /Applications/Sokki.app
-open /Applications/Sokki.app
+pkill -x mimi || true
+rm -rf /Applications/mimi.app
+cp -R build/mimi.app /Applications/mimi.app
+open /Applications/mimi.app
 ```
 
 ## Apple on-device streaming backend
 
-Goal: make streaming dictation work. Apple SpeechTranscriber produces live partial transcript updates during recording; Sokki still pastes final text only by default. MLX Parakeet v2 remains batch fallback and accuracy baseline.
+Goal: make streaming dictation work. Apple SpeechTranscriber produces live partial transcript updates during recording; mimi still pastes final text only by default. MLX Parakeet v2 remains batch fallback and accuracy baseline.
 
 Implemented success criteria:
 
@@ -153,8 +153,8 @@ Do not rely on Adi speaking manually. Add test hooks/scripts.
 Generate deterministic English audio with macOS `say`:
 
 ```bash
-say -o /tmp/sokki-streaming-smoke.aiff "sokki streaming smoke test please press enter after paste"
-afconvert /tmp/sokki-streaming-smoke.aiff -f WAVE -d LEF32@16000 /tmp/sokki-streaming-smoke.wav
+say -o /tmp/mimi-streaming-smoke.aiff "mimi streaming smoke test please press enter after paste"
+afconvert /tmp/mimi-streaming-smoke.aiff -f WAVE -d LEF32@16000 /tmp/mimi-streaming-smoke.wav
 ```
 
 ### 2. Add smoke executable target
@@ -169,8 +169,8 @@ Sources/SokkiSmoke/
 Modes:
 
 ```bash
-swift run SokkiSmoke mlx-file /tmp/sokki-streaming-smoke.wav
-swift run SokkiSmoke apple-stream-file /tmp/sokki-streaming-smoke.wav
+swift run SokkiSmoke mlx-file /tmp/mimi-streaming-smoke.wav
+swift run SokkiSmoke apple-stream-file /tmp/mimi-streaming-smoke.wav
 ```
 
 `apple-stream-file` must:
@@ -179,7 +179,7 @@ swift run SokkiSmoke apple-stream-file /tmp/sokki-streaming-smoke.wav
 - split it into small `AVAudioPCMBuffer` chunks, e.g. 100ms
 - feed chunks into `AppleSpeechStreamingBackend.append`
 - collect partials and final
-- assert final contains key terms: `sokki`, `streaming`, `smoke`, `test`
+- assert final contains key terms: `mimi`, `streaming`, `smoke`, `test`
 - print timings:
   - prepare ms
   - first partial ms after first audio buffer
@@ -192,7 +192,7 @@ This proves streaming backend without physical microphone.
 Add hidden/debug CLI flag to app executable or smoke target:
 
 ```bash
-swift run SokkiSmoke end-to-end-textedit /tmp/sokki-streaming-smoke.wav --backend apple
+swift run SokkiSmoke end-to-end-textedit /tmp/mimi-streaming-smoke.wav --backend apple
 ```
 
 Flow:
@@ -212,16 +212,16 @@ After automated smoke passes:
 
 ```bash
 scripts/build_app.sh
-rm -rf /Applications/Sokki.app
-cp -R build/Sokki.app /Applications/Sokki.app
-open /Applications/Sokki.app
+rm -rf /Applications/mimi.app
+cp -R build/mimi.app /Applications/mimi.app
+open /Applications/mimi.app
 ```
 
 Agent can verify process + logs:
 
 ```bash
-pgrep -fl 'Sokki|sokki_mlx|Python.*sokki'
-log show --predicate 'process == "Sokki"' --last 2m --style compact | tail -80
+pgrep -fl 'mimi|sokki_mlx|Python.*sokki'
+log show --predicate 'process == "mimi"' --last 2m --style compact | tail -80
 ```
 
 Manual user check only after automated smoke is green.
@@ -240,7 +240,7 @@ Verify:
 ```bash
 swift test
 scripts/build_app.sh
-swift run SokkiSmoke mlx-file /tmp/sokki-streaming-smoke.wav
+swift run SokkiSmoke mlx-file /tmp/mimi-streaming-smoke.wav
 ```
 
 ### Slice B — synthetic smoke harness
@@ -262,7 +262,7 @@ Verify: MLX smoke transcribes generated `say` audio.
 Verify:
 
 ```bash
-swift run SokkiSmoke apple-stream-file /tmp/sokki-streaming-smoke.wav
+swift run SokkiSmoke apple-stream-file /tmp/mimi-streaming-smoke.wav
 ```
 
 Pass criteria:
@@ -284,8 +284,8 @@ Verify:
 ```bash
 swift test
 scripts/build_app.sh
-swift run SokkiSmoke end-to-end-textedit /tmp/sokki-streaming-smoke.wav --backend apple
-swift run SokkiSmoke end-to-end-textedit /tmp/sokki-streaming-smoke.wav --backend mlx
+swift run SokkiSmoke end-to-end-textedit /tmp/mimi-streaming-smoke.wav --backend apple
+swift run SokkiSmoke end-to-end-textedit /tmp/mimi-streaming-smoke.wav --backend mlx
 ```
 
 ### Slice E — latency mini-metrics
@@ -325,4 +325,4 @@ Apple may be faster but less accurate for code-ish prose. Keep backend picker an
 
 ## Compact handoff prompt
 
-Continue Sokki from `PLAN.md`. Current app works with MLX Parakeet v2 batch dictation. Next milestone: add Apple on-device streaming backend without regressing MLX. Use the new SpeechAnalyzer/SpeechTranscriber APIs first, with SFSpeechRecognizer on-device fallback only if the new APIs are unavailable. First extract backend protocol and add `SokkiSmoke` target. Implement deterministic e2e tests with generated `say` WAV: `mlx-file`, `apple-stream-file`, and `end-to-end-textedit`. Apple backend must use local/on-device recognition/assets only and surface unsupported status instead of falling back to cloud. Show partial transcripts in overlay/settings, paste final only. After automated smoke passes, build/install `/Applications/Sokki.app` for manual dogfood.
+Continue mimi from `PLAN.md`. Current app works with MLX Parakeet v2 batch dictation. Next milestone: add Apple on-device streaming backend without regressing MLX. Use the new SpeechAnalyzer/SpeechTranscriber APIs first, with SFSpeechRecognizer on-device fallback only if the new APIs are unavailable. First extract backend protocol and add `SokkiSmoke` target. Implement deterministic e2e tests with generated `say` WAV: `mlx-file`, `apple-stream-file`, and `end-to-end-textedit`. Apple backend must use local/on-device recognition/assets only and surface unsupported status instead of falling back to cloud. Show partial transcripts in overlay/settings, paste final only. After automated smoke passes, build/install `/Applications/mimi.app` for manual dogfood.

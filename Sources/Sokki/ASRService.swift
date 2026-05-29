@@ -15,7 +15,7 @@ actor ASRService {
             case .uvNotFound:
                 "Could not find uv. Install uv or set SOKKI_UV_PATH."
             case .sidecarNotFound:
-                "Could not find Sokki MLX sidecar."
+                AppBrand.mlxSidecarMissingMessage
             case .processNotRunning:
                 "MLX sidecar is not running."
             case .invalidResponse(let line):
@@ -203,7 +203,7 @@ actor ASRService {
                 let data = stderr.fileHandleForReading.availableData
                 guard !data.isEmpty else { break }
                 if let text = String(data: data, encoding: .utf8) {
-                    NSLog("Sokki MLX: %@", text.trimmingCharacters(in: .whitespacesAndNewlines))
+                    NSLog("%@ MLX: %@", AppBrand.name, text.trimmingCharacters(in: .whitespacesAndNewlines))
                 }
             }
         }
@@ -236,7 +236,7 @@ actor ASRService {
             return
         }
 
-        NSLog("Sokki MLX event: %@", event)
+        NSLog("%@ MLX event: %@", AppBrand.name, event)
 
         switch event {
         case "loading":

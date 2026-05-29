@@ -221,7 +221,7 @@ struct SokkiSmoke {
 
     private static func containsExpectedTerms(_ text: String) -> Bool {
         let lowercased = text.lowercased()
-        return ["sokki", "streaming", "smoke", "test"].filter { lowercased.contains($0) }.count >= 3
+        return ["mimi", "streaming", "smoke", "test"].filter { lowercased.contains($0) }.count >= 3
     }
 
     private static func value(after flag: String, in arguments: [String]) -> String? {

@@ -92,7 +92,7 @@ final class AppModel: ObservableObject {
             refreshPermissions()
             applyStatus("Hotkey error: \(error.localizedDescription)", updateModelState: false)
             hotkeyStatus = "Needs Accessibility permission"
-            overlay.show("Hotkey error", detail: error.localizedDescription)
+            overlay.show(AppBrand.hotkeyErrorTitle, detail: error.localizedDescription)
             return
         }
 
@@ -133,7 +133,7 @@ final class AppModel: ObservableObject {
         } catch {
             applyStatus("Hotkey error: \(error.localizedDescription)", updateModelState: false)
             hotkeyStatus = "Needs Input Monitoring permission"
-            overlay.show("Hotkey error", detail: error.localizedDescription)
+            overlay.show(AppBrand.hotkeyErrorTitle, detail: error.localizedDescription)
         }
     }
 

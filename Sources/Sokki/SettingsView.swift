@@ -19,7 +19,7 @@ struct SettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("Sokki")
+                Text(AppBrand.name)
                     .font(.title2)
                     .fontWeight(.semibold)
                 Spacer()

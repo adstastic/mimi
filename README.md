@@ -1,4 +1,4 @@
-# Sokki
+# mimi
 
 Minimal local English dictation app for macOS.
 
@@ -38,6 +38,6 @@ Grant:
 - Microphone permission
 - Accessibility permission
 
-Then focus a text field and use Right Command.
+Then focus a text field and use the dictation shortcut.
 
 See [PLAN.md](PLAN.md).

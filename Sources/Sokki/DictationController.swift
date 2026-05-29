@@ -76,7 +76,7 @@ final class DictationController {
                 onStatus("Ready — hold Right Command to dictate")
             } catch {
                 onStatus("ASR error: \(error.localizedDescription)")
-                overlay.show("Sokki error", detail: error.localizedDescription)
+                overlay.show(AppBrand.errorTitle, detail: error.localizedDescription)
             }
         }
     }
@@ -233,7 +233,7 @@ final class DictationController {
             }
             let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else {
-                throw NSError(domain: "Sokki", code: 1, userInfo: [NSLocalizedDescriptionKey: "No speech detected."])
+                throw NSError(domain: AppBrand.noSpeechErrorDomain, code: 1, userInfo: [NSLocalizedDescriptionKey: "No speech detected."])
             }
 
             history.record(text)
@@ -275,7 +275,7 @@ final class DictationController {
                 startAmbientAppleStream()
             }
             onStatus("Error: \(error.localizedDescription)")
-            overlay.show("Sokki error", detail: error.localizedDescription)
+            overlay.show(AppBrand.errorTitle, detail: error.localizedDescription)
         }
     }
 
@@ -322,7 +322,7 @@ final class DictationController {
                         self.state = .idle
                     }
                     self.onStatus("Apple Speech error: \(error.localizedDescription)")
-                    self.overlay.show("Sokki error", detail: error.localizedDescription)
+                    self.overlay.show(AppBrand.errorTitle, detail: error.localizedDescription)
                 }
             }
         }
