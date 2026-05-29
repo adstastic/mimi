@@ -11,6 +11,7 @@ Current usable path:
   - tap Right Command, speak, pause or tap again to transcribe/insert
   - press Escape while recording to cancel
 - silence auto-stop
+- optional ambient VAD mode that keeps mic armed and starts recording on voice
 - independently configurable silence auto-stop and Return-after-paste
 - normal Dock app window
 - bottom recording overlay with live partials for Apple SpeechTranscriber

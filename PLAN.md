@@ -11,7 +11,7 @@ Implemented:
 - Right Command global hotkey:
   - hold → record while held → release to transcribe/paste
   - tap → start recording → tap again or silence stop to transcribe/paste
-- Mic starts only while recording; ASR model stays warm while idle.
+- Mic starts only while recording by default; optional ambient mode keeps mic armed for threshold VAD.
 - Apple SpeechTranscriber streaming backend is default and emits live partial transcripts.
 - MLX Parakeet v2 sidecar remains fallback through `uv run --python 3.12 --script`.
 - Local paths: Apple streams buffers → partials/final; MLX records WAV → sidecar transcribes → paste.
@@ -20,6 +20,7 @@ Implemented:
 - Independent toggles:
   - end recording on silence
   - press Enter after pasting
+  - ambient mode
 - Configurable silence threshold and silence duration; defaults are -50 dBFS and 2.0s.
 - Permission status lights + buttons for Microphone, Accessibility, Input Monitoring.
 - Stable `/Applications/Sokki.app` build signed with Apple Development identity when available.

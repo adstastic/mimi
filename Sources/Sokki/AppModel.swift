@@ -19,6 +19,9 @@ final class AppModel: ObservableObject {
                 modelLoading = true
                 dictationController.prepareASR()
             }
+            if oldValue.ambientModeEnabled != config.ambientModeEnabled {
+                dictationController.updateAmbientMode()
+            }
         }
     }
 
@@ -83,6 +86,7 @@ final class AppModel: ObservableObject {
         }
 
         dictationController.prepareASR()
+        dictationController.updateAmbientMode()
     }
 
     private func applyStatus(_ status: String, updateModelState: Bool) {

@@ -59,11 +59,21 @@ final class AudioCapture {
     }
 
     func beginRecording(bufferHandler: ((AVAudioPCMBuffer) -> Void)? = nil) {
+        let preRollSamples: [Float]
+        let rate: Double
+
         lock.lock()
+        preRollSamples = ringSamples
+        rate = sampleRate
         recordingSamples = ringSamples
         recordingBufferHandler = bufferHandler
         recording = true
         lock.unlock()
+
+        if let bufferHandler,
+           let preRollBuffer = Self.makeBuffer(samples: preRollSamples, sampleRate: rate) {
+            bufferHandler(preRollBuffer)
+        }
     }
 
     func finishRecording() throws -> URL {
@@ -159,16 +169,26 @@ final class AudioCapture {
     }
 
     private static func writeWAV(samples: [Float], sampleRate: Double, to url: URL) throws {
-        guard let format = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: sampleRate,
-            channels: 1,
-            interleaved: false
-        ), let buffer = AVAudioPCMBuffer(
-            pcmFormat: format,
-            frameCapacity: AVAudioFrameCount(samples.count)
-        ) else {
+        guard let buffer = makeBuffer(samples: samples, sampleRate: sampleRate) else {
             throw CaptureError.outputBufferFailed
+        }
+
+        let file = try AVAudioFile(forWriting: url, settings: buffer.format.settings)
+        try file.write(from: buffer)
+    }
+
+    private static func makeBuffer(samples: [Float], sampleRate: Double) -> AVAudioPCMBuffer? {
+        guard !samples.isEmpty,
+              let format = AVAudioFormat(
+                  commonFormat: .pcmFormatFloat32,
+                  sampleRate: sampleRate,
+                  channels: 1,
+                  interleaved: false
+              ), let buffer = AVAudioPCMBuffer(
+                  pcmFormat: format,
+                  frameCapacity: AVAudioFrameCount(samples.count)
+              ) else {
+            return nil
         }
 
         buffer.frameLength = AVAudioFrameCount(samples.count)
@@ -177,9 +197,7 @@ final class AudioCapture {
                 destination.update(from: pointer.baseAddress!, count: samples.count)
             }
         }
-
-        let file = try AVAudioFile(forWriting: url, settings: format.settings)
-        try file.write(from: buffer)
+        return buffer
     }
 
     private static func requestMicrophoneAccess() async throws -> Bool {

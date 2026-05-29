@@ -7,6 +7,7 @@ final class DictationController {
     enum RecordingMode {
         case pressing(startedAt: Date)
         case toggle
+        case ambient
     }
 
     enum State {
@@ -33,8 +34,11 @@ final class DictationController {
 
     private var state: State = .idle
     private var silenceTask: Task<Void, Never>?
+    private var ambientTask: Task<Void, Never>?
     private var sawSpeech = false
     private var silenceBeganAt: Date?
+    private var ambientSpeechBeganAt: Date?
+    private var ambientCooldownUntil: Date?
     private var engineStartTask: Task<Void, Never>?
     private var appleStreamTask: Task<Void, Never>?
 
@@ -78,7 +82,7 @@ final class DictationController {
         switch state {
         case .idle:
             startRecording(mode: .pressing(startedAt: Date()))
-        case .recording(.toggle):
+        case .recording(.toggle), .recording(.ambient):
             Task { await stopAndTranscribe(reason: .stopped) }
         case .recording(.pressing), .processing:
             break
@@ -95,6 +99,14 @@ final class DictationController {
             overlay.show("Recording", detail: "Tap Right Command again or pause", level: audioCapture.currentDBFS())
         } else {
             Task { await stopAndTranscribe(reason: .released) }
+        }
+    }
+
+    func updateAmbientMode() {
+        if configProvider().ambientModeEnabled {
+            startAmbientMonitoring()
+        } else {
+            stopAmbientMonitoring()
         }
     }
 
@@ -115,7 +127,12 @@ final class DictationController {
         silenceTask = nil
         engineStartTask?.cancel()
         engineStartTask = nil
-        audioCapture.stop()
+        if configProvider().ambientModeEnabled {
+            audioCapture.cancelRecording()
+            ambientCooldownUntil = Date().addingTimeInterval(1)
+        } else {
+            audioCapture.stop()
+        }
         if configProvider().preferredBackend == .appleSpeechTranscriber {
             Task { await asrService.cancelAppleStream() }
         }
@@ -123,19 +140,20 @@ final class DictationController {
         appleStreamTask = nil
         onPartialTranscript(nil)
         state = .idle
-        onStatus("Cancelled")
+        onStatus(configProvider().ambientModeEnabled ? "Ambient armed" : "Cancelled")
         overlay.show("Cancelled")
         overlay.hide(after: 700)
     }
 
-    private func startRecording(mode: RecordingMode) {
+    private func startRecording(mode: RecordingMode, speechAlreadyDetected: Bool = false) {
         let config = configProvider()
         onPartialTranscript(nil)
-        sawSpeech = false
+        sawSpeech = speechAlreadyDetected
         silenceBeganAt = nil
         state = .recording(mode)
-        onStatus("Starting mic…")
-        overlay.show("Starting mic", detail: "Speak now", level: audioCapture.currentDBFS())
+        let isAmbient = if case .ambient = mode { true } else { false }
+        onStatus(isAmbient ? "Ambient recording…" : "Starting mic…")
+        overlay.show(isAmbient ? "Ambient recording" : "Starting mic", detail: "Speak now", level: audioCapture.currentDBFS())
 
         engineStartTask?.cancel()
         engineStartTask = Task { [weak self] in
@@ -178,7 +196,9 @@ final class DictationController {
         do {
             let config = configProvider()
             let audioURL = try audioCapture.finishRecording()
-            audioCapture.stop()
+            if !config.ambientModeEnabled {
+                audioCapture.stop()
+            }
             let rawText: String
             switch config.preferredBackend {
             case .mlxParakeetV2:
@@ -202,13 +222,22 @@ final class DictationController {
             appleStreamTask = nil
             onPartialTranscript(nil)
             state = .idle
-            onStatus("Inserted + copied")
+            if config.ambientModeEnabled {
+                ambientCooldownUntil = Date().addingTimeInterval(1)
+            }
+            onStatus(config.ambientModeEnabled ? "Ambient armed" : "Inserted + copied")
             overlay.show("Inserted + copied", detail: preview(text))
             overlay.hide(after: 1_200)
         } catch {
             appleStreamTask = nil
             onPartialTranscript(nil)
-            audioCapture.stop()
+            let config = configProvider()
+            if config.ambientModeEnabled {
+                audioCapture.cancelRecording()
+                ambientCooldownUntil = Date().addingTimeInterval(1)
+            } else {
+                audioCapture.stop()
+            }
             state = .idle
             onStatus("Error: \(error.localizedDescription)")
             overlay.show("Sokki error", detail: error.localizedDescription)
@@ -249,6 +278,63 @@ final class DictationController {
         overlay.updateDetail(preview(text))
     }
 
+    private func startAmbientMonitoring() {
+        guard ambientTask == nil else { return }
+        onStatus("Starting ambient mic…")
+        ambientTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.audioCapture.start(preRollMilliseconds: self.configProvider().preRollMilliseconds)
+                guard !Task.isCancelled else { return }
+                self.onStatus("Ambient armed")
+            } catch {
+                self.onStatus("Mic error: \(error.localizedDescription)")
+                self.overlay.show("Mic error", detail: error.localizedDescription)
+                return
+            }
+
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                self.checkAmbientStart()
+            }
+        }
+    }
+
+    private func stopAmbientMonitoring() {
+        ambientTask?.cancel()
+        ambientTask = nil
+        ambientSpeechBeganAt = nil
+        ambientCooldownUntil = nil
+        if case .idle = state {
+            audioCapture.stop()
+            onStatus("Ready — hold Right Command to dictate")
+        }
+    }
+
+    private func checkAmbientStart() {
+        let config = configProvider()
+        guard config.ambientModeEnabled else { return }
+        guard case .idle = state else { return }
+
+        let now = Date()
+        if let ambientCooldownUntil, now < ambientCooldownUntil { return }
+
+        let level = audioCapture.currentDBFS()
+        if level >= config.silenceThresholdDBFS {
+            if ambientSpeechBeganAt == nil {
+                ambientSpeechBeganAt = now
+                return
+            }
+            let speechMs = Int(now.timeIntervalSince(ambientSpeechBeganAt ?? now) * 1_000)
+            if speechMs >= min(config.minUtteranceMilliseconds, 250) {
+                ambientSpeechBeganAt = nil
+                startRecording(mode: .ambient, speechAlreadyDetected: true)
+            }
+        } else {
+            ambientSpeechBeganAt = nil
+        }
+    }
+
     private func startSilenceLoop() {
         silenceTask?.cancel()
         silenceTask = Task { [weak self] in
@@ -260,14 +346,15 @@ final class DictationController {
     }
 
     private func checkSilence() {
-        guard case .recording = state else { return }
+        guard case .recording(let mode) = state else { return }
+        let isAmbientRecording = if case .ambient = mode { true } else { false }
 
         let level = audioCapture.currentDBFS()
         overlay.updateLevel(level)
 
         let now = Date()
         let config = configProvider()
-        guard config.silenceAutoStopEnabled else { return }
+        guard config.silenceAutoStopEnabled || isAmbientRecording else { return }
         if level >= config.silenceThresholdDBFS {
             sawSpeech = true
             silenceBeganAt = nil
