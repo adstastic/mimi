@@ -16,6 +16,7 @@ public enum ASRBackend: String, CaseIterable, Codable, Equatable, Sendable {
 
 public struct SokkiConfig: Codable, Equatable, Sendable {
     private static let defaultsKey = "SokkiConfig.v4"
+    private static let appleStreamingMigrationKey = "SokkiConfig.appleStreamingDefault.v1"
 
     public var preferredBackend: ASRBackend
     public var silenceAutoStopEnabled: Bool
@@ -33,7 +34,7 @@ public struct SokkiConfig: Codable, Equatable, Sendable {
     public var modelDownloadEnabled: Bool
 
     public static let defaults = SokkiConfig(
-        preferredBackend: .mlxParakeetV2,
+        preferredBackend: .appleSpeechTranscriber,
         silenceAutoStopEnabled: true,
         silenceThresholdDBFS: -50,
         silenceDurationMilliseconds: 2_000,
@@ -89,8 +90,18 @@ public struct SokkiConfig: Codable, Equatable, Sendable {
         guard let data = userDefaults.data(forKey: defaultsKey),
               var config = try? JSONDecoder().decode(SokkiConfig.self, from: data)
         else { return .defaults }
+        var migrated = false
         if config.silenceThresholdDBFS == -38 {
             config.silenceThresholdDBFS = Self.defaults.silenceThresholdDBFS
+            migrated = true
+        }
+        if !userDefaults.bool(forKey: appleStreamingMigrationKey) {
+            config.preferredBackend = .appleSpeechTranscriber
+            userDefaults.set(true, forKey: appleStreamingMigrationKey)
+            migrated = true
+        }
+        if migrated {
+            config.save(userDefaults: userDefaults)
         }
         return config
     }

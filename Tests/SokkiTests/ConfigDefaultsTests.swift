@@ -2,10 +2,10 @@ import XCTest
 @testable import Sokki
 
 final class ConfigDefaultsTests: XCTestCase {
-    func testDefaultConfigIsLocalNoTelemetryMlxParakeetV2WithSaneThresholds() {
+    func testDefaultConfigIsLocalNoTelemetryAppleSpeechWithSaneThresholds() {
         let config = SokkiConfig.defaults
 
-        XCTAssertEqual(config.preferredBackend, .mlxParakeetV2)
+        XCTAssertEqual(config.preferredBackend, .appleSpeechTranscriber)
         XCTAssertFalse(config.ambientModeEnabled)
         XCTAssertFalse(config.telemetryEnabled)
         XCTAssertFalse(config.cloudTranscriptionEnabled)
@@ -27,5 +27,27 @@ final class ConfigDefaultsTests: XCTestCase {
         XCTAssertLessThanOrEqual(config.preRollMilliseconds, 1_500)
         XCTAssertGreaterThanOrEqual(config.tapThresholdMilliseconds, 120)
         XCTAssertLessThanOrEqual(config.tapThresholdMilliseconds, 500)
+    }
+
+    func testLoadMigratesOldMlxAndThresholdDefaultsPersistently() {
+        let suiteName = "SokkiTests.\(UUID().uuidString)"
+        guard let userDefaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults")
+            return
+        }
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        var oldConfig = SokkiConfig.defaults
+        oldConfig.preferredBackend = .mlxParakeetV2
+        oldConfig.silenceThresholdDBFS = -38
+        oldConfig.save(userDefaults: userDefaults)
+
+        let firstLoad = SokkiConfig.load(userDefaults: userDefaults)
+        XCTAssertEqual(firstLoad.preferredBackend, .appleSpeechTranscriber)
+        XCTAssertEqual(firstLoad.silenceThresholdDBFS, -50)
+
+        let secondLoad = SokkiConfig.load(userDefaults: userDefaults)
+        XCTAssertEqual(secondLoad.preferredBackend, .appleSpeechTranscriber)
+        XCTAssertEqual(secondLoad.silenceThresholdDBFS, -50)
     }
 }

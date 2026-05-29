@@ -4,19 +4,20 @@ Minimal local English dictation app for macOS.
 
 Current usable path:
 
-- MLX Parakeet v2 English ASR sidecar (`parakeet-mlx` via `uv`)
+- Apple SpeechTranscriber streaming backend by default
+- MLX Parakeet v2 English ASR sidecar fallback (`parakeet-mlx` via `uv`)
 - global Right Command hotkey:
   - hold Right Command, speak, release to transcribe/insert
   - tap Right Command, speak, pause or tap again to transcribe/insert
 - silence auto-stop
 - independently configurable silence auto-stop and Return-after-paste
 - normal Dock app window
-- bottom recording overlay
+- bottom recording overlay with live partials for Apple SpeechTranscriber
 - transcript stays copied to clipboard after dictation
 - recent transcript copy button
 - no telemetry, no cloud app service
 
-First run may download the local model from Hugging Face through `uv`/`parakeet-mlx`. After cache, dictation is local.
+Apple SpeechTranscriber may download Apple-managed on-device speech assets. MLX fallback may download the local model from Hugging Face through `uv`/`parakeet-mlx`. After caches/assets exist, dictation is local.
 
 ## Run
 

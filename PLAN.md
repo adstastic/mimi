@@ -11,15 +11,16 @@ Implemented:
 - Right Command global hotkey:
   - hold → record while held → release to transcribe/paste
   - tap → start recording → tap again or silence stop to transcribe/paste
-- Always-running `AVAudioEngine` capture with pre-roll ring buffer.
-- MLX Parakeet v2 sidecar kept warm through `uv run --python 3.12 --script`.
-- Local batch transcription path: record WAV → sidecar transcribes → paste.
+- Mic starts only while recording; ASR model stays warm while idle.
+- Apple SpeechTranscriber streaming backend is default and emits live partial transcripts.
+- MLX Parakeet v2 sidecar remains fallback through `uv run --python 3.12 --script`.
+- Local paths: Apple streams buffers → partials/final; MLX records WAV → sidecar transcribes → paste.
 - Clipboard paste leaves transcript copied for manual fallback.
 - Recent transcript shown with Copy button.
 - Independent toggles:
   - end recording on silence
   - press Enter after pasting
-- Configurable silence threshold and silence duration; default stop delay is 2.0s.
+- Configurable silence threshold and silence duration; defaults are -50 dBFS and 2.0s.
 - Permission status lights + buttons for Microphone, Accessibility, Input Monitoring.
 - Stable `/Applications/Sokki.app` build signed with Apple Development identity when available.
 - No telemetry, no cloud ASR. First-run dependency/model download may use network until cached.
@@ -40,17 +41,17 @@ cp -R build/Sokki.app /Applications/Sokki.app
 open /Applications/Sokki.app
 ```
 
-## Next milestone: Apple on-device streaming backend
+## Apple on-device streaming backend
 
-Goal: make streaming dictation work. Apple SpeechTranscriber should produce live partial transcript updates during recording; Sokki should still paste final text only by default. MLX Parakeet v2 remains batch fallback and accuracy baseline.
+Goal: make streaming dictation work. Apple SpeechTranscriber produces live partial transcript updates during recording; Sokki still pastes final text only by default. MLX Parakeet v2 remains batch fallback and accuracy baseline.
 
-Success criteria:
+Implemented success criteria:
 
-1. Live partial transcript appears in overlay/settings while audio is still being fed.
-2. `SokkiSmoke apple-stream-file` records at least one partial before final transcript.
-3. First-partial latency and finalization latency are printed by smoke tests.
-4. Final transcript pastes through existing insertion path.
-5. No cloud fallback; if local streaming unavailable, UI says unsupported and MLX remains usable.
+1. Live partial transcript appears in overlay/settings while Apple backend records.
+2. `SokkiSmoke apple-stream-file` records partials before final transcript.
+3. Smoke prints first-partial and finalization latency.
+4. `SokkiSmoke end-to-end-textedit` verifies Apple streaming final text reaches TextEdit via paste.
+5. No cloud fallback; Apple path uses SpeechTranscriber assets via `AssetInventory`.
 
 ## Backend strategy
 
@@ -59,11 +60,11 @@ Add backend enum:
 ```swift
 enum ASRBackend {
     case mlxParakeetV2
-    case appleSpeechOnDevice
+    case appleSpeechTranscriber
 }
 ```
 
-Keep MLX Parakeet as known-good final/batch fallback.
+Keep MLX Parakeet as known-good final/batch fallback. Apple SpeechTranscriber is default for streaming.
 
 Implement Apple backend with the newer SpeechAnalyzer/SpeechTranscriber APIs first:
 
