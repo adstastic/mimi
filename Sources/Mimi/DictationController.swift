@@ -1,6 +1,6 @@
 @preconcurrency import AVFoundation
 import Foundation
-import SokkiSpeech
+import MimiSpeech
 
 @MainActor
 final class DictationController {
@@ -22,7 +22,7 @@ final class DictationController {
         case silence = "Silence"
     }
 
-    private let configProvider: () -> SokkiConfig
+    private let configProvider: () -> MimiConfig
     private let audioCapture: AudioCapture
     private let asrService: ASRService
     private let textInserter: TextInserter
@@ -46,7 +46,7 @@ final class DictationController {
     private var lastAmbientDecisionLogAt = Date.distantPast
 
     init(
-        configProvider: @escaping () -> SokkiConfig,
+        configProvider: @escaping () -> MimiConfig,
         audioCapture: AudioCapture,
         asrService: ASRService,
         textInserter: TextInserter,

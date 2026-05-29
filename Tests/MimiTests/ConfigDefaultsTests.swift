@@ -1,9 +1,9 @@
 import XCTest
-@testable import Sokki
+@testable import Mimi
 
 final class ConfigDefaultsTests: XCTestCase {
     func testDefaultConfigUsesAppleSpeechWithSaneThresholds() {
-        let config = SokkiConfig.defaults
+        let config = MimiConfig.defaults
 
         XCTAssertEqual(config.preferredBackend, .appleSpeechTranscriber)
         XCTAssertFalse(config.ambientModeEnabled)
@@ -29,29 +29,29 @@ final class ConfigDefaultsTests: XCTestCase {
     }
 
     func testLoadMigratesOldMlxAndThresholdDefaultsPersistently() {
-        let suiteName = "SokkiTests.\(UUID().uuidString)"
+        let suiteName = "MimiTests.\(UUID().uuidString)"
         guard let userDefaults = UserDefaults(suiteName: suiteName) else {
             XCTFail("Could not create isolated UserDefaults")
             return
         }
         defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        var oldConfig = SokkiConfig.defaults
+        var oldConfig = MimiConfig.defaults
         oldConfig.preferredBackend = .mlxParakeetV2
         oldConfig.silenceThresholdDBFS = -38
         oldConfig.save(userDefaults: userDefaults)
 
-        let firstLoad = SokkiConfig.load(userDefaults: userDefaults)
+        let firstLoad = MimiConfig.load(userDefaults: userDefaults)
         XCTAssertEqual(firstLoad.preferredBackend, .appleSpeechTranscriber)
         XCTAssertEqual(firstLoad.silenceThresholdDBFS, -50)
 
-        let secondLoad = SokkiConfig.load(userDefaults: userDefaults)
+        let secondLoad = MimiConfig.load(userDefaults: userDefaults)
         XCTAssertEqual(secondLoad.preferredBackend, .appleSpeechTranscriber)
         XCTAssertEqual(secondLoad.silenceThresholdDBFS, -50)
     }
 
     func testLoadMigratesLegacyHotkeyToDictationShortcut() throws {
-        let suiteName = "SokkiTests.\(UUID().uuidString)"
+        let suiteName = "MimiTests.\(UUID().uuidString)"
         guard let userDefaults = UserDefaults(suiteName: suiteName) else {
             XCTFail("Could not create isolated UserDefaults")
             return
@@ -74,10 +74,10 @@ final class ConfigDefaultsTests: XCTestCase {
           "modelDownloadEnabled": true
         }
         """
-        userDefaults.set(Data(json.utf8), forKey: "SokkiConfig.v4")
-        userDefaults.set(true, forKey: "SokkiConfig.appleStreamingDefault.v1")
+        userDefaults.set(Data(json.utf8), forKey: "MimiConfig.v1")
+        userDefaults.set(true, forKey: "MimiConfig.appleSpeechDefault.v1")
 
-        let config = SokkiConfig.load(userDefaults: userDefaults)
+        let config = MimiConfig.load(userDefaults: userDefaults)
 
         XCTAssertEqual(config.dictationShortcut, .rightCommand)
         XCTAssertEqual(config.ambientToggleShortcut, .ambientToggleDefault)

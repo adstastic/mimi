@@ -13,8 +13,8 @@ final class HotkeyMonitor {
         }
     }
 
-    private var dictationShortcut: SokkiShortcut
-    private var ambientToggleShortcut: SokkiShortcut
+    private var dictationShortcut: MimiShortcut
+    private var ambientToggleShortcut: MimiShortcut
     private let onDictationDown: @MainActor () -> Void
     private let onDictationUp: @MainActor () -> Void
     private let onAmbientToggle: @MainActor () -> Void
@@ -25,8 +25,8 @@ final class HotkeyMonitor {
     private var ambientPressed = false
 
     init(
-        dictationShortcut: SokkiShortcut,
-        ambientToggleShortcut: SokkiShortcut,
+        dictationShortcut: MimiShortcut,
+        ambientToggleShortcut: MimiShortcut,
         onDictationDown: @escaping @MainActor () -> Void,
         onDictationUp: @escaping @MainActor () -> Void,
         onAmbientToggle: @escaping @MainActor () -> Void,
@@ -44,7 +44,7 @@ final class HotkeyMonitor {
         "Dictation: \(dictationShortcut.displayName); Ambient: \(ambientToggleShortcut.displayName)"
     }
 
-    func update(dictationShortcut: SokkiShortcut, ambientToggleShortcut: SokkiShortcut) {
+    func update(dictationShortcut: MimiShortcut, ambientToggleShortcut: MimiShortcut) {
         self.dictationShortcut = dictationShortcut
         self.ambientToggleShortcut = ambientToggleShortcut
         dictationPressed = false
@@ -122,14 +122,14 @@ final class HotkeyMonitor {
 
     private func handleModifierShortcut(
         _ event: NSEvent,
-        shortcut: SokkiShortcut,
+        shortcut: MimiShortcut,
         pressed: inout Bool,
         down: @escaping @MainActor () -> Void,
         up: @escaping @MainActor () -> Void
     ) {
         guard shortcut.isModifierOnly,
               Int(event.keyCode) == shortcut.keyCode,
-              let flag = SokkiShortcut.modifierFlag(forKeyCode: shortcut.keyCode)
+              let flag = MimiShortcut.modifierFlag(forKeyCode: shortcut.keyCode)
         else { return }
 
         let isDown = event.modifierFlags.contains(flag)
@@ -142,10 +142,10 @@ final class HotkeyMonitor {
         }
     }
 
-    private func handleModifierToggle(_ event: NSEvent, shortcut: SokkiShortcut) {
+    private func handleModifierToggle(_ event: NSEvent, shortcut: MimiShortcut) {
         guard shortcut.isModifierOnly,
               Int(event.keyCode) == shortcut.keyCode,
-              let flag = SokkiShortcut.modifierFlag(forKeyCode: shortcut.keyCode)
+              let flag = MimiShortcut.modifierFlag(forKeyCode: shortcut.keyCode)
         else { return }
 
         let isDown = event.modifierFlags.contains(flag)
@@ -157,8 +157,8 @@ final class HotkeyMonitor {
         }
     }
 
-    private func matches(_ event: NSEvent, shortcut: SokkiShortcut) -> Bool {
+    private func matches(_ event: NSEvent, shortcut: MimiShortcut) -> Bool {
         Int(event.keyCode) == shortcut.keyCode
-            && SokkiShortcut.normalized(event.modifierFlags) == shortcut.modifierFlags
+            && MimiShortcut.normalized(event.modifierFlags) == shortcut.modifierFlags
     }
 }

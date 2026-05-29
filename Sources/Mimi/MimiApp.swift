@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @main
-struct SokkiApp: App {
+struct MimiApp: App {
     @StateObject private var appModel = AppModel()
 
     var body: some Scene {
@@ -22,7 +22,7 @@ struct SokkiApp: App {
                 quit: { NSApplication.shared.terminate(nil) }
             )
         }
-        .defaultSize(width: 760, height: 900)
+        .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .appTermination) {
                 Button("Quit \(AppBrand.name)") {

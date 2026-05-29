@@ -1,0 +1,458 @@
+import AppKit
+import SwiftUI
+
+struct SettingsView: View {
+    @Binding var config: MimiConfig
+    let statusText: String
+    let hotkeyStatus: String
+    let permissionStatus: PermissionStatus
+    let modelLoading: Bool
+    let modelReady: Bool
+    let lastTranscript: String?
+    let liveTranscript: String?
+    let copyLastTranscript: () -> Void
+    let shortcutRecordingChanged: (Bool) -> Void
+    let refreshPermissions: () -> Void
+    let quit: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            header
+
+            SettingsCard("Dictation", systemImage: "waveform") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "cpu")
+                                .foregroundStyle(.secondary)
+                                .frame(width: 18)
+                            Text("Model")
+                        }
+                        Picker("Model", selection: $config.preferredBackend) {
+                            ForEach(ASRBackend.allCases, id: \.self) { backend in
+                                Text(backend.displayName).tag(backend)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .controlSize(.small)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    ToggleLine("Ambient", systemImage: "ear.and.waveform", isOn: $config.ambientModeEnabled)
+                    ToggleLine("End on silence", systemImage: "speaker.slash", isOn: $config.silenceAutoStopEnabled)
+                    ToggleLine("Press Return after paste", systemImage: "return", isOn: $config.pressEnterAfterPaste)
+                }
+
+                SettingsCard("Shortcuts", systemImage: "keyboard") {
+                    ShortcutRecorderRow(
+                        title: "Dictation",
+                        systemImage: "mic",
+                        shortcut: $config.dictationShortcut,
+                        onRecordingChanged: shortcutRecordingChanged
+                    )
+                    ShortcutRecorderRow(
+                        title: "Ambient",
+                        systemImage: "switch.2",
+                        shortcut: $config.ambientToggleShortcut,
+                        onRecordingChanged: shortcutRecordingChanged
+                    )
+                    if config.dictationShortcut == config.ambientToggleShortcut {
+                        Label("Ambient shortcut ignored because it matches dictation.", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                }
+
+                SettingsCard("Silence", systemImage: "waveform.badge.magnifyingglass") {
+                    SliderLine(
+                        "Threshold",
+                        value: "\(Int(config.silenceThresholdDBFS)) dBFS",
+                        systemImage: "dial.low"
+                    ) {
+                        Slider(value: $config.silenceThresholdDBFS, in: -65 ... -15, step: 1)
+                            .frame(width: 300)
+                    }
+                    SliderLine(
+                        "Stop after",
+                        value: String(format: "%.1f s", Double(config.silenceDurationMilliseconds) / 1_000.0),
+                        systemImage: "timer"
+                    ) {
+                        Slider(
+                            value: Binding(
+                                get: { Double(config.silenceDurationMilliseconds) / 1_000.0 },
+                                set: { config.silenceDurationMilliseconds = Int(($0 * 1_000).rounded()) }
+                            ),
+                            in: 0.3 ... 3.0,
+                            step: 0.1
+                        )
+                        .frame(width: 300)
+                    }
+                }
+
+                SettingsCard(
+                    "Permissions",
+                    systemImage: "lock.shield",
+                    trailing: AnyView(
+                        Button {
+                            refreshPermissions()
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        .help("Refresh permissions")
+                        .controlSize(.small)
+                    )
+                ) {
+                    PermissionLine("Microphone", systemImage: "mic", granted: permissionStatus.microphone) {
+                        openPrivacyPane("Privacy_Microphone")
+                    }
+                    PermissionLine("Accessibility", systemImage: "accessibility", granted: permissionStatus.accessibility) {
+                        openPrivacyPane("Privacy_Accessibility")
+                    }
+                    PermissionLine("Input Monitoring", systemImage: "keyboard.badge.eye", granted: permissionStatus.inputMonitoring) {
+                        openPrivacyPane("Privacy_ListenEvent")
+                    }
+                }
+
+            if let liveTranscript, !liveTranscript.isEmpty {
+                TranscriptCard(title: "Live", systemImage: "text.bubble", text: liveTranscript)
+            }
+
+            if let lastTranscript {
+                TranscriptCard(title: "Last", systemImage: "doc.on.clipboard", text: lastTranscript) {
+                    copyLastTranscript()
+                }
+            }
+        }
+        .padding(10)
+        .frame(width: 360, alignment: .topLeading)
+        .fixedSize(horizontal: true, vertical: true)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            AppLogoView()
+
+            Text(AppBrand.name)
+                .font(.title.bold())
+
+            StatusDot(color: statusColor, title: statusText)
+
+            Spacer()
+        }
+    }
+
+    private var statusColor: Color {
+        let lowercased = statusText.lowercased()
+        if lowercased.contains("error") || lowercased.contains("missing") || lowercased.contains("denied") {
+            return .red
+        }
+        if lowercased.contains("preparing") || lowercased.contains("loading") || lowercased.contains("starting") || lowercased.contains("transcribing") || lowercased.contains("recording") {
+            return .yellow
+        }
+        return .green
+    }
+
+    private func openPrivacyPane(_ pane: String) {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+}
+
+private struct AppLogoView: View {
+    var body: some View {
+        Group {
+            if let image = AppBrand.logoImage {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                Image(systemName: "ear")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(7)
+                    .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.accentColor))
+            }
+        }
+        .frame(width: 34, height: 34)
+    }
+}
+
+private struct StatusDot: View {
+    let color: Color
+    let title: String
+
+    var body: some View {
+        Circle()
+            .fill(color)
+            .frame(width: 10, height: 10)
+            .overlay(Circle().stroke(Color.primary.opacity(0.18), lineWidth: 1))
+            .help(title)
+    }
+}
+
+private struct SettingsCard<Content: View>: View {
+    let title: String
+    let systemImage: String
+    let trailing: AnyView?
+    let content: Content
+
+    init(_ title: String, systemImage: String, trailing: AnyView? = nil, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.systemImage = systemImage
+        self.trailing = trailing
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Label(title, systemImage: systemImage)
+                    .font(.headline)
+                Spacer()
+                trailing
+            }
+            content
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(nsColor: .controlBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.primary.opacity(0.08), lineWidth: 1))
+    }
+}
+
+private struct ToggleLine: View {
+    let title: String
+    let systemImage: String
+    @Binding var isOn: Bool
+
+    init(_ title: String, systemImage: String, isOn: Binding<Bool>) {
+        self.title = title
+        self.systemImage = systemImage
+        _isOn = isOn
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+            Text(title)
+            Spacer()
+            Toggle("", isOn: $isOn)
+                .labelsHidden()
+        }
+    }
+}
+
+private struct SliderLine<SliderContent: View>: View {
+    let title: String
+    let value: String
+    let systemImage: String
+    let slider: SliderContent
+
+    init(_ title: String, value: String, systemImage: String, @ViewBuilder slider: () -> SliderContent) {
+        self.title = title
+        self.value = value
+        self.systemImage = systemImage
+        self.slider = slider()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18)
+                Text(title)
+                Spacer()
+                Text(value)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            slider
+        }
+    }
+}
+
+private struct ShortcutRecorderRow: View {
+    let title: String
+    let systemImage: String
+    @Binding var shortcut: MimiShortcut
+    let onRecordingChanged: (Bool) -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+            Text(title)
+            Spacer()
+            Text(shortcut.displayName)
+                .font(.system(.body, design: .rounded).weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color.primary.opacity(0.08)))
+            ShortcutRecorderButton(shortcut: $shortcut, onRecordingChanged: onRecordingChanged)
+        }
+    }
+}
+
+private struct ShortcutRecorderButton: View {
+    @Binding var shortcut: MimiShortcut
+    let onRecordingChanged: (Bool) -> Void
+    @StateObject private var recorder = ShortcutRecorder()
+
+    var body: some View {
+        Button {
+            if recorder.isRecording {
+                recorder.stop()
+                onRecordingChanged(false)
+            } else {
+                onRecordingChanged(true)
+                recorder.start(
+                    onCapture: { shortcut in
+                        self.shortcut = shortcut
+                    },
+                    onFinish: {
+                        onRecordingChanged(false)
+                    }
+                )
+            }
+        } label: {
+            if recorder.isRecording {
+                Label("Press…", systemImage: "record.circle")
+            } else {
+                Image(systemName: "pencil")
+            }
+        }
+        .controlSize(.small)
+        .onDisappear {
+            if recorder.isRecording {
+                recorder.stop()
+                onRecordingChanged(false)
+            }
+        }
+    }
+}
+
+@MainActor
+private final class ShortcutRecorder: ObservableObject {
+    @Published private(set) var isRecording = false
+    private var monitor: Any?
+    private var pendingModifierShortcut: MimiShortcut?
+    private var sawKeyDown = false
+
+    func start(onCapture: @escaping (MimiShortcut) -> Void, onFinish: @escaping () -> Void) {
+        stop()
+        isRecording = true
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
+            guard let self else { return event }
+            switch event.type {
+            case .keyDown:
+                if event.keyCode == 53 {
+                    self.stop()
+                    onFinish()
+                    return nil
+                }
+                self.sawKeyDown = true
+                guard let shortcut = MimiShortcut.from(event: event) else { return event }
+                onCapture(shortcut)
+                self.stop()
+                onFinish()
+                return nil
+            case .flagsChanged:
+                guard let flag = MimiShortcut.modifierFlag(forKeyCode: Int(event.keyCode)) else { return event }
+                if event.modifierFlags.contains(flag) {
+                    self.pendingModifierShortcut = MimiShortcut(keyCode: Int(event.keyCode), modifierFlagsRaw: flag.rawValue)
+                    return nil
+                }
+                if !self.sawKeyDown,
+                   let shortcut = self.pendingModifierShortcut,
+                   shortcut.keyCode == Int(event.keyCode) {
+                    onCapture(shortcut)
+                    self.stop()
+                    onFinish()
+                    return nil
+                }
+                return nil
+            default:
+                return event
+            }
+        }
+    }
+
+    func stop() {
+        if let monitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        monitor = nil
+        pendingModifierShortcut = nil
+        sawKeyDown = false
+        isRecording = false
+    }
+}
+
+private struct PermissionLine: View {
+    let title: String
+    let systemImage: String
+    let granted: Bool
+    let open: () -> Void
+
+    init(_ title: String, systemImage: String, granted: Bool, open: @escaping () -> Void) {
+        self.title = title
+        self.systemImage = systemImage
+        self.granted = granted
+        self.open = open
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+            Text(title)
+            Spacer()
+            StatusDot(color: granted ? .green : .orange, title: granted ? "Granted" : "Missing")
+            Button {
+                open()
+            } label: {
+                Image(systemName: "arrow.up.forward.app")
+            }
+            .help("Open \(title) settings")
+            .controlSize(.small)
+        }
+    }
+}
+
+private struct TranscriptCard: View {
+    let title: String
+    let systemImage: String
+    let text: String
+    let action: (() -> Void)?
+
+    init(title: String, systemImage: String, text: String, action: (() -> Void)? = nil) {
+        self.title = title
+        self.systemImage = systemImage
+        self.text = text
+        self.action = action
+    }
+
+    var body: some View {
+        SettingsCard(title, systemImage: systemImage) {
+            HStack(alignment: .top) {
+                Text(text)
+                    .lineLimit(4)
+                    .textSelection(.enabled)
+                Spacer()
+                if let action {
+                    Button("Copy", action: action)
+                        .controlSize(.small)
+                }
+            }
+        }
+    }
+}

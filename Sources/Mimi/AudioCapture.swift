@@ -103,7 +103,7 @@ final class AudioCapture {
         guard !samples.isEmpty else { throw CaptureError.noRecordedAudio }
 
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("sokki-")
+            .appendingPathComponent("mimi-")
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension("wav")
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

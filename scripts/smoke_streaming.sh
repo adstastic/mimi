@@ -12,4 +12,4 @@ say -o "$AIFF_PATH" "mimi streaming smoke test please press enter after paste"
 afconvert "$AIFF_PATH" -f WAVE -d LEF32@16000 "$WAV_PATH"
 
 cd "$ROOT_DIR"
-swift run SokkiSmoke apple-stream-file "$WAV_PATH"
+swift run MimiSmoke apple-stream-file "$WAV_PATH"

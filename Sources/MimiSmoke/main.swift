@@ -1,10 +1,10 @@
 @preconcurrency import AppKit
 @preconcurrency import AVFoundation
 import Foundation
-import SokkiSpeech
+import MimiSpeech
 
 @main
-struct SokkiSmoke {
+struct MimiSmoke {
     static func main() async throws {
         let arguments = Array(CommandLine.arguments.dropFirst())
         guard let mode = arguments.first else {
@@ -232,8 +232,8 @@ struct SokkiSmoke {
     private static func printUsageAndExit() -> Never {
         fputs("""
         Usage:
-          swift run SokkiSmoke apple-stream-file /path/to/audio.wav
-          swift run SokkiSmoke end-to-end-textedit /path/to/audio.wav --backend apple --allow-focus-steal [--press-enter]
+          swift run MimiSmoke apple-stream-file /path/to/audio.wav
+          swift run MimiSmoke end-to-end-textedit /path/to/audio.wav --backend apple --allow-focus-steal [--press-enter]
         """, stderr)
         exit(2)
     }

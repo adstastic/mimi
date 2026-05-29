@@ -1,6 +1,6 @@
 @preconcurrency import AVFoundation
 import Foundation
-import SokkiSpeech
+import MimiSpeech
 
 actor ASRService {
     enum ASRError: LocalizedError {
@@ -13,7 +13,7 @@ actor ASRService {
         var errorDescription: String? {
             switch self {
             case .uvNotFound:
-                "Could not find uv. Install uv or set SOKKI_UV_PATH."
+                "Could not find uv. Install uv or set MIMI_UV_PATH."
             case .sidecarNotFound:
                 AppBrand.mlxSidecarMissingMessage
             case .processNotRunning:
@@ -177,7 +177,7 @@ actor ASRService {
             "/sbin",
             environment["PATH"] ?? ""
         ].joined(separator: ":")
-        environment["SOKKI_PARAKEET_MODEL"] = environment["SOKKI_PARAKEET_MODEL"] ?? "mlx-community/parakeet-tdt-0.6b-v2"
+        environment["MIMI_PARAKEET_MODEL"] = environment["MIMI_PARAKEET_MODEL"] ?? "mlx-community/parakeet-tdt-0.6b-v2"
         process.environment = environment
 
         let stdin = Pipe()
@@ -285,7 +285,7 @@ actor ASRService {
     }
 
     private static func findUVPath() throws -> String {
-        if let override = ProcessInfo.processInfo.environment["SOKKI_UV_PATH"], FileManager.default.isExecutableFile(atPath: override) {
+        if let override = ProcessInfo.processInfo.environment["MIMI_UV_PATH"], FileManager.default.isExecutableFile(atPath: override) {
             return override
         }
 
@@ -306,14 +306,14 @@ actor ASRService {
         let fileManager = FileManager.default
         let bundleCandidate = Bundle.main.resourceURL?
             .appendingPathComponent("Sidecars", isDirectory: true)
-            .appendingPathComponent("sokki_mlx_server.py")
+            .appendingPathComponent("mimi_mlx_server.py")
         if let bundleCandidate, fileManager.fileExists(atPath: bundleCandidate.path) {
             return bundleCandidate
         }
 
         let repoCandidate = URL(fileURLWithPath: fileManager.currentDirectoryPath)
             .appendingPathComponent("Sidecars", isDirectory: true)
-            .appendingPathComponent("sokki_mlx_server.py")
+            .appendingPathComponent("mimi_mlx_server.py")
         if fileManager.fileExists(atPath: repoCandidate.path) {
             return repoCandidate
         }

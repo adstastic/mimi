@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 
-public struct SokkiShortcut: Codable, Equatable, Sendable {
+public struct MimiShortcut: Codable, Equatable, Sendable {
     public var keyCode: Int
     public var modifierFlagsRaw: UInt
 
@@ -10,18 +10,18 @@ public struct SokkiShortcut: Codable, Equatable, Sendable {
         self.modifierFlagsRaw = modifierFlagsRaw
     }
 
-    public static let rightCommand = SokkiShortcut(
+    public static let rightCommand = MimiShortcut(
         keyCode: 54,
         modifierFlagsRaw: NSEvent.ModifierFlags.command.rawValue
     )
 
-    public static let ambientToggleDefault = SokkiShortcut(
+    public static let ambientToggleDefault = MimiShortcut(
         keyCode: 0, // A
         modifierFlagsRaw: NSEvent.ModifierFlags([.control, .option]).rawValue
     )
 
-    static func legacySingleKey(keyCode: Int) -> SokkiShortcut {
-        SokkiShortcut(
+    static func legacySingleKey(keyCode: Int) -> MimiShortcut {
+        MimiShortcut(
             keyCode: keyCode,
             modifierFlagsRaw: modifierFlagRaw(forKeyCode: keyCode) ?? 0
         )
@@ -59,9 +59,9 @@ public enum ASRBackend: String, CaseIterable, Codable, Equatable, Sendable {
     }
 }
 
-public struct SokkiConfig: Codable, Equatable, Sendable {
-    private static let defaultsKey = "SokkiConfig.v4"
-    private static let appleStreamingMigrationKey = "SokkiConfig.appleStreamingDefault.v1"
+public struct MimiConfig: Codable, Equatable, Sendable {
+    private static let defaultsKey = "MimiConfig.v1"
+    private static let appleStreamingMigrationKey = "MimiConfig.appleSpeechDefault.v1"
 
     private enum CodingKeys: String, CodingKey {
         case preferredBackend
@@ -88,14 +88,14 @@ public struct SokkiConfig: Codable, Equatable, Sendable {
     public var preRollMilliseconds: Int
     public var tapThresholdMilliseconds: Int
     public var hotkeyKeyCode: Int
-    public var dictationShortcut: SokkiShortcut
+    public var dictationShortcut: MimiShortcut
     public var ambientModeEnabled: Bool
-    public var ambientToggleShortcut: SokkiShortcut
+    public var ambientToggleShortcut: MimiShortcut
     public var pressEnterAfterPaste: Bool
     public var postPasteEnterDelayMilliseconds: Int
     public var modelDownloadEnabled: Bool
 
-    public static let defaults = SokkiConfig(
+    public static let defaults = MimiConfig(
         preferredBackend: .appleSpeechTranscriber,
         silenceAutoStopEnabled: true,
         silenceThresholdDBFS: -50,
@@ -121,9 +121,9 @@ public struct SokkiConfig: Codable, Equatable, Sendable {
         preRollMilliseconds: Int,
         tapThresholdMilliseconds: Int,
         hotkeyKeyCode: Int,
-        dictationShortcut: SokkiShortcut = .rightCommand,
+        dictationShortcut: MimiShortcut = .rightCommand,
         ambientModeEnabled: Bool,
-        ambientToggleShortcut: SokkiShortcut = .ambientToggleDefault,
+        ambientToggleShortcut: MimiShortcut = .ambientToggleDefault,
         pressEnterAfterPaste: Bool,
         postPasteEnterDelayMilliseconds: Int,
         modelDownloadEnabled: Bool
@@ -154,10 +154,10 @@ public struct SokkiConfig: Codable, Equatable, Sendable {
         preRollMilliseconds = try container.decodeIfPresent(Int.self, forKey: .preRollMilliseconds) ?? Self.defaults.preRollMilliseconds
         tapThresholdMilliseconds = try container.decodeIfPresent(Int.self, forKey: .tapThresholdMilliseconds) ?? Self.defaults.tapThresholdMilliseconds
         hotkeyKeyCode = try container.decodeIfPresent(Int.self, forKey: .hotkeyKeyCode) ?? Self.defaults.hotkeyKeyCode
-        dictationShortcut = try container.decodeIfPresent(SokkiShortcut.self, forKey: .dictationShortcut)
-            ?? SokkiShortcut.legacySingleKey(keyCode: hotkeyKeyCode)
+        dictationShortcut = try container.decodeIfPresent(MimiShortcut.self, forKey: .dictationShortcut)
+            ?? MimiShortcut.legacySingleKey(keyCode: hotkeyKeyCode)
         ambientModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .ambientModeEnabled) ?? Self.defaults.ambientModeEnabled
-        ambientToggleShortcut = try container.decodeIfPresent(SokkiShortcut.self, forKey: .ambientToggleShortcut) ?? Self.defaults.ambientToggleShortcut
+        ambientToggleShortcut = try container.decodeIfPresent(MimiShortcut.self, forKey: .ambientToggleShortcut) ?? Self.defaults.ambientToggleShortcut
         pressEnterAfterPaste = try container.decodeIfPresent(Bool.self, forKey: .pressEnterAfterPaste) ?? Self.defaults.pressEnterAfterPaste
         postPasteEnterDelayMilliseconds = try container.decodeIfPresent(Int.self, forKey: .postPasteEnterDelayMilliseconds) ?? Self.defaults.postPasteEnterDelayMilliseconds
         modelDownloadEnabled = try container.decodeIfPresent(Bool.self, forKey: .modelDownloadEnabled) ?? Self.defaults.modelDownloadEnabled
@@ -181,9 +181,9 @@ public struct SokkiConfig: Codable, Equatable, Sendable {
         try container.encode(modelDownloadEnabled, forKey: .modelDownloadEnabled)
     }
 
-    public static func load(userDefaults: UserDefaults = .standard) -> SokkiConfig {
+    public static func load(userDefaults: UserDefaults = .standard) -> MimiConfig {
         guard let data = userDefaults.data(forKey: defaultsKey),
-              var config = try? JSONDecoder().decode(SokkiConfig.self, from: data)
+              var config = try? JSONDecoder().decode(MimiConfig.self, from: data)
         else { return .defaults }
         var migrated = false
         if config.silenceThresholdDBFS == -38 {

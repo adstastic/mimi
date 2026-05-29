@@ -11,7 +11,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var permissionStatus = PermissionStatus.current()
     @Published private(set) var modelLoading = false
     @Published private(set) var modelReady = false
-    @Published var config: SokkiConfig {
+    @Published var config: MimiConfig {
         didSet {
             config.save()
             if oldValue.preferredBackend != config.preferredBackend {
@@ -45,7 +45,7 @@ final class AppModel: ObservableObject {
     private var shortcutRecording = false
 
     init() {
-        config = SokkiConfig.load()
+        config = MimiConfig.load()
 
         asrService = ASRService { [weak self] status in
             Task { @MainActor in

@@ -49,9 +49,9 @@ Goal: make streaming dictation work. Apple SpeechTranscriber produces live parti
 Implemented success criteria:
 
 1. Live partial transcript appears in overlay/settings while Apple backend records.
-2. `SokkiSmoke apple-stream-file` records partials before final transcript.
+2. `MimiSmoke apple-stream-file` records partials before final transcript.
 3. Smoke prints first-partial and finalization latency.
-4. `SokkiSmoke end-to-end-textedit` verifies Apple streaming final text reaches TextEdit via paste.
+4. `MimiSmoke end-to-end-textedit` verifies Apple streaming final text reaches TextEdit via paste.
 5. No cloud fallback; Apple path uses SpeechTranscriber assets via `AssetInventory`.
 
 ## Backend strategy
@@ -162,15 +162,15 @@ afconvert /tmp/mimi-streaming-smoke.aiff -f WAVE -d LEF32@16000 /tmp/mimi-stream
 Add SwiftPM executable target:
 
 ```text
-Sources/SokkiSmoke/
+Sources/MimiSmoke/
   main.swift
 ```
 
 Modes:
 
 ```bash
-swift run SokkiSmoke mlx-file /tmp/mimi-streaming-smoke.wav
-swift run SokkiSmoke apple-stream-file /tmp/mimi-streaming-smoke.wav
+swift run MimiSmoke mlx-file /tmp/mimi-streaming-smoke.wav
+swift run MimiSmoke apple-stream-file /tmp/mimi-streaming-smoke.wav
 ```
 
 `apple-stream-file` must:
@@ -192,7 +192,7 @@ This proves streaming backend without physical microphone.
 Add hidden/debug CLI flag to app executable or smoke target:
 
 ```bash
-swift run SokkiSmoke end-to-end-textedit /tmp/mimi-streaming-smoke.wav --backend apple
+swift run MimiSmoke end-to-end-textedit /tmp/mimi-streaming-smoke.wav --backend apple
 ```
 
 Flow:
@@ -220,7 +220,7 @@ open /Applications/mimi.app
 Agent can verify process + logs:
 
 ```bash
-pgrep -fl 'mimi|sokki_mlx|Python.*sokki'
+pgrep -fl 'mimi|mimi_mlx|Python.*mimi'
 log show --predicate 'process == "mimi"' --last 2m --style compact | tail -80
 ```
 
@@ -240,12 +240,12 @@ Verify:
 ```bash
 swift test
 scripts/build_app.sh
-swift run SokkiSmoke mlx-file /tmp/mimi-streaming-smoke.wav
+swift run MimiSmoke mlx-file /tmp/mimi-streaming-smoke.wav
 ```
 
 ### Slice B — synthetic smoke harness
 
-- Add `SokkiSmoke` target.
+- Add `MimiSmoke` target.
 - Add WAV reader/chunker utilities.
 - Add MLX file smoke first to prove harness.
 
@@ -256,13 +256,13 @@ Verify: MLX smoke transcribes generated `say` audio.
 - Implement `AppleSpeechTranscriberBackend` using SpeechAnalyzer/SpeechTranscriber.
 - Force local/on-device assets/recognition only.
 - Surface unsupported/missing model/permission status clearly.
-- Implement `SokkiSmoke apple-stream-file`.
+- Implement `MimiSmoke apple-stream-file`.
 - Add `AppleSFSpeechBackend` fallback only if SpeechTranscriber cannot compile/run on this SDK/runtime.
 
 Verify:
 
 ```bash
-swift run SokkiSmoke apple-stream-file /tmp/mimi-streaming-smoke.wav
+swift run MimiSmoke apple-stream-file /tmp/mimi-streaming-smoke.wav
 ```
 
 Pass criteria:
@@ -284,8 +284,8 @@ Verify:
 ```bash
 swift test
 scripts/build_app.sh
-swift run SokkiSmoke end-to-end-textedit /tmp/mimi-streaming-smoke.wav --backend apple
-swift run SokkiSmoke end-to-end-textedit /tmp/mimi-streaming-smoke.wav --backend mlx
+swift run MimiSmoke end-to-end-textedit /tmp/mimi-streaming-smoke.wav --backend apple
+swift run MimiSmoke end-to-end-textedit /tmp/mimi-streaming-smoke.wav --backend mlx
 ```
 
 ### Slice E — latency mini-metrics
@@ -325,4 +325,4 @@ Apple may be faster but less accurate for code-ish prose. Keep backend picker an
 
 ## Compact handoff prompt
 
-Continue mimi from `PLAN.md`. Current app works with MLX Parakeet v2 batch dictation. Next milestone: add Apple on-device streaming backend without regressing MLX. Use the new SpeechAnalyzer/SpeechTranscriber APIs first, with SFSpeechRecognizer on-device fallback only if the new APIs are unavailable. First extract backend protocol and add `SokkiSmoke` target. Implement deterministic e2e tests with generated `say` WAV: `mlx-file`, `apple-stream-file`, and `end-to-end-textedit`. Apple backend must use local/on-device recognition/assets only and surface unsupported status instead of falling back to cloud. Show partial transcripts in overlay/settings, paste final only. After automated smoke passes, build/install `/Applications/mimi.app` for manual dogfood.
+Continue mimi from `PLAN.md`. Current app works with MLX Parakeet v2 batch dictation. Next milestone: add Apple on-device streaming backend without regressing MLX. Use the new SpeechAnalyzer/SpeechTranscriber APIs first, with SFSpeechRecognizer on-device fallback only if the new APIs are unavailable. First extract backend protocol and add `MimiSmoke` target. Implement deterministic e2e tests with generated `say` WAV: `mlx-file`, `apple-stream-file`, and `end-to-end-textedit`. Apple backend must use local/on-device recognition/assets only and surface unsupported status instead of falling back to cloud. Show partial transcripts in overlay/settings, paste final only. After automated smoke passes, build/install `/Applications/mimi.app` for manual dogfood.

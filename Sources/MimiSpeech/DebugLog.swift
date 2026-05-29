@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 
 enum DebugLog {
-    private static let url = URL(fileURLWithPath: "/tmp/sokki-debug.log")
+    private static let url = URL(fileURLWithPath: "/tmp/mimi-debug.log")
     private static let formatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

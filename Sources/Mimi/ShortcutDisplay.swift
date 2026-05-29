@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 
-extension SokkiShortcut {
+extension MimiShortcut {
     static let shortcutModifierMask: NSEvent.ModifierFlags = [.shift, .control, .option, .command, .function]
 
     var modifierFlags: NSEvent.ModifierFlags {
@@ -24,16 +24,16 @@ extension SokkiShortcut {
         return modifierFlags.shortcutSymbols + Self.keyName(forKeyCode: keyCode)
     }
 
-    static func from(event: NSEvent) -> SokkiShortcut? {
+    static func from(event: NSEvent) -> MimiShortcut? {
         switch event.type {
         case .flagsChanged:
             guard let flag = modifierFlag(forKeyCode: Int(event.keyCode)),
                   event.modifierFlags.contains(flag)
             else { return nil }
-            return SokkiShortcut(keyCode: Int(event.keyCode), modifierFlagsRaw: flag.rawValue)
+            return MimiShortcut(keyCode: Int(event.keyCode), modifierFlagsRaw: flag.rawValue)
         case .keyDown:
             let flags = normalized(event.modifierFlags)
-            return SokkiShortcut(keyCode: Int(event.keyCode), modifierFlagsRaw: flags.rawValue)
+            return MimiShortcut(keyCode: Int(event.keyCode), modifierFlagsRaw: flags.rawValue)
         default:
             return nil
         }

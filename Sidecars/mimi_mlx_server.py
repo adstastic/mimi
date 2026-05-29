@@ -11,8 +11,8 @@ import sys
 import time
 import traceback
 
-MODEL_ID = os.environ.get("SOKKI_PARAKEET_MODEL", "mlx-community/parakeet-tdt-0.6b-v2")
-CACHE_DIR = os.environ.get("SOKKI_MODEL_CACHE") or None
+MODEL_ID = os.environ.get("MIMI_PARAKEET_MODEL", "mlx-community/parakeet-tdt-0.6b-v2")
+CACHE_DIR = os.environ.get("MIMI_MODEL_CACHE") or None
 HOMEBREW_PATH = "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin"
 if HOMEBREW_PATH not in os.environ.get("PATH", ""):
     os.environ["PATH"] = HOMEBREW_PATH + ":" + os.environ.get("PATH", "")

@@ -2,33 +2,33 @@
 import PackageDescription
 
 let package = Package(
-    name: "Sokki",
+    name: "Mimi",
     platforms: [
         .macOS("26.0")
     ],
     products: [
-        .executable(name: "Sokki", targets: ["Sokki"]),
-        .executable(name: "SokkiSmoke", targets: ["SokkiSmoke"])
+        .executable(name: "Mimi", targets: ["Mimi"]),
+        .executable(name: "MimiSmoke", targets: ["MimiSmoke"])
     ],
     targets: [
         .target(
-            name: "SokkiSpeech",
-            path: "Sources/SokkiSpeech"
+            name: "MimiSpeech",
+            path: "Sources/MimiSpeech"
         ),
         .executableTarget(
-            name: "Sokki",
-            dependencies: ["SokkiSpeech"],
-            path: "Sources/Sokki"
+            name: "Mimi",
+            dependencies: ["MimiSpeech"],
+            path: "Sources/Mimi"
         ),
         .executableTarget(
-            name: "SokkiSmoke",
-            dependencies: ["SokkiSpeech"],
-            path: "Sources/SokkiSmoke"
+            name: "MimiSmoke",
+            dependencies: ["MimiSpeech"],
+            path: "Sources/MimiSmoke"
         ),
         .testTarget(
-            name: "SokkiTests",
-            dependencies: ["Sokki"],
-            path: "Tests/SokkiTests"
+            name: "MimiTests",
+            dependencies: ["Mimi"],
+            path: "Tests/MimiTests"
         )
     ]
 )
