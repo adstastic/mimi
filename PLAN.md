@@ -1,457 +1,318 @@
-# Sokki Implementation Plan
-
-## Goal
-
-Build the smallest useful macOS dictation app for Adi:
-
-- local-only English ASR
-- very low perceived start latency
-- global hotkeys for hold-to-record and tap-to-toggle
-- configurable silence auto-stop
-- configurable post-paste Return/Enter
-- recent transcript retry when insertion fails
-- no telemetry, no cloud, no product cruft
-
-Primary target: Apple Silicon Mac, macOS 14+.
-
-## Non-goals
-
-- No multi-user/product dashboard.
-- No cloud ASR or cloud LLM.
-- No meeting recorder, YouTube transcription, calendar, chat, transforms, analytics, updates, accounts, licensing, or telemetry.
-- No App Store packaging.
-- No true live typing in v1; final paste after utterance is enough. Live overlay can show level/state.
-
-## Product behavior
-
-### Hotkey mode
-
-One primary global hotkey supports both gestures:
-
-- key down: immediately start capture using pre-roll buffer
-- key up before `tapThresholdMs`: keep recording in toggle mode
-- key down while toggle recording: stop, transcribe, insert
-- key held beyond `holdThresholdMs`: hold-to-record mode
-- key up after hold mode: stop, transcribe, insert
-- Escape while recording: cancel capture
-
-Default key: Right Option, configurable later.
-
-### Silence stop
-
-While recording, app tracks microphone level.
-
-Config:
-
-- `silenceThresholdDb` default around `-38 dBFS`
-- `silenceDurationMs` default `1000`
-- `minUtteranceMs` default `350`
-- `preRollMs` default `700`
-
-When level stays below threshold for silence duration, stop automatically and process.
-
-### Ambient mode
-
-Stretch but planned from same audio core:
-
-- mic stays running
-- ring buffer keeps pre-roll
-- speech start detected by threshold crossing for `startWindowMs`
-- speech end detected by silence duration
-- segment transcribed and inserted automatically
-- cooldown prevents rapid accidental re-trigger after paste
-
-Ambient mode will be opt-in from menu/settings.
-
-### Insertion
-
-Insertion strategy, in order:
-
-1. Direct Accessibility insertion into focused text field when possible.
-2. Clipboard + Cmd-V fallback, with clipboard restore.
-3. Retry hotkey can re-insert last transcript using Unicode typing to avoid clipboard.
-
-If no focused input exists or paste fails:
-
-- overlay shows error
-- transcript kept as `lastTranscript`
-- retry hotkey attempts insertion again
-- menu has “Copy Last Transcript” as manual fallback
-
-### Auto Enter
-
-Config:
-
-- `off`
-- `always`
-- `appAllowlist`
-
-Allowlist stored as bundle IDs, default candidates:
-
-- `com.todesktop.230313mzl4w4u92` Cursor if current bundle id matches installed app
-- `com.microsoft.VSCode`
-- `com.mitchellh.ghostty`
-- `com.googlecode.iterm2`
-- `dev.warp.Warp-Stable`
-- `com.apple.Terminal`
-
-After successful text insertion, sleep `postPasteEnterDelayMs` default `150`, then synthesize Return key.
-
-### Overlay
-
-Small bottom-center NSPanel, no focus stealing.
-
-States:
-
-- hidden idle
-- listening: red dot, waveform/level bar, elapsed time
-- processing: spinner, “Transcribing…”
-- inserted: checkmark, maybe faded transcript preview
-- error: “Insert failed — retry ⌥⇧V”
-
-Implementation: `NSPanel` + `NSHostingView` + SwiftUI pill.
-
-### Menu bar/settings
-
-Bare menu bar app:
-
-- Enabled
-- Ambient Mode
-- Model status
-- Silence threshold/delay summary
-- Auto Enter mode summary
-- Retry Last Insert
-- Copy Last Transcript
-- Settings…
-- Quit
-
-Settings window: plain SwiftUI form.
-
-## ASR model
-
-Preferred backend default: `mlxParakeetV2` (MLX Parakeet v2, local sidecar candidate).
-
-Slice 1 benchmark compares:
-
-- MLX Parakeet v2 sidecar
-- FluidAudio/CoreML Parakeet v2
-
-No ASR backend dependency is included in Slice 0. After Slice 1 benchmark, wire the chosen local backend behind `ASRService` and keep it warm until quit.
-
-Reasons:
-
-- v2 is English-only; avoids Parakeet v3 multilingual hallucinations.
-- Local-only transcription; no telemetry or cloud ASR. First-run model/package download may use network until cached.
-- Batch transcription should be fast enough for short dictation.
-
-Open question for Slice 1: exact sidecar/API shape and benchmark winner must be verified before backend integration.
-
-## Codebase shape
-
-Keep files small. Target ~10-14 source files.
-
-```text
-Sokki/
-  Package.swift
-  README.md
-  PLAN.md
-  scripts/
-    build_app.sh
-    run_app.sh
-  Sources/Sokki/
-    SokkiApp.swift
-    Config.swift
-    AppPaths.swift
-    ASRService.swift
-    AudioCapture.swift
-    SilenceDetector.swift
-    HotkeyMonitor.swift
-    DictationController.swift
-    TextInserter.swift
-    HistoryStore.swift
-    OverlayWindow.swift
-    SettingsView.swift
-    MenuBarController.swift
-  Tests/SokkiTests/
-    SilenceDetectorTests.swift
-    HotkeyStateMachineTests.swift
-    HistoryStoreTests.swift
-```
-
-No nested feature modules unless code growth forces it.
-
-## Component responsibilities
-
-### `Config.swift`
-
-`Codable`/UserDefaults-backed config:
-
-- preferred backend default `mlxParakeetV2`
-- local/no-telemetry defaults, cloud transcription off, model download explicit
-- hotkey keyCode/modifiers or fixed first version
-- tap/hold thresholds
-- silence threshold/delay
-- pre-roll ms
-- ambient enabled
-- auto-enter mode + allowlist
-- insertion preference
-- history limit
-
-### `AppPaths.swift`
-
-Creates:
-
-- `~/Library/Application Support/Sokki/`
-- `history.jsonl`
-- temp audio dir if needed
-
-No telemetry paths. First-run model download/cache paths are explicit.
-
-### `ASRService.swift`
-
-Actor.
-
-- `prepare()` loads the selected local Parakeet v2 backend once.
-- `transcribe(samples:)` or `transcribe(wavURL:)` returns text.
-- Serializes transcription calls.
-- Emits model status.
-
-### `AudioCapture.swift`
-
-Owns AVAudioEngine.
-
-- starts engine at app launch if mic permission granted
-- keeps ring buffer of last `preRollMs`
-- records current segment when commanded
-- computes current RMS/dB every audio callback
-- writes final segment to WAV or returns `[Float]`
-
-Prefer in-memory float samples if selected backend supports direct sample transcription; otherwise write temp WAV.
-
-### `SilenceDetector.swift`
-
-Pure testable state machine:
-
-- tracks above/below threshold
-- returns `.speechStarted`, `.speechEnded`, `.none`
-- handles min utterance and cooldown
-
-### `HotkeyMonitor.swift`
-
-CGEventTap.
-
-- default Right Option or user-configured key
-- implements same-key tap/hold/toggle state machine
-- calls controller: `hotkeyDown`, `hotkeyUp`, `cancel`
-- no double-tap requirement
-
-### `DictationController.swift`
-
-Main orchestrator.
-
-States:
-
-```swift
-idle
-recording(mode: .hold | .toggle | .ambient)
-processing
-inserted
-error
-```
-
-Coordinates:
-
-- capture start/stop
-- silence auto-stop
-- ASR
-- history
-- insert
-- overlay state
-- retry last transcript
-
-### `TextInserter.swift`
-
-Insertion methods:
-
-- `insertAX(text:)`
-- `insertClipboard(text:, restore:)`
-- `typeUnicode(text:)`
-- `pressReturn()`
-
-Bundle ID allowlist check for auto-enter.
-
-### `HistoryStore.swift`
-
-Minimal recent history.
-
-- in-memory `[TranscriptEntry]`
-- append to JSONL optional from day one
-- load last N on launch
-- `lastTranscript` always available
-
-### `OverlayWindow.swift`
-
-NSPanel + SwiftUI pill.
-
-- bottom center by default
-- optional notch-ish top center later
-- non-activating
-- all spaces/fullscreen
-
-### `SettingsView.swift`
-
-Bare SwiftUI form bound to config.
-
-## Build/package plan
-
-Use Swift Package for source simplicity, plus script to make `.app` bundle.
-
-`Package.swift`:
-
-- executable target `Sokki`
-- test target `SokkiTests`
-- add ASR dependency only after Slice 1 benchmark decision
-
-`scripts/build_app.sh`:
-
-1. `swift build -c release`
-2. create `build/Sokki.app/Contents/{MacOS,Resources}`
-3. copy executable
-4. write `Info.plist`
-5. include mic usage string
-6. ad-hoc sign:
+# Sokki Plan
+
+## Current baseline
+
+Sokki is a minimal macOS Dock app for local dictation.
+
+Implemented:
+
+- SwiftUI settings window.
+- Bottom overlay for recording/transcribing/insert/error.
+- Right Command global hotkey:
+  - hold → record while held → release to transcribe/paste
+  - tap → start recording → tap again or silence stop to transcribe/paste
+- Always-running `AVAudioEngine` capture with pre-roll ring buffer.
+- MLX Parakeet v2 sidecar kept warm through `uv run --python 3.12 --script`.
+- Local batch transcription path: record WAV → sidecar transcribes → paste.
+- Clipboard paste with restore; retry last insert uses Unicode typing.
+- Recent transcript shown with Retry/Copy buttons.
+- Independent toggles:
+  - end recording on silence
+  - press Enter after pasting
+- Configurable silence threshold and silence duration; default stop delay is 2.0s.
+- Permission status lights + buttons for Microphone, Accessibility, Input Monitoring.
+- Stable `/Applications/Sokki.app` build signed with Apple Development identity when available.
+- No telemetry, no cloud ASR. First-run dependency/model download may use network until cached.
+
+Current verification commands:
 
 ```bash
-codesign --force --deep --sign - build/Sokki.app
+swift test
+scripts/build_app.sh
 ```
 
-`scripts/run_app.sh` builds and opens app.
+Current manual install/run:
 
-Local signing only. No Developer ID needed for personal testing.
+```bash
+pkill -x Sokki || true
+rm -rf /Applications/Sokki.app
+cp -R build/Sokki.app /Applications/Sokki.app
+open /Applications/Sokki.app
+```
 
-## Permissions
+## Next milestone: Apple on-device streaming backend
 
-App needs:
+Goal: compare Apple built-in speech streaming against MLX Parakeet v2 batch dictation, without breaking the current Parakeet path.
 
-- Microphone permission for AVAudioEngine
-- Accessibility permission for CGEventTap and insertion/fallback paste
+Questions to answer with code, not guesses:
 
-Settings/menu should expose permission status and “Open System Settings” buttons if easy; otherwise README documents it.
+1. Can Apple Speech stream partial English transcripts locally on this Mac?
+2. Is startup/first-token latency better than current MLX batch path?
+3. Is final accuracy good enough for coding/chat dictation?
+4. Can Sokki show live partial text while still pasting only final text?
 
-## Validation plan
+## Backend strategy
 
-### Automated tests
+Add backend enum:
 
-- Silence detector threshold/duration/cooldown.
-- Hotkey state machine:
-  - hold start/stop
-  - tap starts toggle
-  - second tap stops
-  - Escape cancels
-- History append/load last N.
-- Auto-enter allowlist logic.
+```swift
+enum ASRBackend {
+    case mlxParakeetV2
+    case appleSpeechOnDevice
+}
+```
 
-### Manual checks
+Keep MLX Parakeet as known-good final/batch fallback.
 
-1. Build app and grant permissions.
-2. Confirm selected local Parakeet v2 backend loads.
-3. Hold hotkey, speak, release → text inserts.
-4. Tap hotkey, speak, silence auto-stops → text inserts.
-5. Tap hotkey, speak, tap again → text inserts.
-6. With no focused input, insert fails visibly, retry works after focusing field.
-7. Auto-enter works in selected coding app only.
-8. Ambient mode off by default.
-9. Ambient mode on: starts on voice, stops on silence, uses pre-roll.
-10. After model/package cache exists, no outbound expected during dictation.
+Implement Apple backend with the stable Speech framework first:
+
+- `SFSpeechRecognizer(locale: Locale(identifier: "en_US"))`
+- `SFSpeechAudioBufferRecognitionRequest`
+- `request.requiresOnDeviceRecognition = true`
+- fail clearly if `supportsOnDeviceRecognition == false`
+- no cloud fallback
+- consume audio buffers directly from `AudioCapture`
+- emit partial and final transcript events
+
+If the local SDK exposes newer SpeechAnalyzer/SpeechTranscriber APIs, spike them after SFSpeech works. Do not make that the first dependency unless SFSpeech cannot satisfy local streaming.
+
+## Required architecture changes
+
+### `ASRService`
+
+Split current service into a small backend protocol:
+
+```swift
+protocol BatchASRBackend {
+    func prepare() async throws
+    func transcribe(audioURL: URL) async throws -> String
+}
+
+protocol StreamingASRBackend {
+    func prepare() async throws
+    func startStream(onPartial: @escaping @MainActor (String) -> Void) async throws
+    func append(_ buffer: AVAudioPCMBuffer) async throws
+    func finishStream() async throws -> String
+    func cancelStream() async
+}
+```
+
+Adapters:
+
+- `MLXParakeetBackend`: existing JSON-lines sidecar batch path.
+- `AppleSpeechStreamingBackend`: on-device Apple streaming path.
+
+### `AudioCapture`
+
+Current capture writes samples to WAV after recording. Add live buffer fan-out:
+
+- keep existing ring buffer + WAV finalization for MLX
+- while recording, forward captured `AVAudioPCMBuffer` copies to current streaming backend
+- keep callback work tiny: append/copy only, no ASR in audio callback
+
+### `DictationController`
+
+Behavior by selected backend:
+
+- MLX Parakeet:
+  - existing flow: record → finish WAV → transcribe → paste
+- Apple Speech:
+  - on recording start: `startStream`
+  - during recording: append buffers
+  - partial events update overlay/settings live transcript
+  - on stop/silence: `finishStream` → paste final
+
+Overlay:
+
+- listening: show level + elapsed
+- streaming: show partial transcript line
+- processing: only if backend finalization still running
+
+Settings:
+
+- backend picker: MLX Parakeet v2 / Apple Speech on-device
+- show backend status:
+  - MLX loaded
+  - Apple on-device supported / missing / permission needed
+
+## End-to-end testing plan the agent can run
+
+Do not rely on Adi speaking manually. Add test hooks/scripts.
+
+### 1. Synthetic audio fixture
+
+Generate deterministic English audio with macOS `say`:
+
+```bash
+say -o /tmp/sokki-streaming-smoke.aiff "sokki streaming smoke test please press enter after paste"
+afconvert /tmp/sokki-streaming-smoke.aiff -f WAVE -d LEF32@16000 /tmp/sokki-streaming-smoke.wav
+```
+
+### 2. Add smoke executable target
+
+Add SwiftPM executable target:
+
+```text
+Sources/SokkiSmoke/
+  main.swift
+```
+
+Modes:
+
+```bash
+swift run SokkiSmoke mlx-file /tmp/sokki-streaming-smoke.wav
+swift run SokkiSmoke apple-stream-file /tmp/sokki-streaming-smoke.wav
+```
+
+`apple-stream-file` must:
+
+- read the WAV file
+- split it into small `AVAudioPCMBuffer` chunks, e.g. 100ms
+- feed chunks into `AppleSpeechStreamingBackend.append`
+- collect partials and final
+- assert final contains key terms: `sokki`, `streaming`, `smoke`, `test`
+- print timings:
+  - prepare ms
+  - first partial ms after first audio buffer
+  - final ms after last buffer
+
+This proves streaming backend without physical microphone.
+
+### 3. Add app-level smoke command
+
+Add hidden/debug CLI flag to app executable or smoke target:
+
+```bash
+swift run SokkiSmoke end-to-end-textedit /tmp/sokki-streaming-smoke.wav --backend apple
+```
+
+Flow:
+
+1. Open TextEdit with a temporary untitled document using AppleScript.
+2. Feed synthetic WAV through chosen backend.
+3. Use `TextInserter` to paste final text into TextEdit.
+4. If press-enter enabled, verify newline exists.
+5. Read TextEdit document text using AppleScript and assert expected words.
+6. Close document without saving.
+
+This proves: backend → final transcript → insertion, without user dictation.
+
+### 4. Live app smoke
+
+After automated smoke passes:
+
+```bash
+scripts/build_app.sh
+rm -rf /Applications/Sokki.app
+cp -R build/Sokki.app /Applications/Sokki.app
+open /Applications/Sokki.app
+```
+
+Agent can verify process + logs:
+
+```bash
+pgrep -fl 'Sokki|sokki_mlx|Python.*sokki'
+log show --predicate 'process == "Sokki"' --last 2m --style compact | tail -80
+```
+
+Manual user check only after automated smoke is green.
 
 ## Implementation slices
 
-### Slice 0 — repo skeleton
+### Slice A — backend protocol extraction
 
-- `Package.swift`
-- app entry
-- build/run scripts
-- menu bar app boots
-- settings window opens
+- Introduce backend protocols.
+- Move current MLX sidecar code into `MLXParakeetBackend`.
+- `ASRService` delegates to selected backend.
+- No behavior change.
 
-Verify: `scripts/run_app.sh` launches menu bar app.
+Verify:
 
-### Slice 1 — ASR benchmark + warm load
+```bash
+swift test
+scripts/build_app.sh
+swift run SokkiSmoke mlx-file /tmp/sokki-streaming-smoke.wav
+```
 
-- benchmark MLX Parakeet v2 sidecar vs FluidAudio/CoreML v2
-- keep preferred config default `mlxParakeetV2` unless explicit benchmark decision changes it
-- `ASRService.prepare()` loads chosen local Parakeet v2 backend
-- CLI/menu test action transcribes bundled/sample WAV or chosen file
+### Slice B — synthetic smoke harness
 
-Verify: known English WAV transcribes locally.
+- Add `SokkiSmoke` target.
+- Add WAV reader/chunker utilities.
+- Add MLX file smoke first to prove harness.
 
-### Slice 2 — audio capture + hotkey
+Verify: MLX smoke transcribes generated `say` audio.
 
-- AVAudioEngine ring buffer
-- same-key hotkey state machine
-- hold/tap start-stop capture
-- save temp WAV for inspection
+### Slice C — Apple Speech streaming backend
 
-Verify: hotkey records audio with first syllable captured.
+- Implement `AppleSpeechStreamingBackend`.
+- Force local/on-device recognition.
+- Surface unsupported/missing permission status clearly.
+- Implement `SokkiSmoke apple-stream-file`.
 
-### Slice 3 — end-to-end dictation
+Verify:
 
-- capture → ASR → insertion
-- overlay states
-- history last transcript
+```bash
+swift run SokkiSmoke apple-stream-file /tmp/sokki-streaming-smoke.wav
+```
 
-Verify: dictate into TextEdit/Cursor.
+Pass criteria:
 
-### Slice 4 — silence auto-stop + auto-enter
+- at least one partial transcript before final
+- final transcript contains expected keywords
+- printed first-partial and finalization timings
+- no cloud fallback
 
-- configurable silence threshold/delay
-- app allowlist Return
-- retry hotkey/menu action
+### Slice D — app integration
 
-Verify: tap start, stop by silence, paste and Enter in coding app.
+- Backend picker in Settings.
+- When Apple backend selected, partial transcript appears in overlay and settings.
+- Final paste path uses same `TextInserter`.
+- Existing MLX path still works.
 
-### Slice 5 — ambient mode
+Verify:
 
-- always-on VAD segmenting from ring buffer
-- cooldown/min utterance
-- overlay only when active
+```bash
+swift test
+scripts/build_app.sh
+swift run SokkiSmoke end-to-end-textedit /tmp/sokki-streaming-smoke.wav --backend apple
+swift run SokkiSmoke end-to-end-textedit /tmp/sokki-streaming-smoke.wav --backend mlx
+```
 
-Verify: hands-free local dictation without hotkey.
+### Slice E — latency mini-metrics
 
-### Slice 6 — polish
+Collect local-only timings in memory:
 
-- settings persistence
-- permission helper buttons
-- README install/use docs
-- optional icon
-- final local build script
+- hotkey keyDown → first audio buffer recorded
+- stop requested → transcription final text
+- final text → paste complete
+- Apple only: first audio buffer → first partial
 
-## Risks and mitigations
+Show simple recent metrics section in SwiftUI, not external telemetry.
 
-### ASR API/sidecar drift
+No files/network upload. In-memory only initially.
 
-Mitigation: pin exact dependency or sidecar version after Slice 1 benchmark. If API differs, adapt once in `ASRService` only.
+## Risks
 
-### TCC permission flakiness
+### Apple on-device availability
 
-Mitigation: always run as stable `.app` bundle with same bundle ID and ad-hoc signing. Avoid running raw executable for manual testing.
+`SFSpeechRecognizer` may not support on-device recognition for the current locale/OS state. If unsupported, fail clearly and keep MLX default.
 
-### Audio callback performance
+### Apple Speech permission friction
 
-Mitigation: audio callback only appends samples and updates atomic/current RMS. No file IO, no ASR, no allocations beyond bounded ring if possible.
+Speech recognition may require an additional permission beyond mic/input monitoring. Settings should show actionable status and buttons where possible.
 
-### Clipboard privacy
+### Partial transcript instability
 
-Mitigation: direct AX first, Unicode typing retry, clipboard fallback restores clipboard and is documented.
+Partial text can revise itself. Do not type partials into target apps initially. Show partials only in overlay/settings; paste final only.
 
-### Ambient false positives
+### Streaming accuracy vs Parakeet
 
-Mitigation: thresholds, min utterance, cooldown, ambient off by default, visible armed state.
+Apple may be faster but less accurate for code-ish prose. Keep backend picker and benchmark output.
 
-### AirPods/Bluetooth latency
+### Test realism
 
-Mitigation: support input device selector later if needed; document built-in/USB mic preferred for lowest start latency.
+`say` synthetic audio is not the same as live mic. It is still good enough for repeatable backend/insertion smoke. Final live dogfood comes after automated smoke.
 
 ## Compact handoff prompt
 
-Build `Sokki` from `PLAN.md`: smallest macOS menu-bar Swift app for local English dictation. Preferred ASR config default is `mlxParakeetV2`; Slice 1 benchmarks MLX Parakeet v2 sidecar vs FluidAudio/CoreML v2 before backend integration. Implement global same-key hotkey supporting hold-to-record and tap-to-toggle. Use always-running AVAudioEngine with pre-roll ring buffer. Stop on configurable silence. Insert transcript via AX/clipboard fallback, keep recent transcript/history, retry insertion via non-clipboard Unicode typing. Optional app-allowlisted auto Return after paste. Bottom overlay. No telemetry/cloud/product cruft. Follow slices 0-4 first, then ambient mode slice 5.
+Continue Sokki from `PLAN.md`. Current app works with MLX Parakeet v2 batch dictation. Next milestone: add Apple on-device streaming backend without regressing MLX. First extract backend protocol and add `SokkiSmoke` target. Implement deterministic e2e tests with generated `say` WAV: `mlx-file`, `apple-stream-file`, and `end-to-end-textedit`. Apple backend must use local/on-device recognition only (`requiresOnDeviceRecognition = true`) and surface unsupported status instead of falling back to cloud. Show partial transcripts in overlay/settings, paste final only. After automated smoke passes, build/install `/Applications/Sokki.app` for manual dogfood.
