@@ -9,6 +9,7 @@ Current usable path:
 - global Right Command hotkey:
   - hold Right Command, speak, release to transcribe/insert
   - tap Right Command, speak, pause or tap again to transcribe/insert
+  - press Escape while recording to cancel
 - silence auto-stop
 - independently configurable silence auto-stop and Return-after-paste
 - normal Dock app window

@@ -104,11 +104,17 @@ actor ASRService {
     }
 
     private func prepareMLX() async throws {
-        if ready { return }
+        if ready {
+            onStatus("MLX Parakeet v2 ready")
+            return
+        }
         if process == nil {
             try launchSidecar()
         }
-        if ready { return }
+        if ready {
+            onStatus("MLX Parakeet v2 ready")
+            return
+        }
 
         try await withCheckedThrowingContinuation { continuation in
             readyContinuation = continuation
