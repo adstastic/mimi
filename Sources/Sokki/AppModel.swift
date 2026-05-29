@@ -6,12 +6,19 @@ import Foundation
 final class AppModel: ObservableObject {
     @Published private(set) var statusText = "Starting…"
     @Published private(set) var lastTranscript: String?
+    @Published private(set) var liveTranscript: String?
     @Published private(set) var hotkeyStatus = "Right Command"
     @Published private(set) var permissionStatus = PermissionStatus.current()
     @Published private(set) var modelLoading = false
     @Published private(set) var modelReady = false
     @Published var config: SokkiConfig {
-        didSet { config.save() }
+        didSet {
+            config.save()
+            if oldValue.preferredBackend != config.preferredBackend {
+                modelReady = false
+                dictationController.prepareASR()
+            }
+        }
     }
 
     let history = HistoryStore()
@@ -42,7 +49,8 @@ final class AppModel: ObservableObject {
             history: history,
             overlay: overlay,
             onStatus: { [weak self] status in self?.statusText = status },
-            onTranscript: { [weak self] transcript in self?.lastTranscript = transcript }
+            onTranscript: { [weak self] transcript in self?.lastTranscript = transcript },
+            onPartialTranscript: { [weak self] transcript in self?.liveTranscript = transcript }
         )
         hotkeyMonitor = HotkeyMonitor(
             keyCode: config.hotkeyKeyCode,
@@ -60,17 +68,6 @@ final class AppModel: ObservableObject {
         NSApplication.shared.setActivationPolicy(.regular)
 
         refreshPermissions()
-
-        do {
-            statusText = "Starting microphone…"
-            try await audioCapture.start(preRollMilliseconds: config.preRollMilliseconds)
-            refreshPermissions()
-        } catch {
-            refreshPermissions()
-            statusText = "Mic error: \(error.localizedDescription)"
-            overlay.show("Mic error", detail: error.localizedDescription)
-            return
-        }
 
         do {
             refreshPermissions()

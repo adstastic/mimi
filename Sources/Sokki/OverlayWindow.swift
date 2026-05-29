@@ -33,6 +33,11 @@ final class OverlayWindowController {
         state.level = level
     }
 
+    func updateDetail(_ detail: String?) {
+        guard state.isVisible else { return }
+        state.detail = detail
+    }
+
     func hide(after milliseconds: Int = 0) {
         hideTask?.cancel()
         hideTask = Task { [weak self] in

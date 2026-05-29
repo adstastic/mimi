@@ -15,6 +15,7 @@ struct SokkiApp: App {
                 modelLoading: appModel.modelLoading,
                 modelReady: appModel.modelReady,
                 lastTranscript: appModel.lastTranscript,
+                liveTranscript: appModel.liveTranscript,
                 copyLastTranscript: { appModel.copyLastTranscript() },
                 refreshPermissions: { appModel.refreshPermissions() },
                 quit: { NSApplication.shared.terminate(nil) }

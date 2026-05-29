@@ -29,6 +29,7 @@ final class AudioCapture {
     private var recordingSamples: [Float] = []
     private var ringCapacity = 0
     private var recording = false
+    private var recordingBufferHandler: ((AVAudioPCMBuffer) -> Void)?
     private var sampleRate: Double = 48_000
     private var latestDBFS: Double = -120
 
@@ -38,6 +39,8 @@ final class AudioCapture {
         }
 
         if engine.isRunning { return }
+
+        resetBuffersForStart()
 
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
@@ -55,9 +58,10 @@ final class AudioCapture {
         try engine.start()
     }
 
-    func beginRecording() {
+    func beginRecording(bufferHandler: ((AVAudioPCMBuffer) -> Void)? = nil) {
         lock.lock()
         recordingSamples = ringSamples
+        recordingBufferHandler = bufferHandler
         recording = true
         lock.unlock()
     }
@@ -70,6 +74,7 @@ final class AudioCapture {
         recording = false
         samples = recordingSamples
         recordingSamples = []
+        recordingBufferHandler = nil
         rate = sampleRate
         lock.unlock()
 
@@ -88,6 +93,18 @@ final class AudioCapture {
         lock.lock()
         recording = false
         recordingSamples = []
+        recordingBufferHandler = nil
+        lock.unlock()
+    }
+
+    func stop() {
+        engine.stop()
+        lock.lock()
+        recording = false
+        recordingSamples = []
+        ringSamples = []
+        recordingBufferHandler = nil
+        latestDBFS = -120
         lock.unlock()
     }
 
@@ -96,6 +113,14 @@ final class AudioCapture {
         let value = latestDBFS
         lock.unlock()
         return value
+    }
+
+    private func resetBuffersForStart() {
+        lock.lock()
+        ringSamples = []
+        recordingSamples = []
+        latestDBFS = -120
+        lock.unlock()
     }
 
     private func handle(buffer: AVAudioPCMBuffer) {
@@ -111,17 +136,26 @@ final class AudioCapture {
         let rms = sqrt(squareSum / Float(count))
         let dbfs = 20 * log10(Double(max(rms, 0.000_001)))
 
+        let copiedBuffer = buffer.copy() as? AVAudioPCMBuffer
+
+        let handler: ((AVAudioPCMBuffer) -> Void)?
         lock.lock()
         latestDBFS = max(-120, dbfs)
         if recording {
             recordingSamples.append(contentsOf: samples)
+            handler = recordingBufferHandler
         } else {
+            handler = nil
             ringSamples.append(contentsOf: samples)
             if ringSamples.count > ringCapacity {
                 ringSamples.removeFirst(ringSamples.count - ringCapacity)
             }
         }
         lock.unlock()
+
+        if let handler, let copiedBuffer {
+            handler(copiedBuffer)
+        }
     }
 
     private static func writeWAV(samples: [Float], sampleRate: Double, to url: URL) throws {

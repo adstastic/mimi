@@ -1,12 +1,15 @@
 import Foundation
 
-public enum ASRBackend: String, Codable, Equatable, Sendable {
+public enum ASRBackend: String, CaseIterable, Codable, Equatable, Sendable {
     case mlxParakeetV2
+    case appleSpeechTranscriber
 
     var displayName: String {
         switch self {
         case .mlxParakeetV2:
             "MLX Parakeet v2"
+        case .appleSpeechTranscriber:
+            "Apple SpeechTranscriber"
         }
     }
 }
@@ -32,7 +35,7 @@ public struct SokkiConfig: Codable, Equatable, Sendable {
     public static let defaults = SokkiConfig(
         preferredBackend: .mlxParakeetV2,
         silenceAutoStopEnabled: true,
-        silenceThresholdDBFS: -38,
+        silenceThresholdDBFS: -50,
         silenceDurationMilliseconds: 2_000,
         minUtteranceMilliseconds: 350,
         preRollMilliseconds: 700,
@@ -84,8 +87,11 @@ public struct SokkiConfig: Codable, Equatable, Sendable {
 
     public static func load(userDefaults: UserDefaults = .standard) -> SokkiConfig {
         guard let data = userDefaults.data(forKey: defaultsKey),
-              let config = try? JSONDecoder().decode(SokkiConfig.self, from: data)
+              var config = try? JSONDecoder().decode(SokkiConfig.self, from: data)
         else { return .defaults }
+        if config.silenceThresholdDBFS == -38 {
+            config.silenceThresholdDBFS = Self.defaults.silenceThresholdDBFS
+        }
         return config
     }
 

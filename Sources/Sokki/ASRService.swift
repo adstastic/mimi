@@ -1,4 +1,6 @@
+@preconcurrency import AVFoundation
 import Foundation
+import SokkiSpeech
 
 actor ASRService {
     enum ASRError: LocalizedError {
@@ -34,13 +36,74 @@ actor ASRService {
     private var ready = false
     private var readyContinuation: CheckedContinuation<Void, Error>?
     private var pending: [String: CheckedContinuation<String, Error>] = [:]
+    private let appleBackend = AppleSpeechTranscriberBackend()
+    private var appleStreamStarting = false
+    private var appleStreamActive = false
+    private var applePendingBuffers: [AVAudioPCMBuffer] = []
     private let onStatus: @Sendable (String) -> Void
 
     init(onStatus: @escaping @Sendable (String) -> Void = { _ in }) {
         self.onStatus = onStatus
     }
 
-    func prepare() async throws {
+    func prepare(backend: ASRBackend = .mlxParakeetV2) async throws {
+        switch backend {
+        case .mlxParakeetV2:
+            try await prepareMLX()
+        case .appleSpeechTranscriber:
+            onStatus("Preparing Apple SpeechTranscriber…")
+            try await appleBackend.prepare()
+            onStatus("Apple SpeechTranscriber ready")
+        }
+    }
+
+    func startAppleStream(onEvent: @escaping AppleSpeechTranscriberBackend.EventHandler) async throws {
+        appleStreamStarting = true
+        appleStreamActive = false
+        applePendingBuffers = []
+        do {
+            try await appleBackend.startStream(onEvent: onEvent)
+            appleStreamActive = true
+            appleStreamStarting = false
+            let buffers = applePendingBuffers
+            applePendingBuffers = []
+            for buffer in buffers {
+                try await appleBackend.append(buffer)
+            }
+        } catch {
+            appleStreamStarting = false
+            appleStreamActive = false
+            applePendingBuffers = []
+            throw error
+        }
+    }
+
+    func appendAppleBuffer(_ buffer: AVAudioPCMBuffer) async throws {
+        if appleStreamStarting {
+            if applePendingBuffers.count < 50 {
+                applePendingBuffers.append(buffer)
+            }
+            return
+        }
+        guard appleStreamActive else { return }
+        try await appleBackend.append(buffer)
+    }
+
+    func finishAppleStream() async throws -> String {
+        appleStreamStarting = false
+        appleStreamActive = false
+        applePendingBuffers = []
+        return try await appleBackend.finishStream()
+    }
+
+    func cancelAppleStream() async {
+        appleStreamStarting = false
+        appleStreamActive = false
+        applePendingBuffers = []
+        await appleBackend.cancelStream()
+    }
+
+    private func prepareMLX() async throws {
         if ready { return }
         if process == nil {
             try launchSidecar()

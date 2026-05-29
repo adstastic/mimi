@@ -15,6 +15,7 @@ final class ConfigDefaultsTests: XCTestCase {
         XCTAssertEqual(config.hotkeyKeyCode, 54)
         XCTAssertTrue(config.isLocalOnlyNoTelemetry)
 
+        XCTAssertEqual(config.silenceThresholdDBFS, -50)
         XCTAssertLessThan(config.silenceThresholdDBFS, 0)
         XCTAssertGreaterThan(config.silenceThresholdDBFS, -80)
         XCTAssertLessThanOrEqual(config.silenceThresholdDBFS, -20)

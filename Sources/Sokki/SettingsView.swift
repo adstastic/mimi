@@ -9,6 +9,7 @@ struct SettingsView: View {
     let modelLoading: Bool
     let modelReady: Bool
     let lastTranscript: String?
+    let liveTranscript: String?
     let copyLastTranscript: () -> Void
     let refreshPermissions: () -> Void
     let quit: () -> Void
@@ -28,7 +29,11 @@ struct SettingsView: View {
                 SettingsRow(title: "Status", value: statusText)
                 SettingsRow(title: "Hotkey", value: hotkeyStatus)
                 SettingsRow(title: "Gesture", value: "Right Command: hold or tap")
-                SettingsRow(title: "Backend", value: config.preferredBackend.displayName)
+                Picker("Backend", selection: $config.preferredBackend) {
+                    ForEach(ASRBackend.allCases, id: \.self) { backend in
+                        Text(backend.displayName).tag(backend)
+                    }
+                }
                 SettingsRow(title: "Pre-roll", value: "\(config.preRollMilliseconds) ms")
                 Toggle("End recording on silence", isOn: $config.silenceAutoStopEnabled)
                 Toggle("Press Enter after pasting", isOn: $config.pressEnterAfterPaste)
@@ -83,7 +88,7 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                 HStack(spacing: 10) {
                     StatusLight(ok: modelReady, warning: modelLoading)
-                    Text(modelReady ? "Loaded" : (modelLoading ? "Loading MLX Parakeet v2…" : "Not loaded"))
+                    Text(modelReady ? "Loaded" : (modelLoading ? "Loading…" : "Not loaded"))
                     if modelLoading {
                         ProgressView()
                             .controlSize(.small)
@@ -107,6 +112,15 @@ struct SettingsView: View {
                     Button("Open Input Monitoring") { openPrivacyPane("Privacy_ListenEvent") }
                     Button("Open Microphone") { openPrivacyPane("Privacy_Microphone") }
                 }
+            }
+
+            if let liveTranscript, !liveTranscript.isEmpty {
+                Divider()
+                Text("Live transcript")
+                    .foregroundStyle(.secondary)
+                Text(liveTranscript)
+                    .lineLimit(4)
+                    .textSelection(.enabled)
             }
 
             if let lastTranscript {

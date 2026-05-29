@@ -41,13 +41,15 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
+    <string>26.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>Sokki uses the microphone for local dictation.</string>
     <key>NSInputMonitoringUsageDescription</key>
-    <string>Sokki uses the Right Option key as a global dictation hotkey.</string>
+    <string>Sokki uses the Right Command key as a global dictation hotkey.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Sokki uses Apple on-device speech transcription when selected.</string>
 </dict>
 </plist>
 PLIST
