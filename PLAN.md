@@ -14,8 +14,8 @@ Implemented:
 - Always-running `AVAudioEngine` capture with pre-roll ring buffer.
 - MLX Parakeet v2 sidecar kept warm through `uv run --python 3.12 --script`.
 - Local batch transcription path: record WAV → sidecar transcribes → paste.
-- Clipboard paste with restore; retry last insert uses Unicode typing.
-- Recent transcript shown with Retry/Copy buttons.
+- Clipboard paste leaves transcript copied for manual fallback.
+- Recent transcript shown with Copy button.
 - Independent toggles:
   - end recording on silence
   - press Enter after pasting

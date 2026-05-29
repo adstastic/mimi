@@ -92,10 +92,6 @@ final class AppModel: ObservableObject {
         permissionStatus = PermissionStatus.current()
     }
 
-    func retryLastInsert() {
-        dictationController.retryLastInsert()
-    }
-
     func copyLastTranscript() {
         dictationController.copyLastTranscript()
     }

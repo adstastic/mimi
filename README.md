@@ -12,7 +12,8 @@ Current usable path:
 - independently configurable silence auto-stop and Return-after-paste
 - normal Dock app window
 - bottom recording overlay
-- recent transcript retry/copy from menu
+- transcript stays copied to clipboard after dictation
+- recent transcript copy button
 - no telemetry, no cloud app service
 
 First run may download the local model from Hugging Face through `uv`/`parakeet-mlx`. After cache, dictation is local.

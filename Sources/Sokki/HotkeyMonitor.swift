@@ -29,7 +29,10 @@ final class HotkeyMonitor {
     func start() throws {
         if globalMonitor != nil || localMonitor != nil { return }
 
-        let mask: NSEvent.EventTypeMask = [.flagsChanged, .keyDown, .keyUp]
+        // A single modifier key cannot be registered with macOS' normal hotkey API.
+        // Observe only modifier-state changes and always pass local events through.
+        // Do not monitor keyDown/keyUp; that can interfere with normal keys like Esc.
+        let mask: NSEvent.EventTypeMask = [.flagsChanged]
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] event in
             self?.handle(event)
         }
@@ -58,26 +61,15 @@ final class HotkeyMonitor {
     private func handle(_ event: NSEvent) {
         guard event.keyCode == keyCode else { return }
 
-        switch event.type {
-        case .flagsChanged:
-            let isDown = event.modifierFlags.contains(.command)
-            if isDown, !pressed {
-                pressed = true
-                Task { @MainActor in onKeyDown() }
-            } else if !isDown, pressed {
-                pressed = false
-                Task { @MainActor in onKeyUp() }
-            }
-        case .keyDown:
-            guard !event.isARepeat, !pressed else { return }
+        guard event.type == .flagsChanged else { return }
+
+        let isDown = event.modifierFlags.contains(.command)
+        if isDown, !pressed {
             pressed = true
             Task { @MainActor in onKeyDown() }
-        case .keyUp:
-            guard pressed else { return }
+        } else if !isDown, pressed {
             pressed = false
             Task { @MainActor in onKeyUp() }
-        default:
-            break
         }
     }
 }

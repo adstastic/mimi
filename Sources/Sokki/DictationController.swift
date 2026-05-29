@@ -90,17 +90,6 @@ final class DictationController {
         }
     }
 
-    func retryLastInsert() {
-        guard let transcript = history.lastTranscript else { return }
-        do {
-            try textInserter.retryWithoutClipboard(transcript)
-            overlay.show("Retried insert", detail: preview(transcript))
-            overlay.hide(after: 900)
-        } catch {
-            overlay.show("Retry error", detail: error.localizedDescription)
-        }
-    }
-
     func copyLastTranscript() {
         guard let transcript = history.lastTranscript else { return }
         do {
@@ -158,8 +147,8 @@ final class DictationController {
                 enterDelayMilliseconds: config.postPasteEnterDelayMilliseconds
             )
             state = .idle
-            onStatus("Inserted")
-            overlay.show("Inserted", detail: preview(text))
+            onStatus("Inserted + copied")
+            overlay.show("Inserted + copied", detail: preview(text))
             overlay.hide(after: 1_200)
         } catch {
             state = .idle

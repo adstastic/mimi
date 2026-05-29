@@ -26,10 +26,6 @@ final class TextInserter {
         }
     }
 
-    func retryWithoutClipboard(_ text: String) throws {
-        try typeUnicode(text)
-    }
-
     func copyToClipboard(_ text: String) throws {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
@@ -40,45 +36,12 @@ final class TextInserter {
 
     private func pasteViaClipboard(_ text: String) throws {
         let pasteboard = NSPasteboard.general
-        let previousItems = pasteboard.pasteboardItems ?? []
-
         pasteboard.clearContents()
         guard pasteboard.setString(text, forType: .string) else {
             throw InsertError.pasteboardWriteFailed
         }
 
         try sendKey(virtualKey: 9, flags: .maskCommand) // V
-
-        Task { @MainActor in
-            try? await self.sleep(milliseconds: 400)
-            pasteboard.clearContents()
-            if !previousItems.isEmpty {
-                pasteboard.writeObjects(previousItems)
-            }
-        }
-    }
-
-    private func typeUnicode(_ text: String) throws {
-        let source = CGEventSource(stateID: .hidSystemState)
-        guard source != nil else { throw InsertError.eventSourceUnavailable }
-
-        let units = Array(text.utf16)
-        var index = units.startIndex
-        while index < units.endIndex {
-            let end = units.index(index, offsetBy: min(20, units.distance(from: index, to: units.endIndex)))
-            var chunk = Array(units[index..<end])
-
-            guard let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
-                  let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
-            else { throw InsertError.eventSourceUnavailable }
-
-            down.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: &chunk)
-            up.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: &chunk)
-            down.post(tap: .cghidEventTap)
-            up.post(tap: .cghidEventTap)
-
-            index = end
-        }
     }
 
     private func pressReturnKey() throws {

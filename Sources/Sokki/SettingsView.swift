@@ -9,7 +9,6 @@ struct SettingsView: View {
     let modelLoading: Bool
     let modelReady: Bool
     let lastTranscript: String?
-    let retryLastInsert: () -> Void
     let copyLastTranscript: () -> Void
     let refreshPermissions: () -> Void
     let quit: () -> Void
@@ -116,7 +115,6 @@ struct SettingsView: View {
                     Text("Last transcript")
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Button("Retry Insert", action: retryLastInsert)
                     Button("Copy", action: copyLastTranscript)
                 }
                 Text(lastTranscript)
