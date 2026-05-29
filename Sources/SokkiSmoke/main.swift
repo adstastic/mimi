@@ -18,6 +18,9 @@ struct SokkiSmoke {
             _ = try await runAppleStreamFile(url: url)
         case "end-to-end-textedit":
             guard arguments.count >= 2 else { printUsageAndExit() }
+            guard arguments.contains("--allow-focus-steal") else {
+                throw SmokeError.focusStealNotAllowed
+            }
             let url = URL(fileURLWithPath: arguments[1]).standardizedFileURL
             let backend = value(after: "--backend", in: arguments) ?? "apple"
             guard backend == "apple" else {
@@ -230,7 +233,7 @@ struct SokkiSmoke {
         fputs("""
         Usage:
           swift run SokkiSmoke apple-stream-file /path/to/audio.wav
-          swift run SokkiSmoke end-to-end-textedit /path/to/audio.wav --backend apple [--press-enter]
+          swift run SokkiSmoke end-to-end-textedit /path/to/audio.wav --backend apple --allow-focus-steal [--press-enter]
         """, stderr)
         exit(2)
     }
@@ -294,6 +297,7 @@ enum SmokeError: LocalizedError {
     case appleScriptFailed(String)
     case textEditDidNotReceiveTranscript(String)
     case textEditMissingReturn(String)
+    case focusStealNotAllowed
 
     var errorDescription: String? {
         switch self {
@@ -319,6 +323,8 @@ enum SmokeError: LocalizedError {
             "TextEdit did not receive expected transcript terms: \(text)"
         case .textEditMissingReturn(let text):
             "TextEdit text does not end with Return: \(text)"
+        case .focusStealNotAllowed:
+            "TextEdit smoke steals focus; rerun with --allow-focus-steal only when the laptop is idle."
         }
     }
 }
