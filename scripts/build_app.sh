@@ -82,10 +82,27 @@ if [[ -z "$SIGN_IDENTITY" ]]; then
   SIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Apple Development:/{print $2; exit}')"
 fi
 
+SIGN_REQUIRE="${MIMI_CODESIGN_REQUIRE:-0}"
+SIGN_HARDENED="${MIMI_CODESIGN_HARDENED:-0}"
+if [[ "$SIGN_IDENTITY" == Developer\ ID\ Application:* ]]; then
+  SIGN_HARDENED=1
+fi
+
 if [[ -n "$SIGN_IDENTITY" ]]; then
-  codesign --force --deep --timestamp=none --sign "$SIGN_IDENTITY" "$APP_DIR"
+  SIGN_ARGS=(--force --deep --sign "$SIGN_IDENTITY")
+  if [[ "$SIGN_HARDENED" == "1" ]]; then
+    SIGN_ARGS+=(--options runtime --timestamp)
+  else
+    SIGN_ARGS+=(--timestamp=none)
+  fi
+  codesign "${SIGN_ARGS[@]}" "$APP_DIR"
+  codesign --verify --deep --strict --verbose=2 "$APP_DIR"
   echo "Signed with $SIGN_IDENTITY"
 else
+  if [[ "$SIGN_REQUIRE" == "1" ]]; then
+    echo "error: MIMI_CODESIGN_REQUIRE=1 but no signing identity was found" >&2
+    exit 1
+  fi
   codesign --force --deep --sign - "$APP_DIR"
   echo "Signed ad-hoc; Accessibility permission may reset after rebuilds."
 fi

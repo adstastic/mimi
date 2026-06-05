@@ -1,0 +1,143 @@
+name: Build and release ZIP
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test
+    runs-on: macos-26
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Run Swift tests
+        run: swift test
+
+  notarized-zip:
+    name: Build notarized ZIP
+    needs: test
+    runs-on: macos-26
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    env:
+      DEVELOPER_ID_APPLICATION_CERT_P12_BASE64: ${{ secrets.DEVELOPER_ID_APPLICATION_CERT_P12_BASE64 }}
+      DEVELOPER_ID_APPLICATION_CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_APPLICATION_CERT_PASSWORD }}
+      APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+      APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+      APP_STORE_CONNECT_API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
+      MIMI_APP_NAME: mimi
+      MIMI_BUNDLE_ID: com.ad1.mimi
+      MIMI_CODESIGN_REQUIRE: "1"
+      MIMI_CODESIGN_HARDENED: "1"
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Validate release secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in \
+            DEVELOPER_ID_APPLICATION_CERT_P12_BASE64 \
+            DEVELOPER_ID_APPLICATION_CERT_PASSWORD \
+            APP_STORE_CONNECT_API_KEY_ID \
+            APP_STORE_CONNECT_API_ISSUER_ID \
+            APP_STORE_CONNECT_API_KEY_P8_BASE64
+          do
+            value="${!name-}"
+            if [[ -z "$value" ]]; then
+              echo "::error::Missing secret $name"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Import Developer ID Application certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          KEYCHAIN_PATH="$RUNNER_TEMP/mimi-signing.keychain-db"
+          CERT_PATH="$RUNNER_TEMP/developer-id-application.p12"
+
+          echo "$DEVELOPER_ID_APPLICATION_CERT_P12_BASE64" | base64 --decode > "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$DEVELOPER_ID_APPLICATION_CERT_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          identity="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk -F'\"' '/Developer ID Application:/{print $2; exit}')"
+          if [[ -z "$identity" ]]; then
+            echo "::error::No Developer ID Application identity found in imported certificate"
+            security find-identity -v -p codesigning "$KEYCHAIN_PATH" || true
+            exit 1
+          fi
+          echo "MIMI_CODESIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+
+      - name: Write App Store Connect API key
+        shell: bash
+        run: |
+          set -euo pipefail
+          API_KEY_PATH="$RUNNER_TEMP/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          echo "$APP_STORE_CONNECT_API_KEY_P8_BASE64" | base64 --decode > "$API_KEY_PATH"
+          chmod 600 "$API_KEY_PATH"
+          echo "ASC_API_KEY_PATH=$API_KEY_PATH" >> "$GITHUB_ENV"
+
+      - name: Build signed app
+        run: scripts/build_app.sh
+
+      - name: Set artifact names
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="$(git rev-parse --short HEAD)"
+          fi
+          echo "ZIP_PATH=build/mimi-$version.zip" >> "$GITHUB_ENV"
+          echo "NOTARY_ZIP_PATH=build/mimi-notary.zip" >> "$GITHUB_ENV"
+
+      - name: Notarize and staple app
+        shell: bash
+        run: |
+          set -euo pipefail
+          scripts/create_zip.sh "$NOTARY_ZIP_PATH"
+          xcrun notarytool submit "$NOTARY_ZIP_PATH" \
+            --key "$ASC_API_KEY_PATH" \
+            --key-id "$APP_STORE_CONNECT_API_KEY_ID" \
+            --issuer "$APP_STORE_CONNECT_API_ISSUER_ID" \
+            --wait
+          xcrun stapler staple "build/mimi.app"
+          xcrun stapler validate "build/mimi.app"
+          spctl --assess --type exec --verbose "build/mimi.app"
+
+      - name: Create final ZIP
+        run: scripts/create_zip.sh "$ZIP_PATH"
+
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mimi-zip
+          path: ${{ env.ZIP_PATH }}
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_PATH }}

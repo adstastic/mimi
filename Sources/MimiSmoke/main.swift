@@ -92,10 +92,6 @@ struct MimiSmoke {
     }
 
     private static func transcribeAppleStreamFile(url: URL, printEvents: Bool) async throws -> AppleSmokeSummary {
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            throw SmokeError.fileMissing(url.path)
-        }
-
         let recorder = SmokeRecorder(printEvents: printEvents)
         let backend = AppleSpeechTranscriberBackend(locale: Locale(identifier: "en_US"))
         let clock = ContinuousClock()
