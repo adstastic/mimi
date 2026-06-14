@@ -1,3 +1,4 @@
+import AudioUnit
 import AVFoundation
 import Foundation
 
@@ -5,6 +6,7 @@ final class AudioCapture {
     enum CaptureError: LocalizedError {
         case microphoneDenied
         case missingInputChannel
+        case inputDeviceUnavailable
         case noRecordedAudio
         case outputBufferFailed
 
@@ -14,6 +16,8 @@ final class AudioCapture {
                 "Microphone permission is required."
             case .missingInputChannel:
                 "No microphone input channel was available."
+            case .inputDeviceUnavailable:
+                "Selected microphone is not available."
             case .noRecordedAudio:
                 "No audio was recorded."
             case .outputBufferFailed:
@@ -33,9 +37,10 @@ final class AudioCapture {
     private var monitorBufferHandler: ((AVAudioPCMBuffer) -> Void)?
     private var sampleRate: Double = 48_000
     private var latestDBFS: Double = -120
+    private var lastBufferAt: Date?
     private var lastMonitorLogAt = Date.distantPast
 
-    func start(preRollMilliseconds: Int) async throws {
+    func start(preRollMilliseconds: Int, inputDeviceID: String?) async throws {
         guard try await Self.requestMicrophoneAccess() else {
             throw CaptureError.microphoneDenied
         }
@@ -45,6 +50,7 @@ final class AudioCapture {
         resetBuffersForStart()
 
         let input = engine.inputNode
+        try applyInputDevice(inputDeviceID, to: input)
         let format = input.outputFormat(forBus: 0)
         sampleRate = format.sampleRate
         ringCapacity = max(1, Int(sampleRate * Double(preRollMilliseconds) / 1_000.0))
@@ -121,6 +127,10 @@ final class AudioCapture {
 
     func stop() {
         engine.stop()
+        if tapInstalled {
+            engine.inputNode.removeTap(onBus: 0)
+            tapInstalled = false
+        }
         lock.lock()
         recording = false
         recordingSamples = []
@@ -128,6 +138,7 @@ final class AudioCapture {
         recordingBufferHandler = nil
         monitorBufferHandler = nil
         latestDBFS = -120
+        lastBufferAt = nil
         lock.unlock()
     }
 
@@ -138,12 +149,42 @@ final class AudioCapture {
         return value
     }
 
+    func secondsSinceLastBuffer() -> TimeInterval? {
+        lock.lock()
+        let lastBufferAt = lastBufferAt
+        lock.unlock()
+        guard let lastBufferAt else { return nil }
+        return Date().timeIntervalSince(lastBufferAt)
+    }
+
     private func resetBuffersForStart() {
         lock.lock()
         ringSamples = []
         recordingSamples = []
         latestDBFS = -120
+        lastBufferAt = nil
         lock.unlock()
+    }
+
+    private func applyInputDevice(_ inputDeviceID: String?, to input: AVAudioInputNode) throws {
+        guard let inputDeviceID, !inputDeviceID.isEmpty else { return }
+        guard var deviceID = AudioInputDevice.deviceID(for: inputDeviceID) else {
+            throw CaptureError.inputDeviceUnavailable
+        }
+        guard let audioUnit = input.audioUnit else {
+            throw CaptureError.missingInputChannel
+        }
+        let status = AudioUnitSetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &deviceID,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+        guard status == noErr else {
+            throw CaptureError.inputDeviceUnavailable
+        }
     }
 
     private func handle(buffer: AVAudioPCMBuffer) {
@@ -165,6 +206,7 @@ final class AudioCapture {
         let monitorHandler: ((AVAudioPCMBuffer) -> Void)?
         lock.lock()
         latestDBFS = max(-120, dbfs)
+        lastBufferAt = Date()
         if recording {
             recordingSamples.append(contentsOf: samples)
             handler = recordingBufferHandler

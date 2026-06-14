@@ -59,6 +59,25 @@ public enum ASRBackend: String, CaseIterable, Codable, Equatable, Sendable {
     }
 }
 
+public enum SilenceDetectionMode: String, CaseIterable, Codable, Equatable, Sendable {
+    case automatic
+    case audioLevel
+    case speechActivity
+
+    static let visibleCases: [SilenceDetectionMode] = [.audioLevel, .speechActivity]
+
+    var displayName: String {
+        switch self {
+        case .automatic:
+            "Automatic"
+        case .audioLevel:
+            "Audio level (RMS)"
+        case .speechActivity:
+            "Speech activity (Apple VAD)"
+        }
+    }
+}
+
 public struct MimiConfig: Codable, Equatable, Sendable {
     private static let defaultsKey = "MimiConfig.v1"
     private static let appleStreamingMigrationKey = "MimiConfig.appleSpeechDefault.v1"
@@ -68,11 +87,13 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         case silenceAutoStopEnabled
         case silenceThresholdDBFS
         case silenceDurationMilliseconds
+        case silenceDetectionMode
         case minUtteranceMilliseconds
         case preRollMilliseconds
         case tapThresholdMilliseconds
         case hotkeyKeyCode
         case dictationShortcut
+        case inputDeviceID
         case ambientModeEnabled
         case ambientToggleShortcut
         case pressEnterAfterPaste
@@ -84,11 +105,13 @@ public struct MimiConfig: Codable, Equatable, Sendable {
     public var silenceAutoStopEnabled: Bool
     public var silenceThresholdDBFS: Double
     public var silenceDurationMilliseconds: Int
+    public var silenceDetectionMode: SilenceDetectionMode
     public var minUtteranceMilliseconds: Int
     public var preRollMilliseconds: Int
     public var tapThresholdMilliseconds: Int
     public var hotkeyKeyCode: Int
     public var dictationShortcut: MimiShortcut
+    public var inputDeviceID: String?
     public var ambientModeEnabled: Bool
     public var ambientToggleShortcut: MimiShortcut
     public var pressEnterAfterPaste: Bool
@@ -100,11 +123,13 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         silenceAutoStopEnabled: true,
         silenceThresholdDBFS: -50,
         silenceDurationMilliseconds: 2_000,
+        silenceDetectionMode: .audioLevel,
         minUtteranceMilliseconds: 350,
         preRollMilliseconds: 700,
         tapThresholdMilliseconds: 220,
         hotkeyKeyCode: 54, // Right Command on Apple keyboards.
         dictationShortcut: .rightCommand,
+        inputDeviceID: nil,
         ambientModeEnabled: false,
         ambientToggleShortcut: .ambientToggleDefault,
         pressEnterAfterPaste: true,
@@ -117,11 +142,13 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         silenceAutoStopEnabled: Bool,
         silenceThresholdDBFS: Double,
         silenceDurationMilliseconds: Int,
+        silenceDetectionMode: SilenceDetectionMode = .audioLevel,
         minUtteranceMilliseconds: Int,
         preRollMilliseconds: Int,
         tapThresholdMilliseconds: Int,
         hotkeyKeyCode: Int,
         dictationShortcut: MimiShortcut = .rightCommand,
+        inputDeviceID: String? = nil,
         ambientModeEnabled: Bool,
         ambientToggleShortcut: MimiShortcut = .ambientToggleDefault,
         pressEnterAfterPaste: Bool,
@@ -132,11 +159,13 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         self.silenceAutoStopEnabled = silenceAutoStopEnabled
         self.silenceThresholdDBFS = silenceThresholdDBFS
         self.silenceDurationMilliseconds = silenceDurationMilliseconds
+        self.silenceDetectionMode = silenceDetectionMode
         self.minUtteranceMilliseconds = minUtteranceMilliseconds
         self.preRollMilliseconds = preRollMilliseconds
         self.tapThresholdMilliseconds = tapThresholdMilliseconds
         self.hotkeyKeyCode = hotkeyKeyCode
         self.dictationShortcut = dictationShortcut
+        self.inputDeviceID = inputDeviceID
         self.ambientModeEnabled = ambientModeEnabled
         self.ambientToggleShortcut = ambientToggleShortcut
         self.pressEnterAfterPaste = pressEnterAfterPaste
@@ -150,12 +179,14 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         silenceAutoStopEnabled = try container.decodeIfPresent(Bool.self, forKey: .silenceAutoStopEnabled) ?? Self.defaults.silenceAutoStopEnabled
         silenceThresholdDBFS = try container.decodeIfPresent(Double.self, forKey: .silenceThresholdDBFS) ?? Self.defaults.silenceThresholdDBFS
         silenceDurationMilliseconds = try container.decodeIfPresent(Int.self, forKey: .silenceDurationMilliseconds) ?? Self.defaults.silenceDurationMilliseconds
+        silenceDetectionMode = try container.decodeIfPresent(SilenceDetectionMode.self, forKey: .silenceDetectionMode) ?? Self.defaults.silenceDetectionMode
         minUtteranceMilliseconds = try container.decodeIfPresent(Int.self, forKey: .minUtteranceMilliseconds) ?? Self.defaults.minUtteranceMilliseconds
         preRollMilliseconds = try container.decodeIfPresent(Int.self, forKey: .preRollMilliseconds) ?? Self.defaults.preRollMilliseconds
         tapThresholdMilliseconds = try container.decodeIfPresent(Int.self, forKey: .tapThresholdMilliseconds) ?? Self.defaults.tapThresholdMilliseconds
         hotkeyKeyCode = try container.decodeIfPresent(Int.self, forKey: .hotkeyKeyCode) ?? Self.defaults.hotkeyKeyCode
         dictationShortcut = try container.decodeIfPresent(MimiShortcut.self, forKey: .dictationShortcut)
             ?? MimiShortcut.legacySingleKey(keyCode: hotkeyKeyCode)
+        inputDeviceID = try container.decodeIfPresent(String.self, forKey: .inputDeviceID)
         ambientModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .ambientModeEnabled) ?? Self.defaults.ambientModeEnabled
         ambientToggleShortcut = try container.decodeIfPresent(MimiShortcut.self, forKey: .ambientToggleShortcut) ?? Self.defaults.ambientToggleShortcut
         pressEnterAfterPaste = try container.decodeIfPresent(Bool.self, forKey: .pressEnterAfterPaste) ?? Self.defaults.pressEnterAfterPaste
@@ -169,11 +200,13 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         try container.encode(silenceAutoStopEnabled, forKey: .silenceAutoStopEnabled)
         try container.encode(silenceThresholdDBFS, forKey: .silenceThresholdDBFS)
         try container.encode(silenceDurationMilliseconds, forKey: .silenceDurationMilliseconds)
+        try container.encode(silenceDetectionMode, forKey: .silenceDetectionMode)
         try container.encode(minUtteranceMilliseconds, forKey: .minUtteranceMilliseconds)
         try container.encode(preRollMilliseconds, forKey: .preRollMilliseconds)
         try container.encode(tapThresholdMilliseconds, forKey: .tapThresholdMilliseconds)
         try container.encode(dictationShortcut.keyCode, forKey: .hotkeyKeyCode)
         try container.encode(dictationShortcut, forKey: .dictationShortcut)
+        try container.encodeIfPresent(inputDeviceID, forKey: .inputDeviceID)
         try container.encode(ambientModeEnabled, forKey: .ambientModeEnabled)
         try container.encode(ambientToggleShortcut, forKey: .ambientToggleShortcut)
         try container.encode(pressEnterAfterPaste, forKey: .pressEnterAfterPaste)
@@ -195,10 +228,31 @@ public struct MimiConfig: Codable, Equatable, Sendable {
             userDefaults.set(true, forKey: appleStreamingMigrationKey)
             migrated = true
         }
+        if config.normalizeForBackend() {
+            migrated = true
+        }
         if migrated {
             config.save(userDefaults: userDefaults)
         }
         return config
+    }
+
+    @discardableResult
+    public mutating func normalizeForBackend() -> Bool {
+        let oldValue = self
+        if preferredBackend == .mlxParakeetV2 {
+            ambientModeEnabled = false
+            silenceDetectionMode = .audioLevel
+        } else if silenceDetectionMode == .automatic {
+            silenceDetectionMode = ambientModeEnabled ? .speechActivity : .audioLevel
+        }
+        return self != oldValue
+    }
+
+    public func normalizedForBackend() -> MimiConfig {
+        var copy = self
+        _ = copy.normalizeForBackend()
+        return copy
     }
 
     public func save(userDefaults: UserDefaults = .standard) {

@@ -13,6 +13,8 @@ final class ConfigDefaultsTests: XCTestCase {
         XCTAssertEqual(config.hotkeyKeyCode, 54)
         XCTAssertEqual(config.dictationShortcut, .rightCommand)
         XCTAssertEqual(config.ambientToggleShortcut, .ambientToggleDefault)
+        XCTAssertNil(config.inputDeviceID)
+        XCTAssertEqual(config.silenceDetectionMode, .audioLevel)
 
         XCTAssertEqual(config.silenceThresholdDBFS, -50)
         XCTAssertLessThan(config.silenceThresholdDBFS, 0)
@@ -50,6 +52,17 @@ final class ConfigDefaultsTests: XCTestCase {
         XCTAssertEqual(secondLoad.silenceThresholdDBFS, -50)
     }
 
+    func testParakeetForcesRmsAndDisablesAmbient() {
+        var config = MimiConfig.defaults
+        config.preferredBackend = .mlxParakeetV2
+        config.ambientModeEnabled = true
+        config.silenceDetectionMode = .speechActivity
+
+        XCTAssertTrue(config.normalizeForBackend())
+        XCTAssertFalse(config.ambientModeEnabled)
+        XCTAssertEqual(config.silenceDetectionMode, .audioLevel)
+    }
+
     func testLoadMigratesLegacyHotkeyToDictationShortcut() throws {
         let suiteName = "MimiTests.\(UUID().uuidString)"
         guard let userDefaults = UserDefaults(suiteName: suiteName) else {
@@ -81,5 +94,7 @@ final class ConfigDefaultsTests: XCTestCase {
 
         XCTAssertEqual(config.dictationShortcut, .rightCommand)
         XCTAssertEqual(config.ambientToggleShortcut, .ambientToggleDefault)
+        XCTAssertNil(config.inputDeviceID)
+        XCTAssertEqual(config.silenceDetectionMode, .audioLevel)
     }
 }

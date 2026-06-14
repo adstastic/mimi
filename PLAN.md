@@ -21,7 +21,7 @@ Implemented:
   - end recording on silence
   - press Enter after pasting
   - ambient mode
-- Configurable silence threshold and silence duration; defaults are -50 dBFS and 2.0s.
+- Configurable microphone input device, silence threshold, silence duration, and stop detection mode; defaults are system input, -50 dBFS, 2.0s, and audio-level RMS.
 - Permission status lights + buttons for Microphone, Accessibility, Input Monitoring.
 - Stable `/Applications/mimi.app` build signed with Apple Development identity when available.
 - No telemetry, no cloud ASR. First-run dependency/model download may use network until cached.

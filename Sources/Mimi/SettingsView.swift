@@ -8,11 +8,13 @@ struct SettingsView: View {
     let permissionStatus: PermissionStatus
     let modelLoading: Bool
     let modelReady: Bool
+    let inputDevices: [AudioInputDevice]
     let lastTranscript: String?
     let liveTranscript: String?
     let copyLastTranscript: () -> Void
     let shortcutRecordingChanged: (Bool) -> Void
     let refreshPermissions: () -> Void
+    let refreshInputDevices: () -> Void
     let quit: () -> Void
 
     var body: some View {
@@ -38,7 +40,23 @@ struct SettingsView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    ToggleLine("Ambient", systemImage: "ear.and.waveform", isOn: $config.ambientModeEnabled)
+                    InputDevicePickerLine(
+                        selectedID: $config.inputDeviceID,
+                        devices: inputDevices,
+                        refresh: refreshInputDevices
+                    )
+
+                    ToggleLine(
+                        "Ambient",
+                        systemImage: "ear.and.waveform",
+                        isOn: $config.ambientModeEnabled,
+                        disabled: !appleFeaturesAvailable
+                    )
+                    if !appleFeaturesAvailable {
+                        Label("Ambient requires Apple SpeechTranscriber.", systemImage: "info.circle")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     ToggleLine("End on silence", systemImage: "speaker.slash", isOn: $config.silenceAutoStopEnabled)
                     ToggleLine("Press Return after paste", systemImage: "return", isOn: $config.pressEnterAfterPaste)
                 }
@@ -54,6 +72,7 @@ struct SettingsView: View {
                         title: "Ambient",
                         systemImage: "switch.2",
                         shortcut: $config.ambientToggleShortcut,
+                        disabled: !appleFeaturesAvailable,
                         onRecordingChanged: shortcutRecordingChanged
                     )
                     if config.dictationShortcut == config.ambientToggleShortcut {
@@ -64,6 +83,22 @@ struct SettingsView: View {
                 }
 
                 SettingsCard("Silence", systemImage: "waveform.badge.magnifyingglass") {
+                    PickerLine(
+                        "Stop detection",
+                        systemImage: "waveform.and.magnifyingglass"
+                    ) {
+                        Picker("Stop detection", selection: $config.silenceDetectionMode) {
+                            ForEach(SilenceDetectionMode.visibleCases, id: \.self) { mode in
+                                Text(mode.displayName)
+                                    .tag(mode)
+                                    .disabled(mode == .speechActivity && !appleFeaturesAvailable)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .controlSize(.small)
+                    }
+
                     SliderLine(
                         "Threshold",
                         value: "\(Int(config.silenceThresholdDBFS)) dBFS",
@@ -72,6 +107,8 @@ struct SettingsView: View {
                         Slider(value: $config.silenceThresholdDBFS, in: -65 ... -15, step: 1)
                             .frame(width: 300)
                     }
+                    .disabled(config.silenceDetectionMode == .speechActivity)
+                    .opacity(config.silenceDetectionMode == .speechActivity ? 0.45 : 1)
                     SliderLine(
                         "Stop after",
                         value: String(format: "%.1f s", Double(config.silenceDurationMilliseconds) / 1_000.0),
@@ -124,9 +161,13 @@ struct SettingsView: View {
             }
         }
         .padding(10)
-        .frame(width: 360, alignment: .topLeading)
+        .frame(width: 390, alignment: .topLeading)
         .fixedSize(horizontal: true, vertical: true)
         .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private var appleFeaturesAvailable: Bool {
+        config.preferredBackend == .appleSpeechTranscriber
     }
 
     private var header: some View {
@@ -225,11 +266,13 @@ private struct SettingsCard<Content: View>: View {
 private struct ToggleLine: View {
     let title: String
     let systemImage: String
+    let disabled: Bool
     @Binding var isOn: Bool
 
-    init(_ title: String, systemImage: String, isOn: Binding<Bool>) {
+    init(_ title: String, systemImage: String, isOn: Binding<Bool>, disabled: Bool = false) {
         self.title = title
         self.systemImage = systemImage
+        self.disabled = disabled
         _isOn = isOn
     }
 
@@ -242,6 +285,82 @@ private struct ToggleLine: View {
             Spacer()
             Toggle("", isOn: $isOn)
                 .labelsHidden()
+                .disabled(disabled)
+        }
+        .opacity(disabled ? 0.45 : 1)
+    }
+}
+
+private struct PickerLine<PickerContent: View>: View {
+    let title: String
+    let systemImage: String
+    let picker: PickerContent
+
+    init(_ title: String, systemImage: String, @ViewBuilder picker: () -> PickerContent) {
+        self.title = title
+        self.systemImage = systemImage
+        self.picker = picker()
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+            Text(title)
+            Spacer()
+            picker
+        }
+    }
+}
+
+private struct InputDevicePickerLine: View {
+    @Binding var selectedID: String?
+    let devices: [AudioInputDevice]
+    let refresh: () -> Void
+
+    private var selection: Binding<String> {
+        Binding(
+            get: { selectedID ?? "" },
+            set: { selectedID = $0.isEmpty ? nil : $0 }
+        )
+    }
+
+    private var selectedDeviceMissing: Bool {
+        guard let selectedID else { return false }
+        return !devices.contains { $0.id == selectedID }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: "mic")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18)
+                Text("Input")
+                Spacer()
+                Picker("Input", selection: selection) {
+                    Text("System Default").tag("")
+                    ForEach(devices) { device in
+                        Text(device.name).tag(device.id)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .controlSize(.small)
+                Button {
+                    refresh()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .help("Refresh input devices")
+                .controlSize(.small)
+            }
+            if selectedDeviceMissing {
+                Label("Selected microphone is not connected.", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
         }
     }
 }
@@ -280,7 +399,22 @@ private struct ShortcutRecorderRow: View {
     let title: String
     let systemImage: String
     @Binding var shortcut: MimiShortcut
+    let disabled: Bool
     let onRecordingChanged: (Bool) -> Void
+
+    init(
+        title: String,
+        systemImage: String,
+        shortcut: Binding<MimiShortcut>,
+        disabled: Bool = false,
+        onRecordingChanged: @escaping (Bool) -> Void
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        _shortcut = shortcut
+        self.disabled = disabled
+        self.onRecordingChanged = onRecordingChanged
+    }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -296,13 +430,15 @@ private struct ShortcutRecorderRow: View {
                 .padding(.horizontal, 7)
                 .padding(.vertical, 3)
                 .background(Capsule().fill(Color.primary.opacity(0.08)))
-            ShortcutRecorderButton(shortcut: $shortcut, onRecordingChanged: onRecordingChanged)
+            ShortcutRecorderButton(shortcut: $shortcut, disabled: disabled, onRecordingChanged: onRecordingChanged)
         }
+        .opacity(disabled ? 0.45 : 1)
     }
 }
 
 private struct ShortcutRecorderButton: View {
     @Binding var shortcut: MimiShortcut
+    let disabled: Bool
     let onRecordingChanged: (Bool) -> Void
     @StateObject private var recorder = ShortcutRecorder()
 
@@ -330,6 +466,7 @@ private struct ShortcutRecorderButton: View {
             }
         }
         .controlSize(.small)
+        .disabled(disabled)
         .onDisappear {
             if recorder.isRecording {
                 recorder.stop()

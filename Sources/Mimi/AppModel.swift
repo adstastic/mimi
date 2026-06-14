@@ -11,8 +11,13 @@ final class AppModel: ObservableObject {
     @Published private(set) var permissionStatus = PermissionStatus.current()
     @Published private(set) var modelLoading = false
     @Published private(set) var modelReady = false
+    @Published private(set) var inputDevices = AudioInputDevice.available()
     @Published var config: MimiConfig {
         didSet {
+            let normalized = config.normalizedForBackend()
+            if normalized != config {
+                config = normalized
+            }
             config.save()
             if oldValue.preferredBackend != config.preferredBackend {
                 modelReady = false
@@ -23,6 +28,9 @@ final class AppModel: ObservableObject {
                 }
             }
             if oldValue.ambientModeEnabled != config.ambientModeEnabled {
+                dictationController.updateAmbientMode()
+            }
+            if oldValue.inputDeviceID != config.inputDeviceID || oldValue.silenceDetectionMode != config.silenceDetectionMode {
                 dictationController.updateAmbientMode()
             }
             if !shortcutRecording,
@@ -41,6 +49,8 @@ final class AppModel: ObservableObject {
     private var asrService: ASRService!
     private var dictationController: DictationController!
     private var hotkeyMonitor: HotkeyMonitor!
+    private var inputDeviceTask: Task<Void, Never>?
+    private var lastDefaultInputDeviceID = AudioInputDevice.defaultInputDeviceUID()
     private var started = false
     private var shortcutRecording = false
 
@@ -98,6 +108,40 @@ final class AppModel: ObservableObject {
 
         dictationController.prepareASR()
         dictationController.updateAmbientMode()
+        startInputDeviceWatcher()
+    }
+
+    func refreshInputDevices() {
+        inputDevices = AudioInputDevice.available()
+        lastDefaultInputDeviceID = AudioInputDevice.defaultInputDeviceUID()
+        if config.ambientModeEnabled {
+            dictationController.updateAmbientMode()
+        }
+    }
+
+    private func startInputDeviceWatcher() {
+        inputDeviceTask?.cancel()
+        inputDeviceTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                await MainActor.run {
+                    guard let self else { return }
+                    let devices = AudioInputDevice.available()
+                    let defaultInputDeviceID = AudioInputDevice.defaultInputDeviceUID()
+                    let devicesChanged = devices != self.inputDevices
+                    let defaultChanged = defaultInputDeviceID != self.lastDefaultInputDeviceID
+                    if devicesChanged {
+                        self.inputDevices = devices
+                    }
+                    if defaultChanged {
+                        self.lastDefaultInputDeviceID = defaultInputDeviceID
+                    }
+                    if (devicesChanged || defaultChanged), self.config.ambientModeEnabled {
+                        self.dictationController.updateAmbientMode()
+                    }
+                }
+            }
+        }
     }
 
     private func applyStatus(_ status: String, updateModelState: Bool) {
@@ -138,6 +182,7 @@ final class AppModel: ObservableObject {
     }
 
     private func toggleAmbientModeFromShortcut() {
+        guard config.preferredBackend == .appleSpeechTranscriber else { return }
         config.ambientModeEnabled.toggle()
         let enabled = config.ambientModeEnabled
         overlay.show(enabled ? "Ambient mode on" : "Ambient mode off")

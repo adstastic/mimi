@@ -14,11 +14,13 @@ struct MimiApp: App {
                 permissionStatus: appModel.permissionStatus,
                 modelLoading: appModel.modelLoading,
                 modelReady: appModel.modelReady,
+                inputDevices: appModel.inputDevices,
                 lastTranscript: appModel.lastTranscript,
                 liveTranscript: appModel.liveTranscript,
                 copyLastTranscript: { appModel.copyLastTranscript() },
                 shortcutRecordingChanged: { appModel.setShortcutRecording($0) },
                 refreshPermissions: { appModel.refreshPermissions() },
+                refreshInputDevices: { appModel.refreshInputDevices() },
                 quit: { NSApplication.shared.terminate(nil) }
             )
         }
