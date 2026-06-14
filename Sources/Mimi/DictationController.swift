@@ -4,15 +4,34 @@ import MimiSpeech
 
 @MainActor
 final class DictationController {
-    enum RecordingMode {
+    private enum RecordingMode {
         case pressing(startedAt: Date)
         case toggle
         case ambient
     }
 
-    enum State {
+    private struct RecordingPlan {
+        let config: MimiConfig
+        let isAmbient: Bool
+        let usesAppleStream: Bool
+        let usesSpeechActivityStop: Bool
+
+        init(config: MimiConfig, isAmbient: Bool) {
+            let normalizedConfig = config.normalizedForBackend()
+            let capabilities = normalizedConfig.preferredBackend.capabilities
+            self.config = normalizedConfig
+            self.isAmbient = isAmbient
+            usesAppleStream = capabilities.usesStreamingTranscription(
+                isAmbient: isAmbient,
+                silenceDetectionMode: normalizedConfig.silenceDetectionMode
+            )
+            usesSpeechActivityStop = capabilities.usesSpeechActivityStop(normalizedConfig.silenceDetectionMode)
+        }
+    }
+
+    private enum State {
         case idle
-        case recording(RecordingMode)
+        case recording(RecordingMode, RecordingPlan)
         case processing
     }
 
@@ -39,13 +58,10 @@ final class DictationController {
     private var lastSpeechDetectedAt: Date?
     private var sawSpeech = false
     private var silenceBeganAt: Date?
-    private var ambientSpeechBeganAt: Date?
     private var ambientCooldownUntil: Date?
     private var ambientMicStartedAt: Date?
     private var engineStartTask: Task<Void, Never>?
     private var appleStreamTask: Task<Void, Never>?
-    private var recordingUsesAppleStream = false
-    private var recordingUsesSpeechActivityStop = false
     private var lastAmbientDecisionLogAt = Date.distantPast
 
     init(
@@ -88,19 +104,24 @@ final class DictationController {
         switch state {
         case .idle:
             startRecording(mode: .pressing(startedAt: Date()))
-        case .recording(.toggle), .recording(.ambient):
-            Task { await stopAndTranscribe(reason: .stopped) }
-        case .recording(.pressing), .processing:
+        case .recording(let mode, _):
+            switch mode {
+            case .toggle, .ambient:
+                Task { await stopAndTranscribe(reason: .stopped) }
+            case .pressing:
+                break
+            }
+        case .processing:
             break
         }
     }
 
     func hotkeyUp() {
-        guard case .recording(.pressing(let startedAt)) = state else { return }
+        guard case .recording(.pressing(let startedAt), let plan) = state else { return }
 
         let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1_000)
-        if elapsedMs < configProvider().tapThresholdMilliseconds {
-            state = .recording(.toggle)
+        if elapsedMs < plan.config.tapThresholdMilliseconds {
+            state = .recording(.toggle, plan)
             onStatus("Recording — tap Right Command again to stop")
             overlay.show("Recording", detail: "Tap Right Command again or pause", level: audioCapture.currentDBFS())
         } else {
@@ -109,7 +130,7 @@ final class DictationController {
     }
 
     func updateAmbientMode() {
-        if configProvider().ambientModeEnabled {
+        if shouldRunAmbientMonitoring() {
             if ambientTask == nil {
                 startAmbientMonitoring()
             } else if case .idle = state {
@@ -133,13 +154,13 @@ final class DictationController {
     }
 
     func cancelRecording() {
-        guard case .recording = state else { return }
-        let config = configProvider()
+        guard case .recording(_, let plan) = state else { return }
+        let resumeAmbient = shouldRunAmbientMonitoring()
         silenceTask?.cancel()
         silenceTask = nil
         engineStartTask?.cancel()
         engineStartTask = nil
-        if config.ambientModeEnabled {
+        if resumeAmbient {
             audioCapture.cancelRecording()
             audioCapture.setMonitorBufferHandler(nil)
             ambientCooldownUntil = Date().addingTimeInterval(1)
@@ -148,50 +169,45 @@ final class DictationController {
         }
         appleStreamTask?.cancel()
         appleStreamTask = nil
-        recordingUsesAppleStream = false
-        recordingUsesSpeechActivityStop = false
         onPartialTranscript(nil)
         state = .idle
-        if config.preferredBackend == .appleSpeechTranscriber {
+        if plan.usesAppleStream || resumeAmbient {
             Task { [weak self, asrService] in
                 await asrService.cancelAppleStream()
                 await MainActor.run {
-                    guard let self, config.ambientModeEnabled else { return }
+                    guard let self, resumeAmbient else { return }
                     self.startAmbientAppleStream()
                 }
             }
         }
-        onStatus(config.ambientModeEnabled ? "Ambient armed" : "Cancelled")
+        onStatus(resumeAmbient ? "Ambient armed" : "Cancelled")
         overlay.show("Cancelled")
         overlay.hide(after: 700)
     }
 
     private func startRecording(mode: RecordingMode, speechAlreadyDetected: Bool = false) {
-        let config = configProvider()
+        let isAmbient = if case .ambient = mode { true } else { false }
+        let plan = RecordingPlan(config: configProvider(), isAmbient: isAmbient)
         onPartialTranscript(nil)
         sawSpeech = speechAlreadyDetected
         silenceBeganAt = nil
-        state = .recording(mode)
-        let isAmbient = if case .ambient = mode { true } else { false }
-        let usesAppleStream = shouldUseAppleStream(config: config, isAmbientRecording: isAmbient)
-        recordingUsesAppleStream = usesAppleStream
-        recordingUsesSpeechActivityStop = shouldUseSpeechActivityStop(config: config, isAmbientRecording: isAmbient)
-        onStatus(isAmbient ? "Ambient recording…" : "Starting mic…")
-        overlay.show(isAmbient ? "Ambient recording" : "Starting mic", detail: "Speak now", level: audioCapture.currentDBFS())
+        state = .recording(mode, plan)
+        onStatus(plan.isAmbient ? "Ambient recording…" : "Starting mic…")
+        overlay.show(plan.isAmbient ? "Ambient recording" : "Starting mic", detail: "Speak now", level: audioCapture.currentDBFS())
 
         engineStartTask?.cancel()
         engineStartTask = Task { [weak self] in
             guard let self else { return }
             do {
                 try await self.audioCapture.start(
-                    preRollMilliseconds: config.preRollMilliseconds,
-                    inputDeviceID: config.inputDeviceID
+                    preRollMilliseconds: plan.config.preRollMilliseconds,
+                    inputDeviceID: plan.config.inputDeviceID
                 )
                 guard case .recording = self.state else { return }
 
-                if usesAppleStream && !isAmbient {
+                if plan.usesAppleStream && !plan.isAmbient {
                     try await self.asrService.startAppleStream(
-                        detectSpeech: self.recordingUsesSpeechActivityStop,
+                        detectSpeech: plan.usesSpeechActivityStop,
                         onEvent: { [weak self] event in
                             Task { @MainActor in
                                 self?.handleAppleEvent(event)
@@ -199,25 +215,23 @@ final class DictationController {
                         },
                         onDetection: { [weak self] detected in
                             Task { @MainActor in
-                                self?.handleAmbientDetection(detected)
+                                self?.handleSpeechDetection(detected)
                             }
                         }
                     )
                 }
 
-                let bufferHandler: ((AVAudioPCMBuffer) -> Void)? = usesAppleStream ? { [asrService] buffer in
+                let bufferHandler: ((AVAudioPCMBuffer) -> Void)? = plan.usesAppleStream ? { [asrService] buffer in
                     Task { try? await asrService.appendAppleBuffer(buffer) }
                 } : nil
                 self.audioCapture.beginRecording(
                     bufferHandler: bufferHandler,
-                    replayPreRollToHandler: !isAmbient
+                    replayPreRollToHandler: !plan.isAmbient
                 )
                 self.onStatus("Recording…")
                 self.overlay.show("Recording", detail: "Speak now", level: self.audioCapture.currentDBFS())
                 self.startSilenceLoop()
             } catch {
-                self.recordingUsesAppleStream = false
-                self.recordingUsesSpeechActivityStop = false
                 self.state = .idle
                 self.onStatus("Mic error: \(error.localizedDescription)")
                 self.overlay.show("Mic error", detail: error.localizedDescription)
@@ -232,32 +246,21 @@ final class DictationController {
         let startTask = engineStartTask
         await startTask?.value
         engineStartTask = nil
-        guard case .recording = state else { return }
+        guard case .recording(_, let plan) = state else { return }
         state = .processing
         onStatus("Transcribing…")
         overlay.show("Transcribing…", detail: reason.rawValue)
 
         do {
-            let config = configProvider()
+            let resumeAmbient = shouldRunAmbientMonitoring()
             let audioURL = try audioCapture.finishRecording()
-            let usesAppleStream = recordingUsesAppleStream
-            if usesAppleStream {
+            if plan.usesAppleStream {
                 audioCapture.setMonitorBufferHandler(nil)
             }
-            if !config.ambientModeEnabled {
+            if !resumeAmbient {
                 audioCapture.stop()
             }
-            let rawText: String
-            switch config.preferredBackend {
-            case .mlxParakeetV2:
-                rawText = try await asrService.transcribe(audioURL: audioURL)
-            case .appleSpeechTranscriber:
-                if usesAppleStream {
-                    rawText = try await asrService.finishAppleStream()
-                } else {
-                    rawText = try await asrService.transcribeApple(audioURL: audioURL)
-                }
-            }
+            let rawText = try await transcribe(audioURL: audioURL, plan: plan)
             let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else {
                 throw NSError(domain: AppBrand.noSpeechErrorDomain, code: 1, userInfo: [NSLocalizedDescriptionKey: "No speech detected."])
@@ -267,42 +270,35 @@ final class DictationController {
             onTranscript(text)
             try await textInserter.insert(
                 text,
-                pressReturn: config.pressEnterAfterPaste,
-                enterDelayMilliseconds: config.postPasteEnterDelayMilliseconds
+                pressReturn: plan.config.pressEnterAfterPaste,
+                enterDelayMilliseconds: plan.config.postPasteEnterDelayMilliseconds
             )
             appleStreamTask = nil
-            recordingUsesAppleStream = false
-            recordingUsesSpeechActivityStop = false
             onPartialTranscript(nil)
             state = .idle
-            if config.ambientModeEnabled {
+            if resumeAmbient {
                 ambientCooldownUntil = Date().addingTimeInterval(1)
-                if config.preferredBackend == .appleSpeechTranscriber {
-                    startAmbientAppleStream()
-                }
+                startAmbientAppleStream()
             }
-            onStatus(config.ambientModeEnabled ? "Ambient armed" : "Inserted + copied")
+            onStatus(resumeAmbient ? "Ambient armed" : "Inserted + copied")
             overlay.show("Inserted + copied", detail: preview(text))
             overlay.hide(after: 1_200)
         } catch {
             appleStreamTask = nil
             onPartialTranscript(nil)
-            let config = configProvider()
-            let usesAppleStream = recordingUsesAppleStream
-            recordingUsesAppleStream = false
-            recordingUsesSpeechActivityStop = false
-            if config.ambientModeEnabled {
+            let resumeAmbient = shouldRunAmbientMonitoring()
+            if resumeAmbient {
                 audioCapture.cancelRecording()
                 audioCapture.setMonitorBufferHandler(nil)
                 ambientCooldownUntil = Date().addingTimeInterval(1)
-                if usesAppleStream {
-                    await asrService.cancelAppleStream()
-                }
             } else {
                 audioCapture.stop()
             }
+            if plan.usesAppleStream {
+                await asrService.cancelAppleStream()
+            }
             state = .idle
-            if config.ambientModeEnabled && config.preferredBackend == .appleSpeechTranscriber {
+            if resumeAmbient {
                 startAmbientAppleStream()
             }
             onStatus("Error: \(error.localizedDescription)")
@@ -310,8 +306,20 @@ final class DictationController {
         }
     }
 
+    private func transcribe(audioURL: URL, plan: RecordingPlan) async throws -> String {
+        switch plan.config.preferredBackend {
+        case .mlxParakeetV2:
+            return try await asrService.transcribe(audioURL: audioURL)
+        case .appleSpeechTranscriber:
+            if plan.usesAppleStream {
+                return try await asrService.finishAppleStream()
+            }
+            return try await asrService.transcribeApple(audioURL: audioURL)
+        }
+    }
+
     private func startAmbientAppleStream() {
-        guard configProvider().preferredBackend == .appleSpeechTranscriber else { return }
+        guard configProvider().preferredBackend.capabilities.supportsStreamingTranscription else { return }
         speechDetectedByDetector = false
         lastSpeechDetectedAt = nil
         appleStreamTask?.cancel()
@@ -326,7 +334,7 @@ final class DictationController {
                     },
                     onDetection: { [weak self] detected in
                         Task { @MainActor in
-                            self?.handleAmbientDetection(detected)
+                            self?.handleSpeechDetection(detected)
                         }
                     }
                 )
@@ -367,14 +375,14 @@ final class DictationController {
         }
         guard !text.isEmpty else { return }
 
-        if configProvider().ambientModeEnabled {
+        if shouldRunAmbientMonitoring() {
             switch state {
             case .idle:
                 speechDetectedByDetector = true
                 lastSpeechDetectedAt = Date()
                 DebugLog.write("ambient start transcriber event chars=\(text.count)")
                 startRecording(mode: .ambient, speechAlreadyDetected: true)
-            case .recording(.ambient):
+            case .recording(.ambient, _):
                 speechDetectedByDetector = true
                 lastSpeechDetectedAt = Date()
             case .recording, .processing:
@@ -393,30 +401,28 @@ final class DictationController {
         overlay.updateDetail(preview(text))
     }
 
-    private func handleAmbientDetection(_ detected: Bool) {
+    private func handleSpeechDetection(_ detected: Bool) {
         speechDetectedByDetector = detected
         if detected {
             lastSpeechDetectedAt = Date()
         }
-        DebugLog.write("ambient detector speech=\(detected)")
+        DebugLog.write("speech detector speech=\(detected)")
     }
 
     private func startAmbientMonitoring() {
-        guard ambientTask == nil else { return }
+        guard ambientTask == nil, shouldRunAmbientMonitoring() else { return }
         onStatus("Starting ambient mic…")
         ambientTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let config = self.configProvider()
+                let config = self.configProvider().normalizedForBackend()
                 try await self.audioCapture.start(
                     preRollMilliseconds: config.preRollMilliseconds,
                     inputDeviceID: config.inputDeviceID
                 )
                 guard !Task.isCancelled else { return }
                 self.ambientMicStartedAt = Date()
-                if self.configProvider().preferredBackend == .appleSpeechTranscriber {
-                    self.startAmbientAppleStream()
-                }
+                self.startAmbientAppleStream()
                 self.onStatus("Ambient armed")
             } catch {
                 self.onStatus("Mic error: \(error.localizedDescription)")
@@ -447,7 +453,6 @@ final class DictationController {
         audioCapture.setMonitorBufferHandler(nil)
         speechDetectedByDetector = false
         lastSpeechDetectedAt = nil
-        ambientSpeechBeganAt = nil
         ambientCooldownUntil = nil
         ambientMicStartedAt = nil
         if case .idle = state {
@@ -457,29 +462,14 @@ final class DictationController {
     }
 
     private func checkAmbientStart() {
-        let config = configProvider()
-        guard config.ambientModeEnabled else { return }
+        guard shouldRunAmbientMonitoring() else { return }
         guard case .idle = state else { return }
 
         let now = Date()
         if let ambientCooldownUntil, now < ambientCooldownUntil { return }
 
         let level = audioCapture.currentDBFS()
-        let recentSpeech: Bool
-        if config.preferredBackend == .appleSpeechTranscriber {
-            recentSpeech = recentlyDetectedSpeech(within: 1.0)
-        } else if level >= config.silenceThresholdDBFS {
-            if ambientSpeechBeganAt == nil {
-                ambientSpeechBeganAt = now
-                return
-            }
-            let speechMs = Int(now.timeIntervalSince(ambientSpeechBeganAt ?? now) * 1_000)
-            recentSpeech = speechMs >= min(config.minUtteranceMilliseconds, 250)
-        } else {
-            ambientSpeechBeganAt = nil
-            recentSpeech = false
-        }
-
+        let recentSpeech = recentlyDetectedSpeech(within: 1.0)
         let nowLog = Date()
         if nowLog.timeIntervalSince(lastAmbientDecisionLogAt) >= 1 {
             lastAmbientDecisionLogAt = nowLog
@@ -488,7 +478,6 @@ final class DictationController {
         }
 
         if recentSpeech {
-            ambientSpeechBeganAt = nil
             DebugLog.write("ambient start speech detected")
             startRecording(mode: .ambient, speechAlreadyDetected: true)
         }
@@ -505,18 +494,16 @@ final class DictationController {
     }
 
     private func checkSilence() {
-        guard case .recording(let mode) = state else { return }
-        let isAmbientRecording = if case .ambient = mode { true } else { false }
+        guard case .recording(_, let plan) = state else { return }
 
         let level = audioCapture.currentDBFS()
         overlay.updateLevel(level)
 
         let now = Date()
-        let config = configProvider()
-        guard config.silenceAutoStopEnabled || isAmbientRecording else { return }
-        let speechActive = recordingUsesSpeechActivityStop
+        guard plan.config.silenceAutoStopEnabled || plan.isAmbient else { return }
+        let speechActive = plan.usesSpeechActivityStop
             ? recentlyDetectedSpeech(within: 1.2)
-            : level >= config.silenceThresholdDBFS
+            : level >= plan.config.silenceThresholdDBFS
         if speechActive {
             sawSpeech = true
             silenceBeganAt = nil
@@ -530,26 +517,14 @@ final class DictationController {
         }
 
         let silenceMs = Int(now.timeIntervalSince(silenceBeganAt ?? now) * 1_000)
-        if silenceMs >= config.silenceDurationMilliseconds {
+        if silenceMs >= plan.config.silenceDurationMilliseconds {
             Task { await stopAndTranscribe(reason: .silence) }
         }
     }
 
-    private func shouldUseAppleStream(config: MimiConfig, isAmbientRecording: Bool) -> Bool {
-        guard config.preferredBackend == .appleSpeechTranscriber else { return false }
-        return isAmbientRecording || shouldUseSpeechActivityStop(config: config, isAmbientRecording: isAmbientRecording)
-    }
-
-    private func shouldUseSpeechActivityStop(config: MimiConfig, isAmbientRecording: Bool) -> Bool {
-        guard config.preferredBackend == .appleSpeechTranscriber else { return false }
-        switch config.silenceDetectionMode {
-        case .automatic:
-            return isAmbientRecording
-        case .audioLevel:
-            return false
-        case .speechActivity:
-            return true
-        }
+    private func shouldRunAmbientMonitoring() -> Bool {
+        let config = configProvider().normalizedForBackend()
+        return config.ambientModeEnabled && config.preferredBackend.capabilities.supportsAmbient
     }
 
     private func shouldRestartAmbientMicForMissingInput() -> Bool {

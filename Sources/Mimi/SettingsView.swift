@@ -50,9 +50,9 @@ struct SettingsView: View {
                         "Ambient",
                         systemImage: "ear.and.waveform",
                         isOn: $config.ambientModeEnabled,
-                        disabled: !appleFeaturesAvailable
+                        disabled: !backendCapabilities.supportsAmbient
                     )
-                    if !appleFeaturesAvailable {
+                    if !backendCapabilities.supportsAmbient {
                         Label("Ambient requires Apple SpeechTranscriber.", systemImage: "info.circle")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -72,7 +72,7 @@ struct SettingsView: View {
                         title: "Ambient",
                         systemImage: "switch.2",
                         shortcut: $config.ambientToggleShortcut,
-                        disabled: !appleFeaturesAvailable,
+                        disabled: !backendCapabilities.supportsAmbient,
                         onRecordingChanged: shortcutRecordingChanged
                     )
                     if config.dictationShortcut == config.ambientToggleShortcut {
@@ -88,10 +88,10 @@ struct SettingsView: View {
                         systemImage: "waveform.and.magnifyingglass"
                     ) {
                         Picker("Stop detection", selection: $config.silenceDetectionMode) {
-                            ForEach(SilenceDetectionMode.visibleCases, id: \.self) { mode in
+                            ForEach(SilenceDetectionMode.allCases, id: \.self) { mode in
                                 Text(mode.displayName)
                                     .tag(mode)
-                                    .disabled(mode == .speechActivity && !appleFeaturesAvailable)
+                                    .disabled(!backendCapabilities.supportsSilenceDetectionMode(mode))
                             }
                         }
                         .labelsHidden()
@@ -166,8 +166,8 @@ struct SettingsView: View {
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
-    private var appleFeaturesAvailable: Bool {
-        config.preferredBackend == .appleSpeechTranscriber
+    private var backendCapabilities: ASRBackendCapabilities {
+        config.preferredBackend.capabilities
     }
 
     private var header: some View {

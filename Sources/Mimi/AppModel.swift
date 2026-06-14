@@ -182,7 +182,7 @@ final class AppModel: ObservableObject {
     }
 
     private func toggleAmbientModeFromShortcut() {
-        guard config.preferredBackend == .appleSpeechTranscriber else { return }
+        guard config.preferredBackend.capabilities.supportsAmbient else { return }
         config.ambientModeEnabled.toggle()
         let enabled = config.ambientModeEnabled
         overlay.show(enabled ? "Ambient mode on" : "Ambient mode off")

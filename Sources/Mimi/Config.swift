@@ -60,20 +60,74 @@ public enum ASRBackend: String, CaseIterable, Codable, Equatable, Sendable {
 }
 
 public enum SilenceDetectionMode: String, CaseIterable, Codable, Equatable, Sendable {
-    case automatic
     case audioLevel
     case speechActivity
 
-    static let visibleCases: [SilenceDetectionMode] = [.audioLevel, .speechActivity]
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        self = Self(rawValue: rawValue) ?? .audioLevel
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 
     var displayName: String {
         switch self {
-        case .automatic:
-            "Automatic"
         case .audioLevel:
             "Audio level (RMS)"
         case .speechActivity:
             "Speech activity (Apple VAD)"
+        }
+    }
+}
+
+public struct ASRBackendCapabilities: Equatable, Sendable {
+    public let supportsAmbient: Bool
+    public let supportedSilenceDetectionModes: [SilenceDetectionMode]
+    public let defaultSilenceDetectionMode: SilenceDetectionMode
+    public let supportsStreamingTranscription: Bool
+
+    public func supportsSilenceDetectionMode(_ mode: SilenceDetectionMode) -> Bool {
+        supportedSilenceDetectionModes.contains(mode)
+    }
+
+    public func normalizeAmbientModeEnabled(_ enabled: Bool) -> Bool {
+        supportsAmbient && enabled
+    }
+
+    public func normalizeSilenceDetectionMode(_ mode: SilenceDetectionMode) -> SilenceDetectionMode {
+        supportsSilenceDetectionMode(mode) ? mode : defaultSilenceDetectionMode
+    }
+
+    public func usesSpeechActivityStop(_ mode: SilenceDetectionMode) -> Bool {
+        supportsSilenceDetectionMode(.speechActivity) && mode == .speechActivity
+    }
+
+    public func usesStreamingTranscription(isAmbient: Bool, silenceDetectionMode: SilenceDetectionMode) -> Bool {
+        supportsStreamingTranscription && (isAmbient || usesSpeechActivityStop(silenceDetectionMode))
+    }
+}
+
+extension ASRBackend {
+    public var capabilities: ASRBackendCapabilities {
+        switch self {
+        case .mlxParakeetV2:
+            ASRBackendCapabilities(
+                supportsAmbient: false,
+                supportedSilenceDetectionModes: [.audioLevel],
+                defaultSilenceDetectionMode: .audioLevel,
+                supportsStreamingTranscription: false
+            )
+        case .appleSpeechTranscriber:
+            ASRBackendCapabilities(
+                supportsAmbient: true,
+                supportedSilenceDetectionModes: [.audioLevel, .speechActivity],
+                defaultSilenceDetectionMode: .audioLevel,
+                supportsStreamingTranscription: true
+            )
         }
     }
 }
@@ -240,12 +294,9 @@ public struct MimiConfig: Codable, Equatable, Sendable {
     @discardableResult
     public mutating func normalizeForBackend() -> Bool {
         let oldValue = self
-        if preferredBackend == .mlxParakeetV2 {
-            ambientModeEnabled = false
-            silenceDetectionMode = .audioLevel
-        } else if silenceDetectionMode == .automatic {
-            silenceDetectionMode = ambientModeEnabled ? .speechActivity : .audioLevel
-        }
+        let capabilities = preferredBackend.capabilities
+        ambientModeEnabled = capabilities.normalizeAmbientModeEnabled(ambientModeEnabled)
+        silenceDetectionMode = capabilities.normalizeSilenceDetectionMode(silenceDetectionMode)
         return self != oldValue
     }
 

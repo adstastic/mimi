@@ -63,6 +63,24 @@ final class ConfigDefaultsTests: XCTestCase {
         XCTAssertEqual(config.silenceDetectionMode, .audioLevel)
     }
 
+    func testBackendCapabilitiesDescribeValidAmbientAndStopModes() {
+        XCTAssertTrue(ASRBackend.appleSpeechTranscriber.capabilities.supportsAmbient)
+        XCTAssertTrue(ASRBackend.appleSpeechTranscriber.capabilities.supportsSilenceDetectionMode(.audioLevel))
+        XCTAssertTrue(ASRBackend.appleSpeechTranscriber.capabilities.supportsSilenceDetectionMode(.speechActivity))
+
+        XCTAssertFalse(ASRBackend.mlxParakeetV2.capabilities.supportsAmbient)
+        XCTAssertTrue(ASRBackend.mlxParakeetV2.capabilities.supportsSilenceDetectionMode(.audioLevel))
+        XCTAssertFalse(ASRBackend.mlxParakeetV2.capabilities.supportsSilenceDetectionMode(.speechActivity))
+    }
+
+    func testLegacyAutomaticSilenceModeDecodesToConcreteMode() throws {
+        let json = #""automatic""#
+
+        let mode = try JSONDecoder().decode(SilenceDetectionMode.self, from: Data(json.utf8))
+
+        XCTAssertEqual(mode, .audioLevel)
+    }
+
     func testLoadMigratesLegacyHotkeyToDictationShortcut() throws {
         let suiteName = "MimiTests.\(UUID().uuidString)"
         guard let userDefaults = UserDefaults(suiteName: suiteName) else {
