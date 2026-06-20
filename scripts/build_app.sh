@@ -79,7 +79,12 @@ PLIST
 
 SIGN_IDENTITY="${MIMI_CODESIGN_IDENTITY:-}"
 if [[ -z "$SIGN_IDENTITY" ]]; then
-  SIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Apple Development:/{print $2; exit}')"
+  SIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '
+    /Developer ID Application:/{print $2; exit}
+    /Apple Development:/{candidate=$2}
+    /Apple Distribution:/ && candidate==""{candidate=$2}
+    END{if (candidate != "") print candidate}
+  ')"
 fi
 
 SIGN_REQUIRE="${MIMI_CODESIGN_REQUIRE:-0}"
