@@ -235,6 +235,7 @@ private struct StatusDot: View {
 private struct SettingsCard<Content: View>: View {
     let title: String
     let systemImage: String
+    // TODO(ponytail): replace AnyView with a generic trailing view if more cards need actions.
     let trailing: AnyView?
     let content: Content
 

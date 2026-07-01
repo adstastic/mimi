@@ -84,6 +84,7 @@ public enum SilenceDetectionMode: String, CaseIterable, Codable, Equatable, Send
     }
 }
 
+// TODO(ponytail): collapse this into direct ASRBackend computed vars if capabilities stay this small.
 public struct ASRBackendCapabilities: Equatable, Sendable {
     public let supportsAmbient: Bool
     public let supportedSilenceDetectionModes: [SilenceDetectionMode]
@@ -164,6 +165,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
     public var minUtteranceMilliseconds: Int
     public var preRollMilliseconds: Int
     public var tapThresholdMilliseconds: Int
+    // TODO(ponytail): remove stored legacy mirror; decode hotkeyKeyCode locally only for old configs.
     public var hotkeyKeyCode: Int
     public var dictationShortcut: MimiShortcut
     public var inputDeviceID: String?
@@ -172,6 +174,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
     public var ambientPressEnterOnStart: Bool
     public var pressEnterAfterPaste: Bool
     public var postPasteEnterDelayMilliseconds: Int
+    // TODO(ponytail): delete if no model-download toggle UI/runtime behavior appears.
     public var modelDownloadEnabled: Bool
 
     public static let defaults = MimiConfig(
