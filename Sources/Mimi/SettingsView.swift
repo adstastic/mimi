@@ -22,13 +22,7 @@ struct SettingsView: View {
             header
 
             SettingsCard("Dictation", systemImage: "waveform") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "cpu")
-                                .foregroundStyle(.secondary)
-                                .frame(width: 18)
-                            Text("Model")
-                        }
+                    PickerLine("Model", systemImage: "cpu") {
                         Picker("Model", selection: $config.preferredBackend) {
                             ForEach(ASRBackend.allCases, id: \.self) { backend in
                                 Text(backend.displayName).tag(backend)
@@ -37,7 +31,6 @@ struct SettingsView: View {
                         .labelsHidden()
                         .pickerStyle(.menu)
                         .controlSize(.small)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
                     InputDevicePickerLine(
@@ -105,7 +98,7 @@ struct SettingsView: View {
                         systemImage: "dial.low"
                     ) {
                         Slider(value: $config.silenceThresholdDBFS, in: -65 ... -15, step: 1)
-                            .frame(width: 300)
+                            .frame(width: 170)
                     }
                     .disabled(config.silenceDetectionMode == .speechActivity)
                     .opacity(config.silenceDetectionMode == .speechActivity ? 0.45 : 1)
@@ -119,10 +112,10 @@ struct SettingsView: View {
                                 get: { Double(config.silenceDurationMilliseconds) / 1_000.0 },
                                 set: { config.silenceDurationMilliseconds = Int(($0 * 1_000).rounded()) }
                             ),
-                            in: 0.3 ... 3.0,
+                            in: 0.0 ... 3.0,
                             step: 0.1
                         )
-                        .frame(width: 300)
+                        .frame(width: 170)
                     }
                 }
 
@@ -161,7 +154,7 @@ struct SettingsView: View {
             }
         }
         .padding(10)
-        .frame(width: 390, alignment: .topLeading)
+        .frame(width: 430, alignment: .topLeading)
         .fixedSize(horizontal: true, vertical: true)
         .background(Color(nsColor: .windowBackgroundColor))
     }
@@ -379,18 +372,19 @@ private struct SliderLine<SliderContent: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Image(systemName: systemImage)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 18)
-                Text(title)
-                Spacer()
-                Text(value)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-            }
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+            Text(title)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+            Spacer(minLength: 8)
             slider
+            Text(value)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .frame(width: 64, alignment: .trailing)
         }
     }
 }

@@ -29,6 +29,8 @@ final class AudioCapture {
     private let engine = AVAudioEngine()
     private let lock = NSLock()
     private var tapInstalled = false
+    private var starting = false
+    private var startSeq = 0
     private var ringSamples: [Float] = []
     private var recordingSamples: [Float] = []
     private var ringCapacity = 0
@@ -40,27 +42,57 @@ final class AudioCapture {
     private var lastBufferAt: Date?
     private var lastMonitorLogAt = Date.distantPast
 
+    @MainActor
     func start(preRollMilliseconds: Int, inputDeviceID: String?) async throws {
         guard try await Self.requestMicrophoneAccess() else {
             throw CaptureError.microphoneDenied
         }
+        try Task.checkCancellation()
 
-        if engine.isRunning { return }
+        // Serialize on the main actor and reject re-entry: ambient mode restarts
+        // the mic from a 2s watchdog, config changes, and the device watcher,
+        // any of which can call start() while another is mid-flight. Two taps
+        // on the same bus makes installTap raise an uncatchable Obj-C exception
+        // that aborts the process. The guard is set with no await before it, so
+        // it is atomic on the main actor.
+        if engine.isRunning || starting { return }
+        starting = true
+        defer { starting = false }
+        startSeq += 1
+        let seq = startSeq
 
         resetBuffersForStart()
 
         let input = engine.inputNode
         try applyInputDevice(inputDeviceID, to: input)
-        let format = input.outputFormat(forBus: 0)
+
+        // A just-switched HAL device can momentarily report an invalid format
+        // (0 Hz / 0 ch); installTap aborts on that too. Let it settle, then
+        // bail cleanly if it never does.
+        var format = input.outputFormat(forBus: 0)
+        var settleAttempts = 0
+        while !Self.isValid(format), settleAttempts < 15 {
+            try await Task.sleep(nanoseconds: 20_000_000)
+            try Task.checkCancellation()
+            format = input.outputFormat(forBus: 0)
+            settleAttempts += 1
+        }
+        try Task.checkCancellation()
+        DebugLog.write(String(format: "audio start #%d running=%@ tap=%@ sr=%.0f ch=%d settle=%d",
+                              seq, engine.isRunning ? "Y" : "N", tapInstalled ? "Y" : "N",
+                              format.sampleRate, format.channelCount, settleAttempts))
+        guard Self.isValid(format) else { throw CaptureError.inputDeviceUnavailable }
         sampleRate = format.sampleRate
         ringCapacity = max(1, Int(sampleRate * Double(preRollMilliseconds) / 1_000.0))
 
-        if !tapInstalled {
-            input.installTap(onBus: 0, bufferSize: 1_024, format: format) { [weak self] buffer, _ in
-                self?.handle(buffer: buffer)
-            }
-            tapInstalled = true
+        // Defensively clear any stale tap before installing — removeTap on a bus
+        // with no tap is a safe no-op, and it prevents a flag/engine desync from
+        // double-installing.
+        input.removeTap(onBus: 0)
+        input.installTap(onBus: 0, bufferSize: 1_024, format: format) { [weak self] buffer, _ in
+            self?.handle(buffer: buffer)
         }
+        tapInstalled = true
 
         engine.prepare()
         try engine.start()
@@ -125,7 +157,9 @@ final class AudioCapture {
         lock.unlock()
     }
 
+    @MainActor
     func stop() {
+        DebugLog.write("audio stop running=\(engine.isRunning ? "Y" : "N") tap=\(tapInstalled ? "Y" : "N")")
         engine.stop()
         if tapInstalled {
             engine.inputNode.removeTap(onBus: 0)
@@ -164,6 +198,10 @@ final class AudioCapture {
         latestDBFS = -120
         lastBufferAt = nil
         lock.unlock()
+    }
+
+    private static func isValid(_ format: AVAudioFormat) -> Bool {
+        format.sampleRate > 0 && format.channelCount > 0
     }
 
     private func applyInputDevice(_ inputDeviceID: String?, to input: AVAudioInputNode) throws {

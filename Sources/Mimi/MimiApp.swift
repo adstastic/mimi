@@ -1,9 +1,12 @@
 import AppKit
+import Combine
 import SwiftUI
 
 @main
 struct MimiApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var appModel = AppModel()
+    private let permissionRefreshTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some Scene {
         WindowGroup(AppBrand.name) {
@@ -23,6 +26,14 @@ struct MimiApp: App {
                 refreshInputDevices: { appModel.refreshInputDevices() },
                 quit: { NSApplication.shared.terminate(nil) }
             )
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active {
+                    appModel.refreshPermissions()
+                }
+            }
+            .onReceive(permissionRefreshTimer) { _ in
+                appModel.refreshPermissions()
+            }
         }
         .windowResizability(.contentSize)
         .commands {

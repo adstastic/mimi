@@ -80,10 +80,14 @@ PLIST
 SIGN_IDENTITY="${MIMI_CODESIGN_IDENTITY:-}"
 if [[ -z "$SIGN_IDENTITY" ]]; then
   SIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '
-    /Developer ID Application:/{print $2; exit}
-    /Apple Development:/{candidate=$2}
-    /Apple Distribution:/ && candidate==""{candidate=$2}
-    END{if (candidate != "") print candidate}
+    /Developer ID Application:/{developer=$2}
+    /Apple Development:/{development=$2}
+    /Apple Distribution:/{distribution=$2}
+    END{
+      if (developer != "") print developer
+      else if (development != "") print development
+      else if (distribution != "") print distribution
+    }
   ')"
 fi
 
@@ -96,7 +100,18 @@ fi
 if [[ -n "$SIGN_IDENTITY" ]]; then
   SIGN_ARGS=(--force --deep --sign "$SIGN_IDENTITY")
   if [[ "$SIGN_HARDENED" == "1" ]]; then
-    SIGN_ARGS+=(--options runtime --timestamp)
+    ENTITLEMENTS_FILE="$ROOT_DIR/build/$APP_NAME.entitlements"
+    cat > "$ENTITLEMENTS_FILE" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+</dict>
+</plist>
+PLIST
+    SIGN_ARGS+=(--options runtime --timestamp --entitlements "$ENTITLEMENTS_FILE")
   else
     SIGN_ARGS+=(--timestamp=none)
   fi

@@ -2,6 +2,53 @@
 import Foundation
 import MimiSpeech
 
+protocol AudioCapturing: AnyObject {
+    @MainActor func start(preRollMilliseconds: Int, inputDeviceID: String?) async throws
+    @MainActor func setMonitorBufferHandler(_ handler: ((AVAudioPCMBuffer) -> Void)?)
+    @MainActor func beginRecording(bufferHandler: ((AVAudioPCMBuffer) -> Void)?, replayPreRollToHandler: Bool)
+    @MainActor func finishRecording() throws -> URL
+    @MainActor func cancelRecording()
+    @MainActor func stop()
+    @MainActor func currentDBFS() -> Double
+    @MainActor func secondsSinceLastBuffer() -> TimeInterval?
+}
+
+protocol ASRServicing: AnyObject {
+    func prepare(backend: ASRBackend) async throws
+    func transcribeApple(audioURL: URL) async throws -> String
+    func startAppleStream(
+        detectSpeech: Bool,
+        onEvent: @escaping AppleSpeechTranscriberBackend.EventHandler,
+        onDetection: AppleSpeechTranscriberBackend.DetectionHandler?
+    ) async throws
+    func appendAppleBuffer(_ buffer: AVAudioPCMBuffer) async throws
+    func finishAppleStream() async throws -> String
+    func cancelAppleStream() async
+    func transcribe(audioURL: URL) async throws -> String
+}
+
+@MainActor
+protocol OverlayShowing: AnyObject {
+    func show(_ message: String, detail: String?, level: Double?)
+    func updateLevel(_ level: Double)
+    func updateDetail(_ detail: String?)
+    func hide(after milliseconds: Int)
+}
+
+extension OverlayShowing {
+    func show(_ message: String) {
+        show(message, detail: nil, level: nil)
+    }
+
+    func show(_ message: String, detail: String?) {
+        show(message, detail: detail, level: nil)
+    }
+}
+
+extension AudioCapture: AudioCapturing {}
+extension ASRService: ASRServicing {}
+extension OverlayWindowController: OverlayShowing {}
+
 @MainActor
 final class DictationController {
     private enum RecordingMode {
@@ -42,14 +89,15 @@ final class DictationController {
     }
 
     private let configProvider: () -> MimiConfig
-    private let audioCapture: AudioCapture
-    private let asrService: ASRService
+    private let audioCapture: AudioCapturing
+    private let asrService: ASRServicing
     private let textInserter: TextInserter
     private let history: HistoryStore
-    private let overlay: OverlayWindowController
+    private let overlay: OverlayShowing
     private let onStatus: (String) -> Void
     private let onTranscript: (String?) -> Void
     private let onPartialTranscript: (String?) -> Void
+    private let missingInputTimeout: TimeInterval
 
     private var state: State = .idle
     private var silenceTask: Task<Void, Never>?
@@ -62,18 +110,21 @@ final class DictationController {
     private var ambientMicStartedAt: Date?
     private var engineStartTask: Task<Void, Never>?
     private var appleStreamTask: Task<Void, Never>?
+    private var ambientReconcileTask: Task<Void, Never>?
+    private var ambientReconcilePending = false
     private var lastAmbientDecisionLogAt = Date.distantPast
 
     init(
         configProvider: @escaping () -> MimiConfig,
-        audioCapture: AudioCapture,
-        asrService: ASRService,
+        audioCapture: AudioCapturing,
+        asrService: ASRServicing,
         textInserter: TextInserter,
         history: HistoryStore,
-        overlay: OverlayWindowController,
+        overlay: OverlayShowing,
         onStatus: @escaping (String) -> Void,
         onTranscript: @escaping (String?) -> Void,
-        onPartialTranscript: @escaping (String?) -> Void
+        onPartialTranscript: @escaping (String?) -> Void,
+        missingInputTimeout: TimeInterval = 2
     ) {
         self.configProvider = configProvider
         self.audioCapture = audioCapture
@@ -84,6 +135,7 @@ final class DictationController {
         self.onStatus = onStatus
         self.onTranscript = onTranscript
         self.onPartialTranscript = onPartialTranscript
+        self.missingInputTimeout = missingInputTimeout
     }
 
     func prepareASR() {
@@ -130,15 +182,10 @@ final class DictationController {
     }
 
     func updateAmbientMode() {
-        if shouldRunAmbientMonitoring() {
-            if ambientTask == nil {
-                startAmbientMonitoring()
-            } else if case .idle = state {
-                stopAmbientMonitoring()
-                startAmbientMonitoring()
-            }
-        } else {
-            stopAmbientMonitoring()
+        ambientReconcilePending = true
+        guard ambientReconcileTask == nil else { return }
+        ambientReconcileTask = Task { [weak self] in
+            await self?.drainAmbientReconcileRequests()
         }
     }
 
@@ -433,10 +480,17 @@ final class DictationController {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 50_000_000)
                 if self.shouldRestartAmbientMicForMissingInput() {
-                    DebugLog.write("ambient restarting mic after missing input buffers")
-                    self.onStatus("Restarting ambient mic…")
-                    self.stopAmbientMonitoring()
-                    self.startAmbientMonitoring()
+                    // The selected input is delivering no audio. Stop once and
+                    // report it — do NOT loop restarting, which would rapidly
+                    // tear down and recreate the SpeechAnalyzer stack and corrupt
+                    // runtime state (later crashing on unrelated UI actions).
+                    // The device watcher re-arms ambient via updateAmbientMode()
+                    // when inputs actually change.
+                    DebugLog.write("ambient stopping: no audio from selected input")
+                    await self.stopAmbientMonitoring()
+                    self.onStatus("No audio from microphone — choose another input")
+                    self.overlay.show("No mic audio", detail: "Choose another input in settings")
+                    self.overlay.hide(after: 4_000)
                     return
                 }
                 self.checkAmbientStart()
@@ -444,12 +498,34 @@ final class DictationController {
         }
     }
 
-    private func stopAmbientMonitoring() {
+    private func drainAmbientReconcileRequests() async {
+        while ambientReconcilePending {
+            ambientReconcilePending = false
+            await reconcileAmbientMode()
+        }
+        ambientReconcileTask = nil
+    }
+
+    private func reconcileAmbientMode() async {
+        if shouldRunAmbientMonitoring() {
+            if ambientTask == nil {
+                startAmbientMonitoring()
+            } else if case .idle = state {
+                await stopAmbientMonitoring()
+                if !ambientReconcilePending {
+                    startAmbientMonitoring()
+                }
+            }
+        } else {
+            await stopAmbientMonitoring()
+        }
+    }
+
+    private func stopAmbientMonitoring() async {
         ambientTask?.cancel()
         ambientTask = nil
         appleStreamTask?.cancel()
         appleStreamTask = nil
-        Task { [asrService] in await asrService.cancelAppleStream() }
         audioCapture.setMonitorBufferHandler(nil)
         speechDetectedByDetector = false
         lastSpeechDetectedAt = nil
@@ -459,6 +535,7 @@ final class DictationController {
             audioCapture.stop()
             onStatus("Ready — hold Right Command to dictate")
         }
+        await asrService.cancelAppleStream()
     }
 
     private func checkAmbientStart() {
@@ -534,7 +611,7 @@ final class DictationController {
             return seconds > 2
         }
         guard let ambientMicStartedAt else { return false }
-        return Date().timeIntervalSince(ambientMicStartedAt) > 2
+        return Date().timeIntervalSince(ambientMicStartedAt) > missingInputTimeout
     }
 
     private func recentlyDetectedSpeech(within seconds: TimeInterval) -> Bool {
