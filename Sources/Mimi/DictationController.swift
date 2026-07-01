@@ -62,6 +62,7 @@ final class DictationController {
         let isAmbient: Bool
         let usesAppleStream: Bool
         let usesSpeechActivityStop: Bool
+        let pressesReturnAfterPaste: Bool
 
         init(config: MimiConfig, isAmbient: Bool) {
             let normalizedConfig = config.normalizedForBackend()
@@ -73,6 +74,7 @@ final class DictationController {
                 silenceDetectionMode: normalizedConfig.silenceDetectionMode
             )
             usesSpeechActivityStop = capabilities.usesSpeechActivityStop(normalizedConfig.silenceDetectionMode)
+            pressesReturnAfterPaste = isAmbient || normalizedConfig.pressEnterAfterPaste
         }
     }
 
@@ -223,7 +225,7 @@ final class DictationController {
                 await asrService.cancelAppleStream()
                 await MainActor.run {
                     guard let self, resumeAmbient else { return }
-                    self.startAmbientAppleStream()
+                    self.resumeAmbientMonitoringAfterRecording()
                 }
             }
         }
@@ -246,6 +248,9 @@ final class DictationController {
         engineStartTask = Task { [weak self] in
             guard let self else { return }
             do {
+                if !plan.isAmbient {
+                    await self.pauseAmbientMonitoringForShortcutRecording()
+                }
                 try await self.audioCapture.start(
                     preRollMilliseconds: plan.config.preRollMilliseconds,
                     inputDeviceID: plan.config.inputDeviceID
@@ -317,15 +322,14 @@ final class DictationController {
             onTranscript(text)
             try await textInserter.insert(
                 text,
-                pressReturn: plan.config.pressEnterAfterPaste,
+                pressReturn: plan.pressesReturnAfterPaste,
                 enterDelayMilliseconds: plan.config.postPasteEnterDelayMilliseconds
             )
             appleStreamTask = nil
             onPartialTranscript(nil)
             state = .idle
             if resumeAmbient {
-                ambientCooldownUntil = Date().addingTimeInterval(1)
-                startAmbientAppleStream()
+                resumeAmbientMonitoringAfterRecording()
             }
             onStatus(resumeAmbient ? "Ambient armed" : "Inserted + copied")
             overlay.show("Inserted + copied", detail: preview(text))
@@ -346,7 +350,7 @@ final class DictationController {
             }
             state = .idle
             if resumeAmbient {
-                startAmbientAppleStream()
+                resumeAmbientMonitoringAfterRecording()
             }
             onStatus("Error: \(error.localizedDescription)")
             overlay.show(AppBrand.errorTitle, detail: error.localizedDescription)
@@ -362,6 +366,15 @@ final class DictationController {
                 return try await asrService.finishAppleStream()
             }
             return try await asrService.transcribeApple(audioURL: audioURL)
+        }
+    }
+
+    private func resumeAmbientMonitoringAfterRecording() {
+        ambientCooldownUntil = Date().addingTimeInterval(1)
+        if ambientTask == nil {
+            startAmbientMonitoring()
+        } else {
+            startAmbientAppleStream()
         }
     }
 
@@ -454,6 +467,11 @@ final class DictationController {
             lastSpeechDetectedAt = Date()
         }
         DebugLog.write("speech detector speech=\(detected)")
+    }
+
+    private func pauseAmbientMonitoringForShortcutRecording() async {
+        guard ambientTask != nil else { return }
+        await stopAmbientMonitoring()
     }
 
     private func startAmbientMonitoring() {

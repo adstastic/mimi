@@ -32,6 +32,44 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertTrue(overlay.messages.contains { $0.message == "No mic audio" })
     }
 
+    func testShortcutRecordingPausesAmbientSpeechBeforeStartingMic() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        let config = ambientConfig(inputDeviceID: "shared-mic")
+        asr.holdCancels()
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.updateAmbientMode()
+        let ambientStarted = await waitUntil({
+            audio.startInputDeviceIDs == ["shared-mic"] && asr.snapshotEvents().contains("stream.start")
+        }, timeout: 1.0)
+        XCTAssertTrue(ambientStarted)
+
+        controller.hotkeyDown()
+        let ambientCancelStarted = await waitUntil({
+            asr.snapshotEvents().contains("stream.cancel.begin")
+        }, timeout: 1.0)
+        XCTAssertTrue(ambientCancelStarted)
+        try await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertEqual(audio.startInputDeviceIDs, ["shared-mic"])
+
+        asr.releaseCancels()
+        let shortcutStarted = await waitUntil({
+            audio.startInputDeviceIDs == ["shared-mic", "shared-mic"]
+        }, timeout: 1.0)
+        XCTAssertTrue(shortcutStarted)
+    }
+
     func testAmbientMicChangeWaitsForSpeechCancelBeforeRestartingMic() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()

@@ -39,19 +39,25 @@ struct SettingsView: View {
                         refresh: refreshInputDevices
                     )
 
+                    ToggleLine("End shortcut on silence", systemImage: "speaker.slash", isOn: $config.silenceAutoStopEnabled)
+                    ToggleLine("Shortcut presses Return", systemImage: "return", isOn: $config.pressEnterAfterPaste)
+                }
+
+                SettingsCard("Ambient", systemImage: "ear.and.waveform") {
                     ToggleLine(
-                        "Ambient",
+                        "Ambient mode",
                         systemImage: "ear.and.waveform",
                         isOn: $config.ambientModeEnabled,
                         disabled: !backendCapabilities.supportsAmbient
                     )
-                    if !backendCapabilities.supportsAmbient {
-                        Label("Ambient requires Apple SpeechTranscriber.", systemImage: "info.circle")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    ToggleLine("End on silence", systemImage: "speaker.slash", isOn: $config.silenceAutoStopEnabled)
-                    ToggleLine("Press Return after paste", systemImage: "return", isOn: $config.pressEnterAfterPaste)
+                    Label(
+                        backendCapabilities.supportsAmbient
+                            ? "Ambient always stops on pause and presses Return."
+                            : "Ambient requires Apple SpeechTranscriber.",
+                        systemImage: "info.circle"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
 
                 SettingsCard("Shortcuts", systemImage: "keyboard") {
