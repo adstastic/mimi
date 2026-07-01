@@ -7,10 +7,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var statusText = "Starting…"
     @Published private(set) var lastTranscript: String?
     @Published private(set) var liveTranscript: String?
-    @Published private(set) var hotkeyStatus = "Right Command"
     @Published private(set) var permissionStatus = PermissionStatus.current()
-    @Published private(set) var modelLoading = false
-    @Published private(set) var modelReady = false
     @Published private(set) var inputDevices = AudioInputDevice.available()
     @Published var config: MimiConfig {
         didSet {
@@ -20,8 +17,6 @@ final class AppModel: ObservableObject {
             }
             config.save()
             if oldValue.preferredBackend != config.preferredBackend {
-                modelReady = false
-                modelLoading = true
                 dictationController.prepareASR()
                 if config.ambientModeEnabled {
                     dictationController.updateAmbientMode()
@@ -59,7 +54,7 @@ final class AppModel: ObservableObject {
 
         asrService = ASRService { [weak self] status in
             Task { @MainActor in
-                self?.applyStatus(status, updateModelState: true)
+                self?.applyStatus(status)
             }
         }
         dictationController = DictationController(
@@ -69,7 +64,7 @@ final class AppModel: ObservableObject {
             textInserter: textInserter,
             history: history,
             overlay: overlay,
-            onStatus: { [weak self] status in self?.applyStatus(status, updateModelState: true) },
+            onStatus: { [weak self] status in self?.applyStatus(status) },
             onTranscript: { [weak self] transcript in self?.lastTranscript = transcript },
             onPartialTranscript: { [weak self] transcript in self?.liveTranscript = transcript }
         )
@@ -96,12 +91,10 @@ final class AppModel: ObservableObject {
         do {
             refreshPermissions()
             try hotkeyMonitor.start()
-            hotkeyStatus = hotkeyMonitor.statusText
             refreshPermissions()
         } catch {
             refreshPermissions()
-            applyStatus("Hotkey error: \(error.localizedDescription)", updateModelState: false)
-            hotkeyStatus = "Needs Accessibility permission"
+            applyStatus("Hotkey error: \(error.localizedDescription)")
             overlay.show(AppBrand.hotkeyErrorTitle, detail: error.localizedDescription)
             return
         }
@@ -144,21 +137,8 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func applyStatus(_ status: String, updateModelState: Bool) {
+    private func applyStatus(_ status: String) {
         statusText = status
-        guard updateModelState else { return }
-
-        let lowercased = status.lowercased()
-        if lowercased.contains("preparing") || lowercased.contains("loading") || lowercased.contains("starting") {
-            modelLoading = true
-            modelReady = false
-        } else if lowercased.contains("ready") || lowercased.contains("loaded") {
-            modelLoading = false
-            modelReady = true
-        } else if lowercased.contains("asr error") || lowercased.contains("mlx error") || lowercased.contains("apple speech error") {
-            modelLoading = false
-            modelReady = false
-        }
     }
 
     private func restartHotkeyMonitor() {
@@ -166,17 +146,12 @@ final class AppModel: ObservableObject {
             dictationShortcut: config.dictationShortcut,
             ambientToggleShortcut: config.ambientToggleShortcut
         )
-        guard started else {
-            hotkeyStatus = hotkeyMonitor.statusText
-            return
-        }
+        guard started else { return }
         hotkeyMonitor.stop()
         do {
             try hotkeyMonitor.start()
-            hotkeyStatus = hotkeyMonitor.statusText
         } catch {
-            applyStatus("Hotkey error: \(error.localizedDescription)", updateModelState: false)
-            hotkeyStatus = "Needs Input Monitoring permission"
+            applyStatus("Hotkey error: \(error.localizedDescription)")
             overlay.show(AppBrand.hotkeyErrorTitle, detail: error.localizedDescription)
         }
     }
@@ -193,7 +168,6 @@ final class AppModel: ObservableObject {
         shortcutRecording = recording
         if recording {
             hotkeyMonitor.stop()
-            hotkeyStatus = "Recording shortcut…"
         } else if started {
             restartHotkeyMonitor()
         }

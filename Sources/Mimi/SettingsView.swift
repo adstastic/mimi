@@ -4,10 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @Binding var config: MimiConfig
     let statusText: String
-    let hotkeyStatus: String
     let permissionStatus: PermissionStatus
-    let modelLoading: Bool
-    let modelReady: Bool
     let inputDevices: [AudioInputDevice]
     let lastTranscript: String?
     let liveTranscript: String?
@@ -15,7 +12,6 @@ struct SettingsView: View {
     let shortcutRecordingChanged: (Bool) -> Void
     let refreshPermissions: () -> Void
     let refreshInputDevices: () -> Void
-    let quit: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
