@@ -34,6 +34,10 @@ final class TextInserter {
         }
     }
 
+    func pressReturn() throws {
+        try pressReturnKey()
+    }
+
     private func pasteViaClipboard(_ text: String) throws {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()

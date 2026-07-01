@@ -70,6 +70,62 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertTrue(shortcutStarted)
     }
 
+    func testAmbientIgnoresSpeechBelowNoiseFloor() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = ambientConfig(inputDeviceID: "quiet-mic")
+        config.silenceThresholdDBFS = -35
+        audio.dbfs = -60
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.updateAmbientMode()
+        let streamStarted = await waitUntil({ asr.snapshotEvents().contains("stream.start") }, timeout: 1.0)
+        XCTAssertTrue(streamStarted)
+
+        asr.emitPartial("quiet words")
+        try await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertEqual(audio.startInputDeviceIDs, ["quiet-mic"])
+
+        audio.dbfs = -20
+        asr.emitPartial("loud words")
+        let loudSpeechStarted = await waitUntil({ audio.startInputDeviceIDs == ["quiet-mic", "quiet-mic"] }, timeout: 1.0)
+        XCTAssertTrue(loudSpeechStarted)
+    }
+
+    func testAmbientSpeechStreamFailureStopsMic() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        let config = ambientConfig(inputDeviceID: "bad-mic")
+        asr.startError = NSError(domain: "FakeASR", code: 1, userInfo: [NSLocalizedDescriptionKey: "stream failed"])
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.updateAmbientMode()
+
+        let stopped = await waitUntil({ audio.stopCount == 1 }, timeout: 1.0)
+        XCTAssertTrue(stopped)
+        XCTAssertTrue(status.values.contains("Apple Speech error: stream failed"))
+    }
+
     func testAmbientMicChangeWaitsForSpeechCancelBeforeRestartingMic() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
@@ -157,6 +213,7 @@ private final class FakeAudioCapture: AudioCapturing {
     var startInputDeviceIDs: [String?] = []
     var stopCount = 0
     var monitorHandlerSetCount = 0
+    var dbfs: Double = -120
 
     func start(preRollMilliseconds: Int, inputDeviceID: String?) async throws {
         startInputDeviceIDs.append(inputDeviceID)
@@ -179,7 +236,7 @@ private final class FakeAudioCapture: AudioCapturing {
     }
 
     func currentDBFS() -> Double {
-        -120
+        dbfs
     }
 
     func secondsSinceLastBuffer() -> TimeInterval? {
@@ -190,7 +247,9 @@ private final class FakeAudioCapture: AudioCapturing {
 private final class FakeASRService: ASRServicing {
     private let lock = NSLock()
     private var events: [String] = []
+    private var eventHandler: AppleSpeechTranscriberBackend.EventHandler?
     private var cancelsHeld = false
+    var startError: Error?
     private var pendingCancel: CheckedContinuation<Void, Never>?
 
     func holdCancels() {
@@ -215,6 +274,14 @@ private final class FakeASRService: ASRServicing {
         return events
     }
 
+    func emitPartial(_ text: String) {
+        let handler: AppleSpeechTranscriberBackend.EventHandler?
+        lock.lock()
+        handler = eventHandler
+        lock.unlock()
+        handler?(.partial(text))
+    }
+
     func prepare(backend: ASRBackend) async throws {}
 
     func transcribeApple(audioURL: URL) async throws -> String {
@@ -226,7 +293,8 @@ private final class FakeASRService: ASRServicing {
         onEvent: @escaping AppleSpeechTranscriberBackend.EventHandler,
         onDetection: AppleSpeechTranscriberBackend.DetectionHandler?
     ) async throws {
-        record("stream.start")
+        if let startError { throw startError }
+        recordStart(onEvent)
     }
 
     func appendAppleBuffer(_ buffer: AVAudioPCMBuffer) async throws {}
@@ -257,6 +325,13 @@ private final class FakeASRService: ASRServicing {
 
     func transcribe(audioURL: URL) async throws -> String {
         ""
+    }
+
+    private func recordStart(_ handler: @escaping AppleSpeechTranscriberBackend.EventHandler) {
+        lock.lock()
+        eventHandler = handler
+        events.append("stream.start")
+        lock.unlock()
     }
 
     private func shouldHoldCancel() -> Bool {

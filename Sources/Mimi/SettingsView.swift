@@ -50,6 +50,12 @@ struct SettingsView: View {
                         isOn: $config.ambientModeEnabled,
                         disabled: !backendCapabilities.supportsAmbient
                     )
+                    ToggleLine(
+                        "Press Return on start",
+                        systemImage: "return",
+                        isOn: $config.ambientPressEnterOnStart,
+                        disabled: !backendCapabilities.supportsAmbient
+                    )
                     Label(
                         backendCapabilities.supportsAmbient
                             ? "Ambient always stops on pause and presses Return."
@@ -99,15 +105,13 @@ struct SettingsView: View {
                     }
 
                     SliderLine(
-                        "Threshold",
+                        "Noise floor",
                         value: "\(Int(config.silenceThresholdDBFS)) dBFS",
                         systemImage: "dial.low"
                     ) {
                         Slider(value: $config.silenceThresholdDBFS, in: -65 ... -15, step: 1)
                             .frame(width: 170)
                     }
-                    .disabled(config.silenceDetectionMode == .speechActivity)
-                    .opacity(config.silenceDetectionMode == .speechActivity ? 0.45 : 1)
                     SliderLine(
                         "Stop after",
                         value: String(format: "%.1f s", Double(config.silenceDurationMilliseconds) / 1_000.0),

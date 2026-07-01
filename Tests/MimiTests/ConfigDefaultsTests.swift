@@ -7,6 +7,7 @@ final class ConfigDefaultsTests: XCTestCase {
 
         XCTAssertEqual(config.preferredBackend, .appleSpeechTranscriber)
         XCTAssertFalse(config.ambientModeEnabled)
+        XCTAssertFalse(config.ambientPressEnterOnStart)
         XCTAssertTrue(config.modelDownloadEnabled)
         XCTAssertTrue(config.silenceAutoStopEnabled)
         XCTAssertTrue(config.pressEnterAfterPaste)
@@ -112,6 +113,7 @@ final class ConfigDefaultsTests: XCTestCase {
 
         XCTAssertEqual(config.dictationShortcut, .rightCommand)
         XCTAssertEqual(config.ambientToggleShortcut, .ambientToggleDefault)
+        XCTAssertFalse(config.ambientPressEnterOnStart)
         XCTAssertNil(config.inputDeviceID)
         XCTAssertEqual(config.silenceDetectionMode, .audioLevel)
     }

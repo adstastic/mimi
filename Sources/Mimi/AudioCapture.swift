@@ -266,7 +266,7 @@ final class AudioCapture {
                 let now = Date()
                 if now.timeIntervalSince(lastMonitorLogAt) >= 1 {
                     lastMonitorLogAt = now
-                    DebugLog.write(String(format: "audio monitor buffer frames=%d dbfs=%.1f", copiedBuffer.frameLength, latestDBFS))
+                    DebugLog.write(String(format: "audio monitor buffer frames=%d dbfs=%.1f", copiedBuffer.frameLength, dbfs))
                 }
                 monitorHandler(copiedBuffer)
             }

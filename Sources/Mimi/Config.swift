@@ -150,6 +150,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         case inputDeviceID
         case ambientModeEnabled
         case ambientToggleShortcut
+        case ambientPressEnterOnStart
         case pressEnterAfterPaste
         case postPasteEnterDelayMilliseconds
         case modelDownloadEnabled
@@ -168,6 +169,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
     public var inputDeviceID: String?
     public var ambientModeEnabled: Bool
     public var ambientToggleShortcut: MimiShortcut
+    public var ambientPressEnterOnStart: Bool
     public var pressEnterAfterPaste: Bool
     public var postPasteEnterDelayMilliseconds: Int
     public var modelDownloadEnabled: Bool
@@ -186,6 +188,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         inputDeviceID: nil,
         ambientModeEnabled: false,
         ambientToggleShortcut: .ambientToggleDefault,
+        ambientPressEnterOnStart: false,
         pressEnterAfterPaste: true,
         postPasteEnterDelayMilliseconds: 150,
         modelDownloadEnabled: true
@@ -205,6 +208,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         inputDeviceID: String? = nil,
         ambientModeEnabled: Bool,
         ambientToggleShortcut: MimiShortcut = .ambientToggleDefault,
+        ambientPressEnterOnStart: Bool = false,
         pressEnterAfterPaste: Bool,
         postPasteEnterDelayMilliseconds: Int,
         modelDownloadEnabled: Bool
@@ -222,6 +226,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         self.inputDeviceID = inputDeviceID
         self.ambientModeEnabled = ambientModeEnabled
         self.ambientToggleShortcut = ambientToggleShortcut
+        self.ambientPressEnterOnStart = ambientPressEnterOnStart
         self.pressEnterAfterPaste = pressEnterAfterPaste
         self.postPasteEnterDelayMilliseconds = postPasteEnterDelayMilliseconds
         self.modelDownloadEnabled = modelDownloadEnabled
@@ -243,6 +248,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         inputDeviceID = try container.decodeIfPresent(String.self, forKey: .inputDeviceID)
         ambientModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .ambientModeEnabled) ?? Self.defaults.ambientModeEnabled
         ambientToggleShortcut = try container.decodeIfPresent(MimiShortcut.self, forKey: .ambientToggleShortcut) ?? Self.defaults.ambientToggleShortcut
+        ambientPressEnterOnStart = try container.decodeIfPresent(Bool.self, forKey: .ambientPressEnterOnStart) ?? Self.defaults.ambientPressEnterOnStart
         pressEnterAfterPaste = try container.decodeIfPresent(Bool.self, forKey: .pressEnterAfterPaste) ?? Self.defaults.pressEnterAfterPaste
         postPasteEnterDelayMilliseconds = try container.decodeIfPresent(Int.self, forKey: .postPasteEnterDelayMilliseconds) ?? Self.defaults.postPasteEnterDelayMilliseconds
         modelDownloadEnabled = try container.decodeIfPresent(Bool.self, forKey: .modelDownloadEnabled) ?? Self.defaults.modelDownloadEnabled
@@ -263,6 +269,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         try container.encodeIfPresent(inputDeviceID, forKey: .inputDeviceID)
         try container.encode(ambientModeEnabled, forKey: .ambientModeEnabled)
         try container.encode(ambientToggleShortcut, forKey: .ambientToggleShortcut)
+        try container.encode(ambientPressEnterOnStart, forKey: .ambientPressEnterOnStart)
         try container.encode(pressEnterAfterPaste, forKey: .pressEnterAfterPaste)
         try container.encode(postPasteEnterDelayMilliseconds, forKey: .postPasteEnterDelayMilliseconds)
         try container.encode(modelDownloadEnabled, forKey: .modelDownloadEnabled)
