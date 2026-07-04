@@ -370,7 +370,7 @@ private struct InputDevicePickerLine: View {
 
     private var selection: Binding<String> {
         Binding(
-            get: { selectedID ?? "" },
+            get: { AudioInputDevice.validSelection(selectedID, in: devices) ?? "" },
             set: { selectedID = $0.isEmpty ? nil : $0 }
         )
     }

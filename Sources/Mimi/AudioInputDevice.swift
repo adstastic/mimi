@@ -5,6 +5,11 @@ struct AudioInputDevice: Identifiable, Hashable, Sendable {
     let id: String
     let name: String
 
+    static func validSelection(_ selectedID: String?, in devices: [AudioInputDevice]) -> String? {
+        guard let selectedID, !selectedID.isEmpty else { return nil }
+        return devices.contains { $0.id == selectedID } ? selectedID : nil
+    }
+
     static func available() -> [AudioInputDevice] {
         allDeviceIDs().compactMap { deviceID in
             guard hasInputStreams(deviceID),

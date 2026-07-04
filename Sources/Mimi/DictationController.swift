@@ -604,6 +604,7 @@ final class DictationController {
                 self.startAmbientAppleStream()
                 self.onStatus("Ambient armed")
             } catch {
+                await self.stopAmbientMonitoring()
                 self.onStatus("Mic error: \(error.localizedDescription)")
                 self.overlay.show("Mic error", detail: error.localizedDescription)
                 return

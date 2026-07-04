@@ -32,6 +32,34 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertTrue(overlay.messages.contains { $0.message == "No mic audio" })
     }
 
+    func testAmbientStartFailureClearsTaskForRetry() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        let config = ambientConfig(inputDeviceID: "flaky-mic")
+        audio.startError = AudioCapture.CaptureError.inputDeviceUnavailable
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.updateAmbientMode()
+        let failed = await waitUntil({ status.values.contains("Mic error: Selected microphone is not available.") }, timeout: 1.0)
+        XCTAssertTrue(failed)
+        XCTAssertEqual(audio.stopCount, 1)
+
+        audio.startError = nil
+        controller.updateAmbientMode()
+        let retried = await waitUntil({ audio.startInputDeviceIDs == ["flaky-mic", "flaky-mic"] }, timeout: 1.0)
+        XCTAssertTrue(retried)
+    }
+
     func testShortcutRecordingPausesAmbientSpeechBeforeStartingMic() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
@@ -378,9 +406,11 @@ private final class FakeAudioCapture: AudioCapturing {
     var stopCount = 0
     var monitorHandlerSetCount = 0
     var dbfs: Double = -120
+    var startError: Error?
 
     func start(preRollMilliseconds: Int, inputDeviceID: String?) async throws {
         startInputDeviceIDs.append(inputDeviceID)
+        if let startError { throw startError }
     }
 
     func setMonitorBufferHandler(_ handler: ((AVAudioPCMBuffer) -> Void)?) {

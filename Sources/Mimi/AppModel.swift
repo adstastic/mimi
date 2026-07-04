@@ -23,14 +23,14 @@ final class AppModel: ObservableObject {
             if oldValue.preferredBackend != config.preferredBackend {
                 dictationController.prepareASR()
                 if config.ambientModeEnabled {
-                    dictationController.updateAmbientMode()
+                    scheduleAmbientModeUpdate()
                 }
             }
             if oldValue.ambientModeEnabled != config.ambientModeEnabled {
-                dictationController.updateAmbientMode()
+                scheduleAmbientModeUpdate()
             }
             if oldValue.inputDeviceID != config.inputDeviceID || oldValue.silenceDetectionMode != config.silenceDetectionMode {
-                dictationController.updateAmbientMode()
+                scheduleAmbientModeUpdate()
             }
             if !shortcutRecording,
                oldValue.dictationShortcut != config.dictationShortcut
@@ -51,12 +51,21 @@ final class AppModel: ObservableObject {
     private var dictationController: DictationController!
     private var hotkeyMonitor: HotkeyMonitor!
     private var inputDeviceTask: Task<Void, Never>?
+    private var ambientModeUpdateTask: Task<Void, Never>?
     private var lastDefaultInputDeviceID = AudioInputDevice.defaultInputDeviceUID()
     private var started = false
     private var shortcutRecording = false
 
     init() {
-        config = MimiConfig.load()
+        let loadedInputDevices = AudioInputDevice.available()
+        var loadedConfig = MimiConfig.load()
+        let validInputDeviceID = AudioInputDevice.validSelection(loadedConfig.inputDeviceID, in: loadedInputDevices)
+        if validInputDeviceID != loadedConfig.inputDeviceID {
+            loadedConfig.inputDeviceID = validInputDeviceID
+            loadedConfig.save()
+        }
+        config = loadedConfig
+        inputDevices = loadedInputDevices
         refreshVoiceprintState()
 
         asrService = ASRService { [weak self] status in
@@ -116,8 +125,9 @@ final class AppModel: ObservableObject {
     func refreshInputDevices() {
         inputDevices = AudioInputDevice.available()
         lastDefaultInputDeviceID = AudioInputDevice.defaultInputDeviceUID()
-        if config.ambientModeEnabled {
-            dictationController.updateAmbientMode()
+        let resetMissingDevice = resetMissingSelectedInputDevice()
+        if config.ambientModeEnabled, !resetMissingDevice {
+            scheduleAmbientModeUpdate()
         }
     }
 
@@ -138,8 +148,9 @@ final class AppModel: ObservableObject {
                     if defaultChanged {
                         self.lastDefaultInputDeviceID = defaultInputDeviceID
                     }
-                    if (devicesChanged || defaultChanged), self.config.ambientModeEnabled {
-                        self.dictationController.updateAmbientMode()
+                    let resetMissingDevice = self.resetMissingSelectedInputDevice()
+                    if (devicesChanged || defaultChanged), self.config.ambientModeEnabled, !resetMissingDevice {
+                        self.scheduleAmbientModeUpdate()
                     }
                 }
             }
@@ -148,6 +159,23 @@ final class AppModel: ObservableObject {
 
     private func applyStatus(_ status: String) {
         statusText = status
+    }
+
+    @discardableResult
+    private func resetMissingSelectedInputDevice() -> Bool {
+        let validInputDeviceID = AudioInputDevice.validSelection(config.inputDeviceID, in: inputDevices)
+        guard validInputDeviceID != config.inputDeviceID else { return false }
+        config.inputDeviceID = validInputDeviceID
+        return true
+    }
+
+    private func scheduleAmbientModeUpdate() {
+        ambientModeUpdateTask?.cancel()
+        ambientModeUpdateTask = Task { @MainActor [weak self] in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            self?.dictationController.updateAmbientMode()
+        }
     }
 
     private func restartHotkeyMonitor() {

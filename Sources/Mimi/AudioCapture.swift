@@ -68,13 +68,15 @@ final class AudioCapture {
 
         // A just-switched HAL device can momentarily report an invalid format
         // (0 Hz / 0 ch); installTap aborts on that too. Let it settle, then
-        // bail cleanly if it never does.
-        var format = input.outputFormat(forBus: 0)
+        // bail cleanly if it never does. Use the hardware input format: some
+        // USB mics report a stale output format after device switches, and
+        // passing that to installTap raises an uncatchable Obj-C exception.
+        var format = input.inputFormat(forBus: 0)
         var settleAttempts = 0
         while !Self.isValid(format), settleAttempts < 15 {
             try await Task.sleep(nanoseconds: 20_000_000)
             try Task.checkCancellation()
-            format = input.outputFormat(forBus: 0)
+            format = input.inputFormat(forBus: 0)
             settleAttempts += 1
         }
         try Task.checkCancellation()
