@@ -33,6 +33,16 @@ Safe streaming smoke test (no UI focus stealing):
 scripts/smoke_streaming.sh
 ```
 
+Prototype voiceprint extraction:
+
+```bash
+swift run MimiSmoke voiceprint-enroll /path/to/my-voice-1.wav /path/to/my-voice-2.wav [--threshold 0.78]
+swift run MimiSmoke voiceprint-verify /path/to/check.wav
+swift run MimiSmoke voiceprint-extract /path/to/mixed.wav --output /tmp/owner-only.wav
+```
+
+The settings window also has My Voice → Enroll / Verify / Reset. If a profile exists, mimi diarizes recordings, keeps matching speaker segments, then transcribes only those.
+
 Grant:
 
 - Microphone permission

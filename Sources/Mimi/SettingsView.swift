@@ -1,4 +1,5 @@
 import AppKit
+import MimiSpeech
 import SwiftUI
 
 struct SettingsView: View {
@@ -6,8 +7,14 @@ struct SettingsView: View {
     let statusText: String
     let permissionStatus: PermissionStatus
     let inputDevices: [AudioInputDevice]
+    let voiceprintStatus: String
+    let voiceprintProfileExists: Bool
+    let voiceprintBusy: Bool
     let lastTranscript: String?
     let liveTranscript: String?
+    let enrollVoiceprint: () -> Void
+    let verifyVoiceprint: () -> Void
+    let resetVoiceprint: () -> Void
     let copyLastTranscript: () -> Void
     let shortcutRecordingChanged: (Bool) -> Void
     let refreshPermissions: () -> Void
@@ -37,6 +44,48 @@ struct SettingsView: View {
 
                     ToggleLine("End shortcut on silence", systemImage: "speaker.slash", isOn: $config.silenceAutoStopEnabled)
                     ToggleLine("Shortcut presses Return", systemImage: "return", isOn: $config.pressEnterAfterPaste)
+                    ToggleLine("Show live transcript", systemImage: "text.bubble", isOn: $config.showLiveTranscript)
+                    Label(
+                        "Live transcript is raw mic audio and may show every speaker. My Voice filtering happens after recording stops.",
+                        systemImage: "info.circle"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+
+                SettingsCard("My Voice", systemImage: "person.wave.2") {
+                    HStack(spacing: 8) {
+                        Image(systemName: voiceprintProfileExists ? "checkmark.seal.fill" : "person.badge.plus")
+                            .foregroundStyle(voiceprintProfileExists ? .green : .secondary)
+                            .frame(width: 18)
+                        Text(voiceprintStatus)
+                            .lineLimit(2)
+                        Spacer()
+                        if voiceprintBusy {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Read twice while enrolling:")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("“\(VoiceprintPrototype.enrollmentPrompt)”")
+                            .font(.callout)
+                            .textSelection(.enabled)
+                    }
+                    HStack {
+                        Button("Enroll", action: enrollVoiceprint)
+                            .disabled(voiceprintBusy)
+                        Button("Verify", action: verifyVoiceprint)
+                            .disabled(voiceprintBusy || !voiceprintProfileExists)
+                        Button("Reset", action: resetVoiceprint)
+                            .disabled(voiceprintBusy || !voiceprintProfileExists)
+                    }
+                    .controlSize(.small)
+                    Label("Prototype keeps matching speaker segments, then transcribes only those.", systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 SettingsCard("Ambient", systemImage: "ear.and.waveform") {

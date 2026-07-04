@@ -11,6 +11,7 @@ final class ConfigDefaultsTests: XCTestCase {
         XCTAssertTrue(config.modelDownloadEnabled)
         XCTAssertTrue(config.silenceAutoStopEnabled)
         XCTAssertTrue(config.pressEnterAfterPaste)
+        XCTAssertTrue(config.showLiveTranscript)
         XCTAssertEqual(config.hotkeyKeyCode, 54)
         XCTAssertEqual(config.dictationShortcut, .rightCommand)
         XCTAssertEqual(config.ambientToggleShortcut, .ambientToggleDefault)
@@ -116,5 +117,6 @@ final class ConfigDefaultsTests: XCTestCase {
         XCTAssertFalse(config.ambientPressEnterOnStart)
         XCTAssertNil(config.inputDeviceID)
         XCTAssertEqual(config.silenceDetectionMode, .audioLevel)
+        XCTAssertTrue(config.showLiveTranscript)
     }
 }

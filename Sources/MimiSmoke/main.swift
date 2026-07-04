@@ -16,6 +16,12 @@ struct MimiSmoke {
             guard arguments.count >= 2 else { printUsageAndExit() }
             let url = URL(fileURLWithPath: arguments[1]).standardizedFileURL
             _ = try await runAppleStreamFile(url: url)
+        case "voiceprint-enroll":
+            try await runVoiceprintEnroll(arguments: Array(arguments.dropFirst()))
+        case "voiceprint-verify":
+            try await runVoiceprintVerify(arguments: Array(arguments.dropFirst()))
+        case "voiceprint-extract":
+            try await runVoiceprintExtract(arguments: Array(arguments.dropFirst()))
         case "end-to-end-textedit":
             guard arguments.count >= 2 else { printUsageAndExit() }
             guard arguments.contains("--allow-focus-steal") else {
@@ -36,6 +42,64 @@ struct MimiSmoke {
         let summary = try await transcribeAppleStreamFile(url: url, printEvents: true)
         try validateAppleStreaming(summary)
         return summary
+    }
+
+    private static func runVoiceprintEnroll(arguments: [String]) async throws {
+        let output = value(after: "--output", in: arguments).map { URL(fileURLWithPath: $0).standardizedFileURL }
+            ?? VoiceprintPrototype.defaultProfileURL
+        let audioURLs = arguments
+            .prefix { !$0.hasPrefix("--") }
+            .map { URL(fileURLWithPath: $0).standardizedFileURL }
+        guard !audioURLs.isEmpty else { printUsageAndExit() }
+
+        let threshold = value(after: "--threshold", in: arguments).flatMap(Float.init)
+        let service = VoiceprintEmbeddingService()
+        let profile = try await service.makeProfile(audioURLs: audioURLs, thresholdOverride: threshold)
+        try VoiceprintPrototype.save(profile, to: output)
+        print("voiceprint_profile=\(output.path)")
+        print("samples=\(profile.sampleCount)")
+        print("embedding_dimensions=\(profile.embedding.count)")
+        print(String(format: "threshold=%.3f", Double(profile.threshold)))
+    }
+
+    private static func runVoiceprintVerify(arguments: [String]) async throws {
+        guard let audioPath = arguments.first, !audioPath.hasPrefix("--") else { printUsageAndExit() }
+        let audioURL = URL(fileURLWithPath: audioPath).standardizedFileURL
+        let profileURL = value(after: "--profile", in: arguments).map { URL(fileURLWithPath: $0).standardizedFileURL }
+            ?? VoiceprintPrototype.defaultProfileURL
+        let profile = try VoiceprintPrototype.loadProfile(from: profileURL)
+        let result = try await VoiceprintEmbeddingService().verify(audioURL: audioURL, against: profile)
+        print("voiceprint_profile=\(profileURL.path)")
+        print("accepted=\(result.accepted)")
+        print(String(format: "distance=%.3f", Double(result.distance)))
+        print(String(format: "threshold=%.3f", Double(result.threshold)))
+        print("embedding_dimensions=\(result.embeddingDimensions)")
+    }
+
+    private static func runVoiceprintExtract(arguments: [String]) async throws {
+        guard let audioPath = arguments.first, !audioPath.hasPrefix("--") else { printUsageAndExit() }
+        let audioURL = URL(fileURLWithPath: audioPath).standardizedFileURL
+        let profileURL = value(after: "--profile", in: arguments).map { URL(fileURLWithPath: $0).standardizedFileURL }
+            ?? VoiceprintPrototype.defaultProfileURL
+        let outputURL = value(after: "--output", in: arguments).map { URL(fileURLWithPath: $0).standardizedFileURL }
+        let profile = try VoiceprintPrototype.loadProfile(from: profileURL)
+        let result = try await VoiceprintEmbeddingService().extractOwnerSpeech(audioURL: audioURL, profile: profile)
+        print("voiceprint_profile=\(profileURL.path)")
+        print("total_segments=\(result.totalSegmentCount)")
+        print("kept_segments=\(result.keptSegmentCount)")
+        print(String(format: "kept_duration=%.2f", Double(result.keptDurationSeconds)))
+        let bestDistance = result.bestDistance.map { String(format: "%.3f", Double($0)) } ?? "none"
+        print("best_distance=\(bestDistance)")
+        print(String(format: "threshold=%.3f", Double(result.threshold)))
+        if let audioURL = result.audioURL {
+            if let outputURL {
+                try? FileManager.default.removeItem(at: outputURL)
+                try FileManager.default.copyItem(at: audioURL, to: outputURL)
+                print("owner_audio=\(outputURL.path)")
+            } else {
+                print("owner_audio=\(audioURL.path)")
+            }
+        }
     }
 
     private static func runTextEditEndToEnd(url: URL, pressReturn: Bool) async throws {
@@ -229,6 +293,9 @@ struct MimiSmoke {
         fputs("""
         Usage:
           swift run MimiSmoke apple-stream-file /path/to/audio.wav
+          swift run MimiSmoke voiceprint-enroll /path/to/me1.wav [/path/to/me2.wav] [--output /path/to/profile.json] [--threshold 0.18]
+          swift run MimiSmoke voiceprint-verify /path/to/check.wav [--profile /path/to/profile.json]
+          swift run MimiSmoke voiceprint-extract /path/to/mixed.wav [--profile /path/to/profile.json] [--output /tmp/owner.wav]
           swift run MimiSmoke end-to-end-textedit /path/to/audio.wav --backend apple --allow-focus-steal [--press-enter]
         """, stderr)
         exit(2)

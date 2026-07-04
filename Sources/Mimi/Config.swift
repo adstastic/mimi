@@ -154,6 +154,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         case ambientPressEnterOnStart
         case pressEnterAfterPaste
         case postPasteEnterDelayMilliseconds
+        case showLiveTranscript
         case modelDownloadEnabled
     }
 
@@ -174,6 +175,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
     public var ambientPressEnterOnStart: Bool
     public var pressEnterAfterPaste: Bool
     public var postPasteEnterDelayMilliseconds: Int
+    public var showLiveTranscript: Bool
     // TODO(ponytail): delete if no model-download toggle UI/runtime behavior appears.
     public var modelDownloadEnabled: Bool
 
@@ -194,6 +196,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         ambientPressEnterOnStart: false,
         pressEnterAfterPaste: true,
         postPasteEnterDelayMilliseconds: 150,
+        showLiveTranscript: true,
         modelDownloadEnabled: true
     )
 
@@ -214,6 +217,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         ambientPressEnterOnStart: Bool = false,
         pressEnterAfterPaste: Bool,
         postPasteEnterDelayMilliseconds: Int,
+        showLiveTranscript: Bool = true,
         modelDownloadEnabled: Bool
     ) {
         self.preferredBackend = preferredBackend
@@ -232,6 +236,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         self.ambientPressEnterOnStart = ambientPressEnterOnStart
         self.pressEnterAfterPaste = pressEnterAfterPaste
         self.postPasteEnterDelayMilliseconds = postPasteEnterDelayMilliseconds
+        self.showLiveTranscript = showLiveTranscript
         self.modelDownloadEnabled = modelDownloadEnabled
     }
 
@@ -254,6 +259,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         ambientPressEnterOnStart = try container.decodeIfPresent(Bool.self, forKey: .ambientPressEnterOnStart) ?? Self.defaults.ambientPressEnterOnStart
         pressEnterAfterPaste = try container.decodeIfPresent(Bool.self, forKey: .pressEnterAfterPaste) ?? Self.defaults.pressEnterAfterPaste
         postPasteEnterDelayMilliseconds = try container.decodeIfPresent(Int.self, forKey: .postPasteEnterDelayMilliseconds) ?? Self.defaults.postPasteEnterDelayMilliseconds
+        showLiveTranscript = try container.decodeIfPresent(Bool.self, forKey: .showLiveTranscript) ?? Self.defaults.showLiveTranscript
         modelDownloadEnabled = try container.decodeIfPresent(Bool.self, forKey: .modelDownloadEnabled) ?? Self.defaults.modelDownloadEnabled
     }
 
@@ -275,6 +281,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         try container.encode(ambientPressEnterOnStart, forKey: .ambientPressEnterOnStart)
         try container.encode(pressEnterAfterPaste, forKey: .pressEnterAfterPaste)
         try container.encode(postPasteEnterDelayMilliseconds, forKey: .postPasteEnterDelayMilliseconds)
+        try container.encode(showLiveTranscript, forKey: .showLiveTranscript)
         try container.encode(modelDownloadEnabled, forKey: .modelDownloadEnabled)
     }
 

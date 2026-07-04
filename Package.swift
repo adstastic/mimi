@@ -10,9 +10,13 @@ let package = Package(
         .executable(name: "Mimi", targets: ["Mimi"]),
         .executable(name: "MimiSmoke", targets: ["MimiSmoke"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.4")
+    ],
     targets: [
         .target(
             name: "MimiSpeech",
+            dependencies: [.product(name: "FluidAudio", package: "FluidAudio")],
             path: "Sources/MimiSpeech"
         ),
         .executableTarget(
@@ -27,7 +31,7 @@ let package = Package(
         ),
         .testTarget(
             name: "MimiTests",
-            dependencies: ["Mimi"],
+            dependencies: ["Mimi", "MimiSpeech"],
             path: "Tests/MimiTests"
         )
     ]

@@ -27,6 +27,42 @@ protocol ASRServicing: AnyObject {
     func transcribe(audioURL: URL) async throws -> String
 }
 
+protocol VoiceprintVerifying: AnyObject {
+    func hasProfile() async -> Bool
+    func verify(audioURL: URL) async throws -> VoiceprintVerification?
+    func extractOwnerSpeech(audioURL: URL) async throws -> VoiceprintExtraction?
+}
+
+actor FileVoiceprintVerifier: VoiceprintVerifying {
+    private let service: VoiceprintEmbeddingService
+
+    init(service: VoiceprintEmbeddingService = VoiceprintEmbeddingService()) {
+        self.service = service
+    }
+
+    func hasProfile() async -> Bool {
+        FileManager.default.fileExists(atPath: VoiceprintPrototype.defaultProfileURL.path)
+    }
+
+    func verify(audioURL: URL) async throws -> VoiceprintVerification? {
+        do {
+            let profile = try VoiceprintPrototype.loadProfile()
+            return try await service.verify(audioURL: audioURL, against: profile)
+        } catch VoiceprintPrototype.VoiceprintError.profileMissing(_) {
+            return nil
+        }
+    }
+
+    func extractOwnerSpeech(audioURL: URL) async throws -> VoiceprintExtraction? {
+        do {
+            let profile = try VoiceprintPrototype.loadProfile()
+            return try await service.extractOwnerSpeech(audioURL: audioURL, profile: profile)
+        } catch VoiceprintPrototype.VoiceprintError.profileMissing(_) {
+            return nil
+        }
+    }
+}
+
 @MainActor
 protocol OverlayShowing: AnyObject {
     func show(_ message: String, detail: String?, level: Double?)
@@ -86,6 +122,11 @@ final class DictationController {
         case processing
     }
 
+    private struct TranscriptionAudio {
+        let url: URL
+        let useAppleStreamFinal: Bool
+    }
+
     private enum StopReason: String {
         case released = "Released"
         case stopped = "Stopped"
@@ -95,6 +136,7 @@ final class DictationController {
     private let configProvider: () -> MimiConfig
     private let audioCapture: AudioCapturing
     private let asrService: ASRServicing
+    private let voiceprintVerifier: VoiceprintVerifying?
     private let textInserter: TextInserter
     private let history: HistoryStore
     private let overlay: OverlayShowing
@@ -123,6 +165,7 @@ final class DictationController {
         configProvider: @escaping () -> MimiConfig,
         audioCapture: AudioCapturing,
         asrService: ASRServicing,
+        voiceprintVerifier: VoiceprintVerifying? = nil,
         textInserter: TextInserter,
         history: HistoryStore,
         overlay: OverlayShowing,
@@ -134,6 +177,7 @@ final class DictationController {
         self.configProvider = configProvider
         self.audioCapture = audioCapture
         self.asrService = asrService
+        self.voiceprintVerifier = voiceprintVerifier
         self.textInserter = textInserter
         self.history = history
         self.overlay = overlay
@@ -317,7 +361,14 @@ final class DictationController {
             if !resumeAmbient {
                 audioCapture.stop()
             }
-            let rawText = try await transcribe(audioURL: audioURL, plan: plan)
+            guard let transcriptionAudio = try await prepareVoiceprintAudio(audioURL: audioURL, plan: plan, resumeAmbient: resumeAmbient) else {
+                return
+            }
+            let rawText = try await transcribe(
+                audioURL: transcriptionAudio.url,
+                plan: plan,
+                useAppleStreamFinal: transcriptionAudio.useAppleStreamFinal
+            )
             let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else {
                 throw NSError(domain: AppBrand.noSpeechErrorDomain, code: 1, userInfo: [NSLocalizedDescriptionKey: "No speech detected."])
@@ -362,12 +413,52 @@ final class DictationController {
         }
     }
 
-    private func transcribe(audioURL: URL, plan: RecordingPlan) async throws -> String {
+    private func prepareVoiceprintAudio(audioURL: URL, plan: RecordingPlan, resumeAmbient: Bool) async throws -> TranscriptionAudio? {
+        guard let voiceprintVerifier, await voiceprintVerifier.hasProfile() else {
+            return TranscriptionAudio(url: audioURL, useAppleStreamFinal: true)
+        }
+        onStatus("Extracting your speech…")
+        overlay.show("Extracting your speech…")
+        guard let extraction = try await voiceprintVerifier.extractOwnerSpeech(audioURL: audioURL) else {
+            return TranscriptionAudio(url: audioURL, useAppleStreamFinal: true)
+        }
+
+        if plan.usesAppleStream {
+            await asrService.cancelAppleStream()
+            onPartialTranscript(nil)
+        }
+        guard let ownerAudioURL = extraction.audioURL else {
+            appleStreamTask = nil
+            onPartialTranscript(nil)
+            state = .idle
+            if resumeAmbient {
+                resumeAmbientMonitoringAfterRecording()
+            }
+            let best = extraction.bestDistance.map { String(format: "%.2f", $0) } ?? "none"
+            let detail = "best distance \(best), threshold \(String(format: "%.2f", extraction.threshold))"
+            onStatus("Ignored — no matching speaker")
+            overlay.show("Ignored — no matching speaker", detail: detail)
+            overlay.hide(after: 1_500)
+            return nil
+        }
+
+        let detail = String(
+            format: "%d/%d segments, %.1fs",
+            extraction.keptSegmentCount,
+            extraction.totalSegmentCount,
+            extraction.keptDurationSeconds
+        )
+        onStatus("Transcribing your speech…")
+        overlay.show("Transcribing your speech…", detail: detail)
+        return TranscriptionAudio(url: ownerAudioURL, useAppleStreamFinal: false)
+    }
+
+    private func transcribe(audioURL: URL, plan: RecordingPlan, useAppleStreamFinal: Bool) async throws -> String {
         switch plan.config.preferredBackend {
         case .mlxParakeetV2:
             return try await asrService.transcribe(audioURL: audioURL)
         case .appleSpeechTranscriber:
-            if plan.usesAppleStream {
+            if useAppleStreamFinal && plan.usesAppleStream {
                 return try await asrService.finishAppleStream()
             }
             return try await asrService.transcribeApple(audioURL: audioURL)
@@ -478,7 +569,8 @@ final class DictationController {
             sawSpeech = true
         }
 
-        guard case .recording = state else { return }
+        guard case .recording(_, let plan) = state else { return }
+        guard plan.config.showLiveTranscript else { return }
         onPartialTranscript(text)
         overlay.updateDetail(preview(text))
     }

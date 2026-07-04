@@ -102,6 +102,167 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertTrue(loudSpeechStarted)
     }
 
+    func testLiveTranscriptToggleSuppressesRawPartials() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var partials: [String?] = []
+        var config = MimiConfig.defaults
+        config.preferredBackend = .appleSpeechTranscriber
+        config.silenceDetectionMode = .speechActivity
+        config.silenceAutoStopEnabled = false
+        config.showLiveTranscript = false
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            partialTranscript: { partials.append($0) },
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        let streamStarted = await waitUntil({ asr.snapshotEvents().contains("stream.start") }, timeout: 1.0)
+        XCTAssertTrue(streamStarted)
+        asr.emitPartial("raw transcript from every speaker")
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertFalse(partials.contains("raw transcript from every speaker"))
+        controller.cancelRecording()
+    }
+
+    func testVoiceprintWithNoMatchingSegmentsSkipsTranscriptionAndPaste() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = MimiConfig.defaults
+        config.preferredBackend = .mlxParakeetV2
+        config.silenceAutoStopEnabled = false
+        let voiceprint = FakeVoiceprintVerifier(extraction: VoiceprintExtraction(
+            audioURL: nil,
+            totalSegmentCount: 2,
+            keptSegmentCount: 0,
+            keptDurationSeconds: 0,
+            bestDistance: 0.7,
+            threshold: 0.3
+        ))
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            voiceprint: voiceprint,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        let started = await waitUntil({ audio.startInputDeviceIDs == [nil] }, timeout: 1.0)
+        XCTAssertTrue(started)
+        try await Task.sleep(nanoseconds: 250_000_000)
+        controller.hotkeyUp()
+
+        let ignored = await waitUntil({ status.values.contains("Ignored — no matching speaker") }, timeout: 1.0)
+        XCTAssertTrue(ignored)
+        XCTAssertFalse(asr.snapshotEvents().contains("transcribe"))
+        XCTAssertTrue(overlay.messages.contains { $0.message == "Ignored — no matching speaker" })
+    }
+
+    func testVoiceprintMatchingSegmentsTranscribesExtractedAudio() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = MimiConfig.defaults
+        config.preferredBackend = .mlxParakeetV2
+        config.silenceAutoStopEnabled = false
+        let ownerURL = URL(fileURLWithPath: "/tmp/mimi-owner-filtered.wav")
+        let voiceprint = FakeVoiceprintVerifier(extraction: VoiceprintExtraction(
+            audioURL: ownerURL,
+            totalSegmentCount: 3,
+            keptSegmentCount: 1,
+            keptDurationSeconds: 1.2,
+            bestDistance: 0.2,
+            threshold: 0.3
+        ))
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            voiceprint: voiceprint,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        let started = await waitUntil({ audio.startInputDeviceIDs == [nil] }, timeout: 1.0)
+        XCTAssertTrue(started)
+        try await Task.sleep(nanoseconds: 250_000_000)
+        controller.hotkeyUp()
+
+        let transcribedFilteredAudio = await waitUntil({
+            asr.snapshotEvents().contains("transcribe.path=\(ownerURL.path)")
+        }, timeout: 1.0)
+        XCTAssertTrue(transcribedFilteredAudio)
+        XCTAssertTrue(status.values.contains("Transcribing your speech…"))
+    }
+
+    func testAppleVoiceprintWithNoMatchingSegmentsCancelsStreamBeforeFinalizing() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var partials: [String?] = []
+        var config = MimiConfig.defaults
+        config.preferredBackend = .appleSpeechTranscriber
+        config.silenceDetectionMode = .speechActivity
+        config.silenceAutoStopEnabled = false
+        let voiceprint = FakeVoiceprintVerifier(extraction: VoiceprintExtraction(
+            audioURL: nil,
+            totalSegmentCount: 2,
+            keptSegmentCount: 0,
+            keptDurationSeconds: 0,
+            bestDistance: 0.7,
+            threshold: 0.3
+        ))
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            voiceprint: voiceprint,
+            overlay: overlay,
+            status: status,
+            partialTranscript: { partials.append($0) },
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        let streamStarted = await waitUntil({ asr.snapshotEvents().contains("stream.start") }, timeout: 1.0)
+        XCTAssertTrue(streamStarted)
+        asr.emitPartial("not mine")
+        let partialShown = await waitUntil({ partials.contains("not mine") }, timeout: 1.0)
+        XCTAssertTrue(partialShown)
+        try await Task.sleep(nanoseconds: 250_000_000)
+        controller.hotkeyUp()
+
+        let ignored = await waitUntil({ status.values.contains("Ignored — no matching speaker") }, timeout: 1.0)
+        XCTAssertTrue(ignored)
+        let events = asr.snapshotEvents()
+        XCTAssertTrue(events.contains("stream.cancel.begin"))
+        XCTAssertFalse(events.contains("stream.finish"))
+        XCTAssertFalse(events.contains("transcribe.apple"))
+        XCTAssertFalse(partials.isEmpty)
+        XCTAssertNil(partials[partials.count - 1])
+    }
+
     func testAmbientSpeechStreamFailureStopsMic() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
@@ -180,20 +341,23 @@ final class AmbientCrashRegressionTests: XCTestCase {
         configProvider: @escaping () -> MimiConfig,
         audio: AudioCapturing,
         asr: ASRServicing,
+        voiceprint: VoiceprintVerifying? = nil,
         overlay: OverlayShowing,
         status: StatusSink,
+        partialTranscript: ((String?) -> Void)? = nil,
         missingInputTimeout: TimeInterval
     ) -> DictationController {
         DictationController(
             configProvider: configProvider,
             audioCapture: audio,
             asrService: asr,
+            voiceprintVerifier: voiceprint,
             textInserter: TextInserter(),
             history: HistoryStore(),
             overlay: overlay,
             onStatus: { status.append($0) },
             onTranscript: { _ in },
-            onPartialTranscript: { _ in },
+            onPartialTranscript: { partialTranscript?($0) },
             missingInputTimeout: missingInputTimeout
         )
     }
@@ -285,7 +449,9 @@ private final class FakeASRService: ASRServicing {
     func prepare(backend: ASRBackend) async throws {}
 
     func transcribeApple(audioURL: URL) async throws -> String {
-        ""
+        record("transcribe.apple")
+        record("transcribe.apple.path=\(audioURL.path)")
+        return ""
     }
 
     func startAppleStream(
@@ -300,7 +466,8 @@ private final class FakeASRService: ASRServicing {
     func appendAppleBuffer(_ buffer: AVAudioPCMBuffer) async throws {}
 
     func finishAppleStream() async throws -> String {
-        ""
+        record("stream.finish")
+        return ""
     }
 
     func cancelAppleStream() async {
@@ -324,7 +491,9 @@ private final class FakeASRService: ASRServicing {
     }
 
     func transcribe(audioURL: URL) async throws -> String {
-        ""
+        record("transcribe")
+        record("transcribe.path=\(audioURL.path)")
+        return ""
     }
 
     private func recordStart(_ handler: @escaping AppleSpeechTranscriberBackend.EventHandler) {
@@ -344,6 +513,28 @@ private final class FakeASRService: ASRServicing {
         lock.lock()
         events.append(event)
         lock.unlock()
+    }
+}
+
+private final class FakeVoiceprintVerifier: VoiceprintVerifying {
+    private let verification: VoiceprintVerification?
+    private let extraction: VoiceprintExtraction?
+
+    init(verification: VoiceprintVerification? = nil, extraction: VoiceprintExtraction? = nil) {
+        self.verification = verification
+        self.extraction = extraction
+    }
+
+    func hasProfile() async -> Bool {
+        verification != nil || extraction != nil
+    }
+
+    func verify(audioURL: URL) async throws -> VoiceprintVerification? {
+        verification
+    }
+
+    func extractOwnerSpeech(audioURL: URL) async throws -> VoiceprintExtraction? {
+        extraction
     }
 }
 
