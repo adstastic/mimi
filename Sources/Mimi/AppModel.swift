@@ -281,7 +281,11 @@ final class AppModel: ObservableObject {
             let audioURL = try await recordVoiceprintClip(seconds: 5)
             applyStatus("Verifying voice…")
             voiceprintStatus = "Comparing speaker embedding…"
-            let result = try await voiceprintService.verify(audioURL: audioURL, against: profile)
+            let result = try await voiceprintService.verify(
+                audioURL: audioURL,
+                against: profile,
+                thresholdOverride: Float(config.voiceprintThreshold)
+            )
             let verdict = result.accepted ? "Accepted" : "Rejected"
             let detail = String(format: "distance %.2f / threshold %.2f", result.distance, result.threshold)
             voiceprintStatus = "\(verdict) — \(detail)"

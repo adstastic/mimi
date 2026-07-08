@@ -155,6 +155,8 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         case pressEnterAfterPaste
         case postPasteEnterDelayMilliseconds
         case showLiveTranscript
+        case voiceprintEnabled
+        case voiceprintThreshold
         case modelDownloadEnabled
     }
 
@@ -176,6 +178,8 @@ public struct MimiConfig: Codable, Equatable, Sendable {
     public var pressEnterAfterPaste: Bool
     public var postPasteEnterDelayMilliseconds: Int
     public var showLiveTranscript: Bool
+    public var voiceprintEnabled: Bool
+    public var voiceprintThreshold: Double
     // TODO(ponytail): delete if no model-download toggle UI/runtime behavior appears.
     public var modelDownloadEnabled: Bool
 
@@ -197,6 +201,8 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         pressEnterAfterPaste: true,
         postPasteEnterDelayMilliseconds: 150,
         showLiveTranscript: true,
+        voiceprintEnabled: true,
+        voiceprintThreshold: 0.78,
         modelDownloadEnabled: true
     )
 
@@ -218,6 +224,8 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         pressEnterAfterPaste: Bool,
         postPasteEnterDelayMilliseconds: Int,
         showLiveTranscript: Bool = true,
+        voiceprintEnabled: Bool = true,
+        voiceprintThreshold: Double = 0.78,
         modelDownloadEnabled: Bool
     ) {
         self.preferredBackend = preferredBackend
@@ -237,6 +245,8 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         self.pressEnterAfterPaste = pressEnterAfterPaste
         self.postPasteEnterDelayMilliseconds = postPasteEnterDelayMilliseconds
         self.showLiveTranscript = showLiveTranscript
+        self.voiceprintEnabled = voiceprintEnabled
+        self.voiceprintThreshold = voiceprintThreshold
         self.modelDownloadEnabled = modelDownloadEnabled
     }
 
@@ -260,6 +270,8 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         pressEnterAfterPaste = try container.decodeIfPresent(Bool.self, forKey: .pressEnterAfterPaste) ?? Self.defaults.pressEnterAfterPaste
         postPasteEnterDelayMilliseconds = try container.decodeIfPresent(Int.self, forKey: .postPasteEnterDelayMilliseconds) ?? Self.defaults.postPasteEnterDelayMilliseconds
         showLiveTranscript = try container.decodeIfPresent(Bool.self, forKey: .showLiveTranscript) ?? Self.defaults.showLiveTranscript
+        voiceprintEnabled = try container.decodeIfPresent(Bool.self, forKey: .voiceprintEnabled) ?? Self.defaults.voiceprintEnabled
+        voiceprintThreshold = try container.decodeIfPresent(Double.self, forKey: .voiceprintThreshold) ?? Self.defaults.voiceprintThreshold
         modelDownloadEnabled = try container.decodeIfPresent(Bool.self, forKey: .modelDownloadEnabled) ?? Self.defaults.modelDownloadEnabled
     }
 
@@ -282,6 +294,8 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         try container.encode(pressEnterAfterPaste, forKey: .pressEnterAfterPaste)
         try container.encode(postPasteEnterDelayMilliseconds, forKey: .postPasteEnterDelayMilliseconds)
         try container.encode(showLiveTranscript, forKey: .showLiveTranscript)
+        try container.encode(voiceprintEnabled, forKey: .voiceprintEnabled)
+        try container.encode(voiceprintThreshold, forKey: .voiceprintThreshold)
         try container.encode(modelDownloadEnabled, forKey: .modelDownloadEnabled)
     }
 
@@ -314,6 +328,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         let capabilities = preferredBackend.capabilities
         ambientModeEnabled = capabilities.normalizeAmbientModeEnabled(ambientModeEnabled)
         silenceDetectionMode = capabilities.normalizeSilenceDetectionMode(silenceDetectionMode)
+        voiceprintThreshold = min(0.95, max(0.45, voiceprintThreshold))
         return self != oldValue
     }
 

@@ -162,6 +162,47 @@ final class AmbientCrashRegressionTests: XCTestCase {
         controller.cancelRecording()
     }
 
+    func testVoiceprintDisabledTranscribesOriginalAudio() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = MimiConfig.defaults
+        config.preferredBackend = .mlxParakeetV2
+        config.silenceAutoStopEnabled = false
+        config.voiceprintEnabled = false
+        let voiceprint = FakeVoiceprintVerifier(extraction: VoiceprintExtraction(
+            audioURL: nil,
+            totalSegmentCount: 1,
+            keptSegmentCount: 0,
+            keptDurationSeconds: 0,
+            bestDistance: 0.9,
+            threshold: 0.3
+        ))
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            voiceprint: voiceprint,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        let started = await waitUntil({ audio.startInputDeviceIDs == [nil] }, timeout: 1.0)
+        XCTAssertTrue(started)
+        try await Task.sleep(nanoseconds: 250_000_000)
+        controller.hotkeyUp()
+
+        let transcribedOriginalAudio = await waitUntil({
+            asr.snapshotEvents().contains { $0.hasPrefix("transcribe.path=") }
+        }, timeout: 1.0)
+        XCTAssertTrue(transcribedOriginalAudio)
+        XCTAssertEqual(voiceprint.extractionThresholds, [])
+    }
+
     func testVoiceprintWithNoMatchingSegmentsSkipsTranscriptionAndPaste() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
@@ -209,6 +250,7 @@ final class AmbientCrashRegressionTests: XCTestCase {
         var config = MimiConfig.defaults
         config.preferredBackend = .mlxParakeetV2
         config.silenceAutoStopEnabled = false
+        config.voiceprintThreshold = 0.92
         let ownerURL = URL(fileURLWithPath: "/tmp/mimi-owner-filtered.wav")
         let voiceprint = FakeVoiceprintVerifier(extraction: VoiceprintExtraction(
             audioURL: ownerURL,
@@ -240,6 +282,7 @@ final class AmbientCrashRegressionTests: XCTestCase {
         }, timeout: 1.0)
         XCTAssertTrue(transcribedFilteredAudio)
         XCTAssertTrue(status.values.contains("Transcribing your speech…"))
+        XCTAssertEqual(voiceprint.extractionThresholds, [0.92])
     }
 
     func testAppleVoiceprintWithNoMatchingSegmentsCancelsStreamBeforeFinalizing() async throws {
@@ -549,6 +592,8 @@ private final class FakeASRService: ASRServicing {
 private final class FakeVoiceprintVerifier: VoiceprintVerifying {
     private let verification: VoiceprintVerification?
     private let extraction: VoiceprintExtraction?
+    private(set) var verificationThresholds: [Float?] = []
+    private(set) var extractionThresholds: [Float?] = []
 
     init(verification: VoiceprintVerification? = nil, extraction: VoiceprintExtraction? = nil) {
         self.verification = verification
@@ -559,12 +604,14 @@ private final class FakeVoiceprintVerifier: VoiceprintVerifying {
         verification != nil || extraction != nil
     }
 
-    func verify(audioURL: URL) async throws -> VoiceprintVerification? {
-        verification
+    func verify(audioURL: URL, thresholdOverride: Float?) async throws -> VoiceprintVerification? {
+        verificationThresholds.append(thresholdOverride)
+        return verification
     }
 
-    func extractOwnerSpeech(audioURL: URL) async throws -> VoiceprintExtraction? {
-        extraction
+    func extractOwnerSpeech(audioURL: URL, thresholdOverride: Float?) async throws -> VoiceprintExtraction? {
+        extractionThresholds.append(thresholdOverride)
+        return extraction
     }
 }
 

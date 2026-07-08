@@ -66,6 +66,24 @@ struct SettingsView: View {
                                 .controlSize(.small)
                         }
                     }
+                    ToggleLine("Filter dictation to my voice", systemImage: "person.crop.circle.badge.checkmark", isOn: $config.voiceprintEnabled)
+                    SliderLine(
+                        "Voice threshold",
+                        value: String(format: "%.2f", config.voiceprintThreshold),
+                        systemImage: "slider.horizontal.3"
+                    ) {
+                        Slider(value: $config.voiceprintThreshold, in: 0.45 ... 0.95, step: 0.01)
+                            .frame(width: 170)
+                    }
+                    .disabled(!config.voiceprintEnabled || !voiceprintProfileExists)
+                    Label(
+                        config.voiceprintEnabled
+                            ? "Higher is looser and keeps more speech; lower is stricter."
+                            : "Voice filtering is off; dictation transcribes the whole recording.",
+                        systemImage: "info.circle"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Read twice while enrolling:")
                             .font(.caption)

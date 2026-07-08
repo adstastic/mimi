@@ -82,7 +82,7 @@ public enum VoiceprintPrototype {
     public static let enrollmentPrompt = "The birch canoe slid on the smooth planks. Glue the sheet to the dark blue background."
 
     static let sampleRate = 16_000
-    static let defaultThreshold: Float = 0.78
+    public static let defaultThreshold: Float = 0.78
     private static let minimumThreshold: Float = 0.45
     private static let maximumThreshold: Float = 0.85
 
@@ -171,24 +171,34 @@ public actor VoiceprintEmbeddingService {
         return try VoiceprintPrototype.makeProfile(from: embeddings, thresholdOverride: thresholdOverride)
     }
 
-    public func verify(audioURL: URL, against profile: VoiceprintProfile) async throws -> VoiceprintVerification {
+    public func verify(
+        audioURL: URL,
+        against profile: VoiceprintProfile,
+        thresholdOverride: Float? = nil
+    ) async throws -> VoiceprintVerification {
         guard profile.version == 2, !profile.embedding.isEmpty else {
             throw VoiceprintPrototype.VoiceprintError.incompatibleProfile
         }
+        let threshold = thresholdOverride ?? profile.threshold
         let candidate = try await embedding(audioURL: audioURL)
         let distance = VoiceprintPrototype.cosineDistance(candidate, profile.embedding)
         return VoiceprintVerification(
-            accepted: distance <= profile.threshold,
+            accepted: distance <= threshold,
             distance: distance,
-            threshold: profile.threshold,
+            threshold: threshold,
             embeddingDimensions: candidate.count
         )
     }
 
-    public func extractOwnerSpeech(audioURL: URL, profile: VoiceprintProfile) async throws -> VoiceprintExtraction {
+    public func extractOwnerSpeech(
+        audioURL: URL,
+        profile: VoiceprintProfile,
+        thresholdOverride: Float? = nil
+    ) async throws -> VoiceprintExtraction {
         guard profile.version == 2, !profile.embedding.isEmpty else {
             throw VoiceprintPrototype.VoiceprintError.incompatibleProfile
         }
+        let threshold = thresholdOverride ?? profile.threshold
         let samples = try AudioConverter().resampleAudioFile(audioURL)
         guard !samples.isEmpty else { throw VoiceprintPrototype.VoiceprintError.noAudio }
 
@@ -200,7 +210,7 @@ public actor VoiceprintEmbeddingService {
             (segment: segment, distance: VoiceprintPrototype.cosineDistance(segment.embedding, profile.embedding))
         }
         let kept = scored
-            .filter { $0.distance <= profile.threshold }
+            .filter { $0.distance <= threshold }
             .sorted { $0.segment.startTimeSeconds < $1.segment.startTimeSeconds }
         let bestDistance = scored.map(\.distance).min()
 
@@ -211,7 +221,7 @@ public actor VoiceprintEmbeddingService {
                 keptSegmentCount: 0,
                 keptDurationSeconds: 0,
                 bestDistance: bestDistance,
-                threshold: profile.threshold
+                threshold: threshold
             )
         }
 
@@ -239,7 +249,7 @@ public actor VoiceprintEmbeddingService {
             keptSegmentCount: kept.count,
             keptDurationSeconds: keptDuration,
             bestDistance: bestDistance,
-            threshold: profile.threshold
+            threshold: threshold
         )
     }
 

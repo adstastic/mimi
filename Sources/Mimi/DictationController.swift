@@ -29,8 +29,8 @@ protocol ASRServicing: AnyObject {
 
 protocol VoiceprintVerifying: AnyObject {
     func hasProfile() async -> Bool
-    func verify(audioURL: URL) async throws -> VoiceprintVerification?
-    func extractOwnerSpeech(audioURL: URL) async throws -> VoiceprintExtraction?
+    func verify(audioURL: URL, thresholdOverride: Float?) async throws -> VoiceprintVerification?
+    func extractOwnerSpeech(audioURL: URL, thresholdOverride: Float?) async throws -> VoiceprintExtraction?
 }
 
 actor FileVoiceprintVerifier: VoiceprintVerifying {
@@ -44,19 +44,19 @@ actor FileVoiceprintVerifier: VoiceprintVerifying {
         FileManager.default.fileExists(atPath: VoiceprintPrototype.defaultProfileURL.path)
     }
 
-    func verify(audioURL: URL) async throws -> VoiceprintVerification? {
+    func verify(audioURL: URL, thresholdOverride: Float?) async throws -> VoiceprintVerification? {
         do {
             let profile = try VoiceprintPrototype.loadProfile()
-            return try await service.verify(audioURL: audioURL, against: profile)
+            return try await service.verify(audioURL: audioURL, against: profile, thresholdOverride: thresholdOverride)
         } catch VoiceprintPrototype.VoiceprintError.profileMissing(_) {
             return nil
         }
     }
 
-    func extractOwnerSpeech(audioURL: URL) async throws -> VoiceprintExtraction? {
+    func extractOwnerSpeech(audioURL: URL, thresholdOverride: Float?) async throws -> VoiceprintExtraction? {
         do {
             let profile = try VoiceprintPrototype.loadProfile()
-            return try await service.extractOwnerSpeech(audioURL: audioURL, profile: profile)
+            return try await service.extractOwnerSpeech(audioURL: audioURL, profile: profile, thresholdOverride: thresholdOverride)
         } catch VoiceprintPrototype.VoiceprintError.profileMissing(_) {
             return nil
         }
@@ -414,12 +414,17 @@ final class DictationController {
     }
 
     private func prepareVoiceprintAudio(audioURL: URL, plan: RecordingPlan, resumeAmbient: Bool) async throws -> TranscriptionAudio? {
-        guard let voiceprintVerifier, await voiceprintVerifier.hasProfile() else {
+        guard plan.config.voiceprintEnabled,
+              let voiceprintVerifier,
+              await voiceprintVerifier.hasProfile() else {
             return TranscriptionAudio(url: audioURL, useAppleStreamFinal: true)
         }
         onStatus("Extracting your speech…")
         overlay.show("Extracting your speech…")
-        guard let extraction = try await voiceprintVerifier.extractOwnerSpeech(audioURL: audioURL) else {
+        guard let extraction = try await voiceprintVerifier.extractOwnerSpeech(
+            audioURL: audioURL,
+            thresholdOverride: Float(plan.config.voiceprintThreshold)
+        ) else {
             return TranscriptionAudio(url: audioURL, useAppleStreamFinal: true)
         }
 
