@@ -227,20 +227,29 @@ final class AudioCapture {
         }
     }
 
-    private func handle(buffer: AVAudioPCMBuffer) {
-        guard let channel = buffer.floatChannelData?[0] else { return }
+    func handle(buffer: AVAudioPCMBuffer) {
+        guard let channels = buffer.floatChannelData else { return }
         let count = Int(buffer.frameLength)
         guard count > 0 else { return }
 
-        let samples = Array(UnsafeBufferPointer(start: channel, count: count))
-        var squareSum: Float = 0
-        for sample in samples {
-            squareSum += sample * sample
+        var channel = channels[0]
+        var squareSum: Float = -1
+        for channelIndex in 0 ..< Int(buffer.format.channelCount) {
+            let candidate = channels[channelIndex]
+            var candidateSquareSum: Float = 0
+            for frameIndex in 0 ..< count {
+                candidateSquareSum += candidate[frameIndex] * candidate[frameIndex]
+            }
+            if candidateSquareSum > squareSum {
+                channel = candidate
+                squareSum = candidateSquareSum
+            }
         }
+
+        let samples = Array(UnsafeBufferPointer(start: channel, count: count))
         let rms = sqrt(squareSum / Float(count))
         let dbfs = 20 * log10(Double(max(rms, 0.000_001)))
-
-        let copiedBuffer = buffer.copy() as? AVAudioPCMBuffer
+        let copiedBuffer = Self.makeBuffer(samples: samples, sampleRate: buffer.format.sampleRate)
 
         let handler: ((AVAudioPCMBuffer) -> Void)?
         let monitorHandler: ((AVAudioPCMBuffer) -> Void)?
