@@ -1,10 +1,21 @@
 import AppKit
+import Darwin
 import SwiftUI
 
 @main
 struct MimiApp: App {
+    private static let instanceGuard = SingleInstanceGuard()
+
     @Environment(\.scenePhase) private var scenePhase
-    @StateObject private var appModel = AppModel()
+    @StateObject private var appModel: AppModel
+
+    init() {
+        if !Self.instanceGuard.isPrimary {
+            Self.instanceGuard.activateExistingInstance()
+            Darwin.exit(0)
+        }
+        _appModel = StateObject(wrappedValue: AppModel())
+    }
 
     var body: some Scene {
         WindowGroup(AppBrand.name) {
