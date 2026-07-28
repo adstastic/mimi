@@ -44,12 +44,12 @@
   .mark span{color:var(--mute);font-size:.75rem;letter-spacing:.1em;text-transform:uppercase;}
 
   main{display:grid;grid-template-rows:auto auto;gap:clamp(1rem,3.5vh,2.4rem);align-content:center;min-height:0;}
-  .top{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:clamp(1.25rem,3vw,2.5rem);align-items:center;}
+  .top{display:flex;flex-direction:column;gap:clamp(.6rem,1.8vh,1.1rem);}
   .pitch{display:flex;flex-direction:column;gap:clamp(.6rem,1.8vh,1.2rem);min-width:0;}
   h1{font-family:var(--mono);font-size:clamp(1.4rem,min(3.4vw,6vh),3.1rem);line-height:1.06;letter-spacing:-.045em;white-space:nowrap;}
   .lede{font-size:clamp(.9rem,min(1.25vw,2.1vh),1.2rem);color:var(--mute);max-width:46ch;}
 
-  .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(.6rem,1.3vw,1.1rem);}
+  .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(.6rem,1.3vw,1.1rem);align-items:stretch;}
   .card{display:flex;flex-direction:column;gap:.25rem;background:var(--card);border:1px solid var(--line);
         border-radius:var(--radius);padding:clamp(.75rem,1.8vh,1.25rem) clamp(.8rem,1.5vw,1.25rem);min-width:0;}
   .card .glyph{font-family:var(--mono);font-size:1rem;line-height:1;color:var(--signal);}
@@ -58,27 +58,18 @@
   .tag{font-family:var(--mono);font-size:.58rem;letter-spacing:.12em;text-transform:uppercase;color:var(--wave);
        border:1px solid var(--wave);border-radius:2px;padding:.08rem .3rem;margin-left:.4rem;vertical-align:.16em;}
 
-  /* demo */
-  .demo{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:clamp(.9rem,2vw,1.5rem);
-        background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:clamp(.85rem,2vw,1.25rem);}
-  .field{display:flex;flex-direction:column;gap:.6rem;min-width:0;}
-  .eyebrow{font-family:var(--mono);font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);
+  /* live demo, inside the ambient card */
+  .demo{display:flex;flex-direction:column;gap:.4rem;margin-top:.5rem;
+        border-top:1px solid var(--line);padding-top:.5rem;}
+  .eyebrow{font-family:var(--mono);font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);
            display:flex;justify-content:space-between;gap:1rem;}
-  .out{font-family:var(--mono);font-size:clamp(.8rem,min(1.05vw,1.8vh),.98rem);line-height:1.45;min-height:3.4em;
-       border-top:1px solid var(--line);padding-top:.6rem;word-break:break-word;}
-  .out .cursor{display:inline-block;width:.55ch;height:1.1em;vertical-align:-.16em;background:var(--signal);}
+  .out{font-family:var(--mono);font-size:clamp(.72rem,min(.9vw,1.5vh),.82rem);line-height:1.4;
+       height:2.8em;overflow:hidden;word-break:break-word;}
+  .out .cursor{display:inline-block;width:.55ch;height:1.05em;vertical-align:-.15em;background:var(--signal);}
   .idle .cursor{opacity:.35;}
   .rec .cursor{animation:blink .9s steps(1,end) infinite;}
   @keyframes blink{50%{opacity:0;}}
-  canvas{width:100%;height:clamp(18px,3vh,28px);display:block;}
-
-  .keycol{display:flex;flex-direction:column;gap:.5rem;align-items:center;justify-content:center;}
-  .key{font-family:var(--mono);font-size:.74rem;color:var(--ink);background:var(--paper);border:1px solid var(--line);
-       border-bottom-width:3px;border-radius:6px;padding:.7rem .9rem;min-width:7.5rem;cursor:pointer;
-       display:flex;flex-direction:column;align-items:flex-start;gap:.25rem;transition:transform .06s,border-bottom-width .06s;}
-  .key .glyph{font-size:1.1rem;line-height:1;}
-  .key[aria-pressed="true"]{transform:translateY(2px);border-bottom-width:1px;border-color:var(--signal);color:var(--signal);}
-  .hint{font-size:.66rem;color:var(--mute);text-align:center;max-width:8.5rem;}
+  canvas{width:100%;height:clamp(16px,2.4vh,24px);display:block;}
 
   .actions{display:flex;align-items:center;gap:.9rem;flex-wrap:wrap;}
   .download{font-family:var(--mono);font-size:.82rem;text-decoration:none;color:var(--paper);background:var(--signal);
@@ -94,9 +85,6 @@
   /* short viewports can't hold it; let the page scroll instead of clipping */
   @media (max-height:620px){ .wrap{height:auto;min-height:100dvh;} }
   @media (max-width:560px){
-    .demo{grid-template-columns:1fr;}
-    .keycol{flex-direction:row;align-items:center;justify-content:flex-start;gap:.9rem;}
-    .hint{text-align:left;max-width:none;}
     .download{width:100%;text-align:center;}
     .actions{gap:.6rem;}
   }
@@ -122,21 +110,6 @@
           <span class="meta">Notarized build · Apple silicon</span>
         </p>
       </div>
-
-      <div class="demo">
-        <div class="field idle" id="field">
-          <div class="eyebrow"><span>Any text field</span><span id="state">Ready</span></div>
-          <div class="out" id="out"><span class="cursor"></span></div>
-          <canvas id="wave" width="900" height="56" aria-hidden="true"></canvas>
-        </div>
-        <div class="keycol">
-          <button class="key" id="ambient" aria-pressed="false" aria-describedby="hint">
-            <span class="glyph">◉</span>
-            <span>ambient mode</span>
-          </button>
-          <p class="hint" id="hint">Switch it on and talk. mimi does the rest.</p>
-        </div>
-      </div>
     </div>
 
     <div class="cards">
@@ -149,6 +122,11 @@
         <span class="glyph" aria-hidden="true">◉</span>
         <h2>Ambient mode</h2>
         <p>Nothing to hold. mimi starts when you start talking and stops when you pause.</p>
+        <div class="demo field idle" id="field">
+          <div class="eyebrow"><span>Any text field</span><span id="state">Ready</span></div>
+          <div class="out" id="out"><span class="cursor"></span></div>
+          <canvas id="wave" width="900" height="48" aria-hidden="true"></canvas>
+        </div>
       </div>
       <div class="card">
         <span class="glyph" aria-hidden="true">⌇</span>
@@ -235,8 +213,7 @@
   if(!reduce) draw();
   else { ctx.strokeStyle='#C98A16'; ctx.beginPath(); ctx.moveTo(0,28); ctx.lineTo(900,28); ctx.stroke(); }
 
-  // ambient mode: mic armed, takes start and stop on their own
-  const ambientBtn = document.getElementById('ambient');
+  // ambient mode runs on its own; that is the point of the feature
   let loop = null;
   function cycle(){
     if(!ambient) return;
@@ -247,22 +224,11 @@
       loop = setTimeout(cycle, 2600);
     }, 55 * LINE.length + 600);
   }
-  // ambient is how mimi is meant to run, so the demo arrives switched on
   if(!reduce){
     ambient = true;
-    ambientBtn.setAttribute('aria-pressed','true');
     state.textContent = 'Mic armed';
     loop = setTimeout(cycle, 900);
   }
-
-  ambientBtn.addEventListener('click', ()=>{
-    ambient = !ambient;
-    ambientBtn.setAttribute('aria-pressed', String(ambient));
-    clearTimeout(loop);
-    if(ambient){ state.textContent = 'Mic armed'; loop = setTimeout(cycle, 900); }
-    else { stop(); }
-  });
-
 })();
 </script>
 </body>
