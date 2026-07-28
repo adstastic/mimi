@@ -30,25 +30,25 @@
   p{margin:0;}
   :focus-visible{outline:2px solid var(--signal);outline-offset:3px;}
 
-  .wrap{min-height:100dvh;max-width:74rem;margin:0 auto;padding:clamp(1.25rem,3vh,2.25rem) clamp(1.25rem,4vw,3rem);
-        display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:clamp(1rem,3vh,2rem);}
+  .wrap{height:100dvh;max-width:74rem;margin:0 auto;padding:clamp(.9rem,2.2vh,1.75rem) clamp(1.25rem,4vw,3rem);
+        display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:clamp(.75rem,2vh,1.5rem);}
 
   .mark{font-family:var(--mono);font-size:.95rem;display:flex;align-items:baseline;gap:.6rem;}
   .mark b{font-weight:600;}
   .mark span{color:var(--mute);font-size:.75rem;letter-spacing:.1em;text-transform:uppercase;}
 
-  main{display:grid;grid-template-rows:auto auto;gap:clamp(1.1rem,3vh,2rem);align-content:center;}
-  .top{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:clamp(1.5rem,4vw,3rem);align-items:center;}
-  .pitch{display:flex;flex-direction:column;gap:clamp(.9rem,2.2vh,1.4rem);min-width:0;}
-  h1{font-family:var(--mono);font-size:clamp(1.7rem,3.6vw,2.9rem);line-height:1.06;letter-spacing:-.045em;max-width:15ch;}
-  .lede{font-size:clamp(.95rem,1.15vw,1.1rem);color:var(--mute);max-width:46ch;}
+  main{display:grid;grid-template-rows:auto auto;gap:clamp(.9rem,2.4vh,1.6rem);align-content:center;min-height:0;}
+  .top{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:clamp(1.25rem,3vw,2.5rem);align-items:center;}
+  .pitch{display:flex;flex-direction:column;gap:clamp(.6rem,1.8vh,1.2rem);min-width:0;}
+  h1{font-family:var(--mono);font-size:clamp(1.5rem,min(3.4vw,4.6vh),2.6rem);line-height:1.06;letter-spacing:-.045em;max-width:15ch;}
+  .lede{font-size:clamp(.88rem,min(1.1vw,1.9vh),1.05rem);color:var(--mute);max-width:46ch;}
 
   .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(.6rem,1.2vw,.9rem);}
-  .card{display:flex;flex-direction:column;gap:.3rem;background:var(--card);border:1px solid var(--line);
-        border-radius:var(--radius);padding:clamp(.7rem,1.4vw,1rem);min-width:0;}
+  .card{display:flex;flex-direction:column;gap:.25rem;background:var(--card);border:1px solid var(--line);
+        border-radius:var(--radius);padding:clamp(.6rem,1.3vh,.95rem) clamp(.7rem,1.3vw,1rem);min-width:0;}
   .card .glyph{font-family:var(--mono);font-size:1rem;line-height:1;color:var(--signal);}
   .card h2{font-family:var(--mono);font-size:.82rem;letter-spacing:-.01em;}
-  .card p{color:var(--mute);font-size:clamp(.74rem,.9vw,.84rem);line-height:1.45;}
+  .card p{color:var(--mute);font-size:clamp(.72rem,min(.9vw,1.6vh),.83rem);line-height:1.4;}
   .tag{font-family:var(--mono);font-size:.58rem;letter-spacing:.12em;text-transform:uppercase;color:var(--wave);
        border:1px solid var(--wave);border-radius:2px;padding:.08rem .3rem;margin-left:.4rem;vertical-align:.16em;}
 
@@ -58,13 +58,13 @@
   .field{display:flex;flex-direction:column;gap:.6rem;min-width:0;}
   .eyebrow{font-family:var(--mono);font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);
            display:flex;justify-content:space-between;gap:1rem;}
-  .out{font-family:var(--mono);font-size:clamp(.82rem,1.05vw,.95rem);line-height:1.45;min-height:4.4em;
+  .out{font-family:var(--mono);font-size:clamp(.78rem,1vw,.92rem);line-height:1.45;min-height:3.6em;
        border-top:1px solid var(--line);padding-top:.6rem;word-break:break-word;}
   .out .cursor{display:inline-block;width:.55ch;height:1.1em;vertical-align:-.16em;background:var(--signal);}
   .idle .cursor{opacity:.35;}
   .rec .cursor{animation:blink .9s steps(1,end) infinite;}
   @keyframes blink{50%{opacity:0;}}
-  canvas{width:100%;height:28px;display:block;}
+  canvas{width:100%;height:clamp(18px,3vh,28px);display:block;}
 
   .keycol{display:flex;flex-direction:column;gap:.5rem;align-items:center;justify-content:center;}
   .key{font-family:var(--mono);font-size:.74rem;color:var(--ink);background:var(--paper);border:1px solid var(--line);
@@ -74,13 +74,15 @@
   .key[aria-pressed="true"]{transform:translateY(2px);border-bottom-width:1px;border-color:var(--signal);color:var(--signal);}
   .hint{font-size:.66rem;color:var(--mute);text-align:center;max-width:8.5rem;}
 
-  footer{border-top:1px solid var(--line);padding-top:.9rem;display:flex;flex-wrap:wrap;gap:.6rem 1.5rem;
+  footer{border-top:1px solid var(--line);padding-top:.75rem;display:flex;flex-wrap:wrap;gap:.6rem 1.5rem;
          align-items:center;justify-content:space-between;color:var(--mute);font-size:.78rem;}
   code{font-family:var(--mono);color:var(--ink);background:var(--card);border:1px solid var(--line);
        border-radius:2px;padding:.2rem .45rem;font-size:.78rem;}
 
+  /* short viewports can't hold it; let the page scroll instead of clipping */
+  @media (max-height:620px){ .wrap{height:auto;min-height:100dvh;} }
   @media (max-width:900px){
-    .wrap{min-height:0;}
+    .wrap{height:auto;}
     .top{grid-template-columns:1fr;}
     .cards{grid-template-columns:repeat(auto-fit,minmax(13rem,1fr));}
   }
@@ -128,12 +130,12 @@
       <div class="card">
         <span class="glyph" aria-hidden="true">⌇</span>
         <h2>Voiceprint<span class="tag">beta</span></h2>
-        <p>Enroll your voice once and mimi keeps only your speech. A call on speaker or someone else in the room never reaches your text.</p>
+        <p>Enroll your voice once and mimi keeps only your speech. Someone else in the room never reaches your text.</p>
       </div>
       <div class="card">
         <span class="glyph" aria-hidden="true">⏎</span>
         <h2>Agent sessions, hands off</h2>
-        <p>Send with Return turns ambient mode into a loop: you speak, mimi types and hits Return, your agent runs.</p>
+        <p>Send with Return makes it a loop: you speak, mimi types and hits Return, your agent runs.</p>
       </div>
       <div class="card">
         <span class="glyph" aria-hidden="true">⌘</span>
@@ -143,7 +145,7 @@
       <div class="card">
         <span class="glyph" aria-hidden="true">▤</span>
         <h2>Lands where you are</h2>
-        <p>Text goes into the focused field and onto the clipboard, so a bad paste target costs you nothing.</p>
+        <p>Text goes into the focused field and onto the clipboard, so a bad paste target costs nothing.</p>
       </div>
     </div>
   </main>
