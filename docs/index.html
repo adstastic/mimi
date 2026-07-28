@@ -76,6 +76,9 @@
   .tiles.three{grid-template-columns:repeat(3,minmax(0,1fr));}
   .tiles.two{grid-template-columns:repeat(2,minmax(0,1fr));}
   .tiles.one{grid-template-columns:1fr;}
+  .tiles kbd{font-family:var(--mono);font-size:clamp(.66rem,1.3vh,.8rem);color:var(--ink);background:var(--card);
+             border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:.22rem .5rem;line-height:1.2;
+             min-width:3.6em;text-align:center;}
   .tiles .repo svg{fill:var(--ink);stroke:none;}
   .tiles .repo{display:flex;flex-direction:column;align-items:center;gap:.3rem;text-decoration:none;color:inherit;}
   .tiles .repo:hover b{color:var(--signal);}
@@ -91,6 +94,7 @@
                    font-weight:600;color:var(--ink);line-height:1;}
   /* tiles stack once their own card gets narrow, whatever the page width is doing */
   @container (max-width:300px){
+    .out{height:4.2em;}
     .tiles.three,.tiles.two{grid-template-columns:1fr;}
     .tiles li{flex-direction:row;justify-content:center;gap:.5rem;text-align:center;padding:.4rem .55rem;}
   }
@@ -133,7 +137,7 @@
     <div class="top">
       <div class="pitch">
         <h1>Talk to your Mac, <span>without touching the keyboard</span></h1>
-        <p class="lede">Local dictation for macOS. Leave the mic armed and run a whole agent session by voice: you talk, mimi types and presses Return, your agent goes.</p>
+        <p class="lede">Ambient local dictation for macOS.</p>
         <p class="actions">
           <a class="download" href="https://github.com/adstastic/mimi/releases/latest">Download for macOS</a>
           <span class="meta">Notarized build · Apple silicon</span>
@@ -144,7 +148,7 @@
     <div class="cards">
       <div class="card">
         <h2>Free and open source</h2>
-        <p>No licence key, no subscription, no per-minute charge. Swift, on GitHub — read exactly what happens to your audio.</p>
+        <p>No licence key, no subscription. Native Swift.</p>
         <ul class="tiles one">
           <li>
             <a class="repo" href="https://github.com/adstastic/mimi">
@@ -203,12 +207,17 @@
 
       <div class="card">
         <h2>Custom keys and sequences</h2>
-        <p>Pick the hotkey and how a take ends. Set keys to send before and after each transcript — Return at the end and your agent runs the moment you stop talking.</p>
+        <p>Choose what mimi presses around each transcript. Return at the end hands the prompt straight to your agent.</p>
+        <ul class="tiles three keys">
+          <li><kbd>⌘V</kbd><b>Paste</b></li>
+          <li><kbd>return</kbd><b>Send</b></li>
+          <li><kbd>esc</kbd><b>Cancel</b></li>
+        </ul>
       </div>
 
       <div class="card">
         <h2>Custom vocabulary<span class="tag soon">coming soon</span></h2>
-        <p>Teach mimi the names it keeps mishearing — your repos, your colleagues, your stack — so they come out spelled the way you write them.</p>
+        <p>Teach mimi the names it keeps mishearing. Your repos, your colleagues, your stack, spelled the way you write them.</p>
       </div>
     </div>
 
@@ -218,7 +227,7 @@
 
 <script>
 (function(){
-  const LINE = "Leave the mic armed. Just talk — mimi hears you start, and stops when you pause.";
+  const LINE = "Leave the mic armed and just talk. mimi does the rest.";
   const out = document.getElementById('out'), field = document.getElementById('field');
   const state = document.getElementById('state');
   const cv = document.getElementById('wave'), ctx = cv.getContext('2d');
