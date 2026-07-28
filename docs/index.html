@@ -247,6 +247,14 @@
       loop = setTimeout(cycle, 2600);
     }, 55 * LINE.length + 600);
   }
+  // ambient is how mimi is meant to run, so the demo arrives switched on
+  if(!reduce){
+    ambient = true;
+    ambientBtn.setAttribute('aria-pressed','true');
+    state.textContent = 'Mic armed';
+    loop = setTimeout(cycle, 900);
+  }
+
   ambientBtn.addEventListener('click', ()=>{
     ambient = !ambient;
     ambientBtn.setAttribute('aria-pressed', String(ambient));
