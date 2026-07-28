@@ -33,7 +33,7 @@
   :focus-visible{outline:2px solid var(--signal);outline-offset:3px;}
 
   .wrap{height:100dvh;overflow:hidden;max-width:74rem;margin:0 auto;padding:clamp(.9rem,2.2vh,1.75rem) clamp(1.25rem,4vw,3rem);
-        display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:clamp(.75rem,2vh,1.5rem);}
+        display:grid;grid-template-rows:auto minmax(0,1fr);gap:clamp(.75rem,2vh,1.5rem);}
 
   .mark{font-family:var(--mono);font-size:.95rem;display:flex;align-items:center;gap:.55rem;}
   .mark img{height:clamp(1.5rem,3.4vh,2rem);width:auto;display:block;}
@@ -48,13 +48,14 @@
   .pitch{display:flex;flex-direction:column;gap:clamp(.6rem,1.8vh,1.2rem);min-width:0;}
   h1{font-family:var(--mono);font-size:min(2.05vw,2.4rem);line-height:1.12;letter-spacing:-.04em;white-space:nowrap;}
   h1 span{color:var(--mute);}
-  .lede{font-size:clamp(.9rem,min(1.25vw,2.1vh),1.2rem);color:var(--mute);max-width:46ch;}
+  .lede{font-size:clamp(.9rem,min(1.25vw,2.1vh),1.2rem);color:var(--mute);max-width:none;}
 
   .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(.6rem,1.3vw,1.1rem);align-items:stretch;}
   .card{container-type:inline-size;display:flex;flex-direction:column;gap:.25rem;background:var(--card);border:1px solid var(--line);
         border-radius:var(--radius);padding:clamp(.75rem,1.8vh,1.25rem) clamp(.8rem,1.5vw,1.25rem);min-width:0;}
   .card h2{font-family:var(--mono);font-weight:700;font-size:clamp(.82rem,1.1vh,.95rem);letter-spacing:-.01em;}
   .card p{color:var(--mute);font-size:clamp(.74rem,min(1vw,1.75vh),.92rem);line-height:1.45;}
+  .tag.soon{color:var(--mute);border-color:var(--line);}
   .tag{font-family:var(--mono);font-size:.58rem;letter-spacing:.12em;text-transform:uppercase;color:var(--wave);
        border:1px solid var(--wave);border-radius:2px;padding:.08rem .3rem;margin-left:.4rem;vertical-align:.16em;}
 
@@ -74,6 +75,10 @@
   .tiles{list-style:none;margin:.45rem 0 0;padding:0;display:grid;gap:.4rem;flex:1;align-content:center;}
   .tiles.three{grid-template-columns:repeat(3,minmax(0,1fr));}
   .tiles.two{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .tiles.one{grid-template-columns:1fr;}
+  .tiles .repo svg{fill:var(--ink);stroke:none;}
+  .tiles .repo{display:flex;flex-direction:column;align-items:center;gap:.3rem;text-decoration:none;color:inherit;}
+  .tiles .repo:hover b{color:var(--signal);}
   .tiles li{background:var(--paper);border:1px solid var(--line);border-radius:6px;
             padding:clamp(.45rem,1.1vh,.7rem) .35rem;display:flex;flex-direction:column;
             align-items:center;justify-content:center;gap:.3rem;text-align:center;}
@@ -101,9 +106,6 @@
   .download:hover{opacity:.88;}
   .download:active{transform:translateY(1px);}
   .meta{font-size:.72rem;color:var(--mute);}
-  footer{border-top:1px solid var(--line);padding-top:.75rem;display:flex;flex-wrap:wrap;gap:.6rem 1.5rem;
-         align-items:center;justify-content:space-between;color:var(--mute);font-size:.78rem;}
-  footer a{color:var(--signal);}
 
   /* short viewports can't hold it; let the page scroll instead of clipping */
   @media (max-height:620px){ .wrap{height:auto;min-height:100dvh;} }
@@ -141,13 +143,16 @@
 
     <div class="cards">
       <div class="card">
-        <h2>Free</h2>
-        <p>No licence key, no subscription, no per-minute charge. Download it and dictate.</p>
-      </div>
-
-      <div class="card">
-        <h2>Open source</h2>
-        <p>Swift, on GitHub. Read exactly what happens to your audio, or build it from source yourself.</p>
+        <h2>Free and open source</h2>
+        <p>No licence key, no subscription, no per-minute charge. Swift, on GitHub — read exactly what happens to your audio.</p>
+        <ul class="tiles one">
+          <li>
+            <a class="repo" href="https://github.com/adstastic/mimi">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path class="solid" d="M8 0C3.58 0 0 3.58 0 8C0 11.54 2.29 14.53 5.47 15.59C5.87 15.66 6.02 15.42 6.02 15.21C6.02 15.02 6.01 14.39 6.01 13.72C4 14.09 3.48 13.23 3.32 12.78C3.23 12.55 2.84 11.84 2.5 11.65C2.22 11.5 1.82 11.13 2.49 11.12C3.12 11.11 3.57 11.7 3.72 11.94C4.44 13.15 5.59 12.81 6.05 12.6C6.12 12.08 6.33 11.73 6.56 11.53C4.78 11.33 2.92 10.64 2.92 7.58C2.92 6.71 3.23 5.99 3.74 5.43C3.66 5.23 3.38 4.41 3.82 3.31C3.82 3.31 4.49 3.1 6.02 4.13C6.66 3.95 7.34 3.86 8.02 3.86C8.7 3.86 9.38 3.95 10.02 4.13C11.55 3.09 12.22 3.31 12.22 3.31C12.66 4.41 12.38 5.23 12.3 5.43C12.81 5.99 13.12 6.7 13.12 7.58C13.12 10.65 11.25 11.33 9.47 11.53C9.76 11.78 10.01 12.26 10.01 13.01C10.01 14.08 10 14.94 10 15.21C10 15.42 10.15 15.67 10.55 15.59C13.71 14.53 16 11.53 16 8C16 3.58 12.42 0 8 0Z"/></svg>
+              <b>adstastic/mimi</b>
+            </a>
+          </li>
+        </ul>
       </div>
 
       <div class="card">
@@ -200,14 +205,15 @@
         <h2>Custom keys and sequences</h2>
         <p>Pick the hotkey and how a take ends. Set keys to send before and after each transcript — Return at the end and your agent runs the moment you stop talking.</p>
       </div>
+
+      <div class="card">
+        <h2>Custom vocabulary<span class="tag soon">coming soon</span></h2>
+        <p>Teach mimi the names it keeps mishearing — your repos, your colleagues, your stack — so they come out spelled the way you write them.</p>
+      </div>
     </div>
 
   </main>
 
-  <footer>
-    <span>Grant mic and accessibility on first launch, then start talking. Or build it yourself: <a href="https://github.com/adstastic/mimi">github.com/adstastic/mimi</a></span>
-    <span>Requires macOS with Apple on-device speech</span>
-  </footer>
 </div>
 
 <script>
