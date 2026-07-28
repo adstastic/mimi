@@ -82,6 +82,7 @@
   .tiles b{font-family:var(--mono);font-weight:500;font-size:clamp(.64rem,1vh,.74rem);line-height:1.25;}
   .tiles .wordmark{font-family:var(--mono);font-size:clamp(.7rem,1.5vh,.9rem);letter-spacing:.02em;
                    font-weight:600;color:var(--ink);line-height:1;}
+  .tiles .nvidia{font-size:clamp(.6rem,1.25vh,.75rem);letter-spacing:.16em;color:#76B900;}
   .swatch{display:inline-block;width:.6rem;height:.35rem;border-radius:1px;margin-right:.35rem;vertical-align:.05em;}
   .swatch.me{background:var(--signal);}
   .swatch.them{background:var(--line);}
@@ -183,8 +184,8 @@
             <b>SpeechTranscriber</b>
           </li>
           <li>
-            <span class="wordmark" aria-hidden="true">MLX</span>
-            <b>Parakeet v2</b>
+            <span class="wordmark nvidia" aria-hidden="true">NVIDIA</span>
+            <b>Parakeet v2 on MLX</b>
           </li>
         </ul>
       </div>
@@ -303,7 +304,8 @@
       const played = x/w <= p;
       // deterministic pseudo-noise so the take looks the same every loop
       const a = Math.abs(Math.sin(x*0.21) + Math.sin(x*0.052)*0.7 + Math.sin(x*0.013)*0.5) / 2.2;
-      const amp = (seg[1] ? 0.85 : 0.42) * a * (h*0.42);
+      // other voices are just as loud; what separates them is the profile, not the volume
+      const amp = 0.85 * a * (h*0.42);
       vctx.strokeStyle = seg[1] ? me : them;
       vctx.globalAlpha = played ? (seg[1] ? 1 : 0.45) : 0.18;
       vctx.lineWidth = 2;
