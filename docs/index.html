@@ -46,9 +46,8 @@
   main{display:grid;grid-template-rows:auto auto;gap:clamp(1rem,3.5vh,2.4rem);align-content:center;min-height:0;}
   .top{display:flex;flex-direction:column;gap:clamp(.6rem,1.8vh,1.1rem);}
   .pitch{display:flex;flex-direction:column;gap:clamp(.6rem,1.8vh,1.2rem);min-width:0;}
-  h1{font-family:var(--mono);font-size:clamp(1.3rem,min(3vw,5.4vh),2.8rem);line-height:1.06;letter-spacing:-.045em;
-     white-space:nowrap;display:flex;flex-direction:column;}
-  h1 span{color:var(--mute);font-size:.62em;letter-spacing:-.03em;}
+  h1{font-family:var(--mono);font-size:min(2.05vw,2.4rem);line-height:1.12;letter-spacing:-.04em;white-space:nowrap;}
+  h1 span{color:var(--mute);}
   .lede{font-size:clamp(.9rem,min(1.25vw,2.1vh),1.2rem);color:var(--mute);max-width:46ch;}
 
   .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(.6rem,1.3vw,1.1rem);align-items:stretch;}
@@ -112,6 +111,10 @@
     .download{width:100%;text-align:center;}
     .actions{gap:.6rem;}
   }
+  /* one line is a wide-screen luxury; below this it would be unreadably small */
+  @media (max-width:1000px){
+    h1{white-space:normal;font-size:clamp(1.35rem,4.6vw,2rem);}
+  }
   @media (max-width:900px){
     .wrap{height:auto;}
     .top{grid-template-columns:1fr;}
@@ -127,7 +130,7 @@
   <main>
     <div class="top">
       <div class="pitch">
-        <h1>Talk to your Mac,<span>without touching the keyboard</span></h1>
+        <h1>Talk to your Mac, <span>without touching the keyboard</span></h1>
         <p class="lede">Local dictation for macOS. Leave the mic armed, say what you want, and the words land wherever your cursor is.</p>
         <p class="actions">
           <a class="download" href="https://github.com/adstastic/mimi/releases/latest">Download for macOS</a>
