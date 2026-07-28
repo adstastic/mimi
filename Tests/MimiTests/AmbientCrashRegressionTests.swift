@@ -98,7 +98,7 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertTrue(shortcutStarted)
     }
 
-    func testAmbientIgnoresSpeechBelowNoiseFloor() async throws {
+    func testAmbientStartsWhenTranscriptArrivesAfterLevelFallsBelowNoiseFloor() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
         let overlay = FakeOverlay()
@@ -106,6 +106,7 @@ final class AmbientCrashRegressionTests: XCTestCase {
         var config = ambientConfig(inputDeviceID: "quiet-mic")
         config.silenceThresholdDBFS = -35
         audio.dbfs = -60
+        audio.peakDBFS = -60
 
         let controller = makeController(
             configProvider: { config },
@@ -124,10 +125,10 @@ final class AmbientCrashRegressionTests: XCTestCase {
         try await Task.sleep(nanoseconds: 150_000_000)
         XCTAssertEqual(audio.startInputDeviceIDs, ["quiet-mic"])
 
-        audio.dbfs = -20
-        asr.emitPartial("loud words")
-        let loudSpeechStarted = await waitUntil({ audio.startInputDeviceIDs == ["quiet-mic", "quiet-mic"] }, timeout: 1.0)
-        XCTAssertTrue(loudSpeechStarted)
+        audio.peakDBFS = -20
+        asr.emitPartial("delayed words")
+        let speechStarted = await waitUntil({ audio.startInputDeviceIDs == ["quiet-mic", "quiet-mic"] }, timeout: 1.0)
+        XCTAssertTrue(speechStarted)
     }
 
     func testLiveTranscriptToggleSuppressesRawPartials() async throws {
@@ -449,6 +450,7 @@ private final class FakeAudioCapture: AudioCapturing {
     var stopCount = 0
     var monitorHandlerSetCount = 0
     var dbfs: Double = -120
+    var peakDBFS: Double = -120
     var startError: Error?
 
     func start(preRollMilliseconds: Int, inputDeviceID: String?) async throws {
@@ -474,6 +476,10 @@ private final class FakeAudioCapture: AudioCapturing {
 
     func currentDBFS() -> Double {
         dbfs
+    }
+
+    func peakDBFS(within seconds: TimeInterval) -> Double {
+        peakDBFS
     }
 
     func secondsSinceLastBuffer() -> TimeInterval? {

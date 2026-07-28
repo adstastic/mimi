@@ -39,6 +39,7 @@ final class AudioCapture {
     private var monitorBufferHandler: ((AVAudioPCMBuffer) -> Void)?
     private var sampleRate: Double = 48_000
     private var latestDBFS: Double = -120
+    private var recentLevels: [(date: Date, dbfs: Double)] = []
     private var lastBufferAt: Date?
     private var lastMonitorLogAt = Date.distantPast
 
@@ -174,6 +175,7 @@ final class AudioCapture {
         recordingBufferHandler = nil
         monitorBufferHandler = nil
         latestDBFS = -120
+        recentLevels = []
         lastBufferAt = nil
         lock.unlock()
     }
@@ -181,6 +183,16 @@ final class AudioCapture {
     func currentDBFS() -> Double {
         lock.lock()
         let value = latestDBFS
+        lock.unlock()
+        return value
+    }
+
+    func peakDBFS(within seconds: TimeInterval) -> Double {
+        let cutoff = Date().addingTimeInterval(-seconds)
+        lock.lock()
+        let value = recentLevels.reduce(-120) { peak, level in
+            level.date >= cutoff ? max(peak, level.dbfs) : peak
+        }
         lock.unlock()
         return value
     }
@@ -198,6 +210,7 @@ final class AudioCapture {
         ringSamples = []
         recordingSamples = []
         latestDBFS = -120
+        recentLevels = []
         lastBufferAt = nil
         lock.unlock()
     }
@@ -244,9 +257,12 @@ final class AudioCapture {
 
         let handler: ((AVAudioPCMBuffer) -> Void)?
         let monitorHandler: ((AVAudioPCMBuffer) -> Void)?
+        let receivedAt = Date()
         lock.lock()
         latestDBFS = max(-120, dbfs)
-        lastBufferAt = Date()
+        recentLevels.append((receivedAt, latestDBFS))
+        recentLevels.removeAll { receivedAt.timeIntervalSince($0.date) > 2 }
+        lastBufferAt = receivedAt
         if recording {
             recordingSamples.append(contentsOf: samples)
             handler = recordingBufferHandler

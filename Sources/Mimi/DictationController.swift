@@ -10,6 +10,7 @@ protocol AudioCapturing: AnyObject {
     @MainActor func cancelRecording()
     @MainActor func stop()
     @MainActor func currentDBFS() -> Double
+    @MainActor func peakDBFS(within seconds: TimeInterval) -> Double
     @MainActor func secondsSinceLastBuffer() -> TimeInterval?
 }
 
@@ -754,7 +755,7 @@ final class DictationController {
     }
 
     private func isAboveNoiseFloor(_ config: MimiConfig) -> Bool {
-        audioCapture.currentDBFS() >= config.normalizedForBackend().silenceThresholdDBFS
+        audioCapture.peakDBFS(within: 1.5) >= config.normalizedForBackend().silenceThresholdDBFS
     }
 
     private func recentlyDetectedSpeech(within seconds: TimeInterval) -> Bool {
