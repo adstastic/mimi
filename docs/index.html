@@ -59,8 +59,7 @@
        border:1px solid var(--wave);border-radius:2px;padding:.08rem .3rem;margin-left:.4rem;vertical-align:.16em;}
 
   /* live demo, inside the ambient card */
-  .demo{display:flex;flex-direction:column;gap:.4rem;margin-top:.5rem;
-        border-top:1px solid var(--line);padding-top:.5rem;}
+  .demo{display:flex;flex-direction:column;gap:.4rem;margin-top:.35rem;}
   .eyebrow{font-family:var(--mono);font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);
            display:flex;justify-content:space-between;gap:1rem;}
   .out{font-family:var(--mono);font-size:clamp(.72rem,min(.9vw,1.5vh),.82rem);line-height:1.4;
@@ -121,7 +120,6 @@
       <div class="card">
         <span class="glyph" aria-hidden="true">◉</span>
         <h2>Ambient mode</h2>
-        <p>Nothing to hold. mimi starts when you start talking and stops when you pause.</p>
         <div class="demo field idle" id="field">
           <div class="eyebrow"><span>Any text field</span><span id="state">Ready</span></div>
           <div class="out" id="out"><span class="cursor"></span></div>
