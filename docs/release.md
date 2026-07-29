@@ -12,7 +12,7 @@ Downloaded macOS apps pass Gatekeeper when the app is:
 4. Stapled after notarization.
 5. Zipped with `ditto`, preserving app bundle metadata.
 
-The workflow does all five for tag/manual releases. It notarizes a temporary ZIP, staples `build/mimi.app`, then creates the final downloadable ZIP from the stapled app.
+The workflow does all five for manual releases and tag releases when the repository variable `CI_RELEASE_ENABLED` is `true`. It notarizes a temporary ZIP, staples `build/mimi.app`, then creates the final downloadable ZIP from the stapled app.
 
 ## Required GitHub secrets
 
@@ -58,14 +58,14 @@ Store as `APP_STORE_CONNECT_API_KEY_P8_BASE64`.
 
 Push to `main` runs tests only.
 
-Create a notarized ZIP release by pushing a tag:
+After configuring the required secrets, set the repository variable `CI_RELEASE_ENABLED` to `true`. Create a notarized ZIP release by pushing a tag:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
-Manual workflow dispatch also creates and uploads a notarized ZIP artifact, but only tags publish a GitHub Release.
+Without that variable, tags run tests but skip the release job. Manual workflow dispatch still creates and uploads a notarized ZIP artifact; only enabled tag builds publish a GitHub Release.
 
 ## Local checks
 

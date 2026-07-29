@@ -6,6 +6,9 @@ cd "$ROOT_DIR"
 
 APP_NAME="${MIMI_APP_NAME:-mimi}"
 BUNDLE_ID="${MIMI_BUNDLE_ID:-com.ad1.mimi}"
+APP_VERSION="${MIMI_VERSION:-$(git describe --tags --exact-match 2>/dev/null || true)}"
+APP_VERSION="${APP_VERSION#v}"
+APP_VERSION="${APP_VERSION:-0.1.0}"
 BIN_DIR="$(swift build -c release --show-bin-path)"
 EXECUTABLE="$BIN_DIR/Mimi"
 APP_DIR="$ROOT_DIR/build/$APP_NAME.app"
@@ -60,7 +63,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.0</string>
+    <string>$APP_VERSION</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
