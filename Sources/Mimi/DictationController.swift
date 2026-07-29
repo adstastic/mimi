@@ -378,7 +378,7 @@ final class DictationController {
                 plan: plan,
                 useAppleStreamFinal: transcriptionAudio.useAppleStreamFinal
             )
-            let text = TranscriptCleaner.clean(rawText)
+            let text = transcriptText(rawText, config: plan.config)
             guard !text.isEmpty else {
                 throw NSError(domain: AppBrand.noSpeechErrorDomain, code: 1, userInfo: [NSLocalizedDescriptionKey: "No speech detected."])
             }
@@ -585,7 +585,7 @@ final class DictationController {
 
         guard case .recording(_, let plan) = state else { return }
         guard plan.config.showLiveTranscript else { return }
-        let displayText = TranscriptCleaner.clean(text)
+        let displayText = transcriptText(text, config: plan.config)
         onPartialTranscript(displayText.isEmpty ? nil : displayText)
         overlay.updateDetail(displayText.isEmpty ? nil : preview(displayText))
     }
@@ -770,6 +770,12 @@ final class DictationController {
     private func recentlyDetectedSpeech(within seconds: TimeInterval) -> Bool {
         guard let lastSpeechDetectedAt else { return false }
         return Date().timeIntervalSince(lastSpeechDetectedAt) <= seconds
+    }
+
+    private func transcriptText(_ text: String, config: MimiConfig) -> String {
+        config.fillerCleanupEnabled
+            ? TranscriptCleaner.clean(text)
+            : text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func preview(_ text: String) -> String {

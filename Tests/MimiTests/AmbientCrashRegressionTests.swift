@@ -211,6 +211,47 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertEqual(history.lastTranscript, "I think we should. ship it Friday.")
     }
 
+    func testFillerCleanupCanBeDisabledForPreviewAndFinalPaste() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let inserter = FakeTextInserter()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var partials: [String?] = []
+        var config = MimiConfig.defaults
+        config.preferredBackend = .appleSpeechTranscriber
+        config.silenceDetectionMode = .speechActivity
+        config.silenceAutoStopEnabled = false
+        config.voiceprintEnabled = false
+        config.pressEnterAfterPaste = false
+        config.fillerCleanupEnabled = false
+        asr.streamFinalText = "I think we should. Ah, ship it Friday."
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            textInserter: inserter,
+            overlay: overlay,
+            status: status,
+            partialTranscript: { partials.append($0) },
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        let streamStarted = await waitUntil({ asr.snapshotEvents().contains("stream.start") }, timeout: 1.0)
+        XCTAssertTrue(streamStarted)
+        asr.emitPartial("I, um, think so.")
+        let rawPreviewShown = await waitUntil({ partials.contains("I, um, think so.") }, timeout: 1.0)
+        XCTAssertTrue(rawPreviewShown)
+        try await Task.sleep(nanoseconds: 250_000_000)
+        controller.hotkeyUp()
+        let pasted = await waitUntil({ !inserter.insertedTexts.isEmpty }, timeout: 1.0)
+
+        XCTAssertTrue(pasted)
+        XCTAssertEqual(inserter.insertedTexts, ["I think we should. Ah, ship it Friday."])
+    }
+
     func testLiveTranscriptToggleSuppressesRawPartials() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()

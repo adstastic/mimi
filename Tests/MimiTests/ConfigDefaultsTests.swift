@@ -12,6 +12,7 @@ final class ConfigDefaultsTests: XCTestCase {
         XCTAssertTrue(config.silenceAutoStopEnabled)
         XCTAssertTrue(config.pressEnterAfterPaste)
         XCTAssertTrue(config.showLiveTranscript)
+        XCTAssertTrue(config.fillerCleanupEnabled)
         XCTAssertTrue(config.voiceprintEnabled)
         XCTAssertEqual(config.voiceprintThreshold, 0.78)
         XCTAssertEqual(config.hotkeyKeyCode, 54)
@@ -120,8 +121,24 @@ final class ConfigDefaultsTests: XCTestCase {
         XCTAssertNil(config.inputDeviceID)
         XCTAssertEqual(config.silenceDetectionMode, .audioLevel)
         XCTAssertTrue(config.showLiveTranscript)
+        XCTAssertTrue(config.fillerCleanupEnabled)
         XCTAssertTrue(config.voiceprintEnabled)
         XCTAssertEqual(config.voiceprintThreshold, 0.78)
+    }
+
+    func testFillerCleanupSettingPersists() {
+        let suiteName = "MimiTests.\(UUID().uuidString)"
+        guard let userDefaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults")
+            return
+        }
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        var config = MimiConfig.defaults
+        config.fillerCleanupEnabled = false
+        config.save(userDefaults: userDefaults)
+
+        XCTAssertFalse(MimiConfig.load(userDefaults: userDefaults).fillerCleanupEnabled)
     }
 
     func testVoiceprintThresholdIsClampedOnLoad() {

@@ -45,6 +45,7 @@ struct SettingsView: View {
                     ToggleLine("End shortcut on silence", systemImage: "speaker.slash", isOn: $config.silenceAutoStopEnabled)
                     ToggleLine("Shortcut presses Return", systemImage: "return", isOn: $config.pressEnterAfterPaste)
                     ToggleLine("Show live transcript", systemImage: "text.bubble", isOn: $config.showLiveTranscript)
+                    ToggleLine("Remove filler words", systemImage: "text.badge.minus", isOn: $config.fillerCleanupEnabled)
                     Label(
                         "Live transcript is raw mic audio and may show every speaker. My Voice filtering happens after recording stops.",
                         systemImage: "info.circle"
