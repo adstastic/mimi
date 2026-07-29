@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-07-29
+
 ### Fixed
 
 - Removed standalone filler sounds such as “um,” “uh,” and “ah” consistently from live previews and pasted transcripts, with a setting to disable cleanup.
@@ -35,7 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configurable microphone, silence detection, shortcuts, and Return after paste.
 - Local-only operation with no account or telemetry.
 
-[Unreleased]: https://github.com/adstastic/mimi/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/adstastic/mimi/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/adstastic/mimi/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/adstastic/mimi/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/adstastic/mimi/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/adstastic/mimi/releases/tag/v0.1.0
