@@ -129,11 +129,13 @@ public actor AppleSpeechTranscriberBackend {
         self.detector = detector
         inputContinuation = continuation
         analyzerFormat = format
+        #if compiler(>=6.4)
         if #available(macOS 27.0, *) {
             let analyzerInputConverter = AnalyzerInputConverter(analyzerFormat: format)
             convertAnalyzerInput = { try analyzerInputConverter.convert($0, at: nil) }
             flushAnalyzerInput = { try analyzerInputConverter.flush() }
         }
+        #endif
         converter = nil
         converterInputFormat = nil
         converterOutputFormat = nil
