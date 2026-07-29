@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-07-29
+
+### Changed
+
+- Improved final batch transcription accuracy without slowing live transcript or ambient-mode updates.
+- Adopted macOS 27's speech input converter while retaining the macOS 26 fallback.
+
 ## [0.1.1] - 2026-07-29
 
 ### Fixed
@@ -24,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configurable microphone, silence detection, shortcuts, and Return after paste.
 - Local-only operation with no account or telemetry.
 
-[Unreleased]: https://github.com/adstastic/mimi/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/adstastic/mimi/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/adstastic/mimi/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/adstastic/mimi/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/adstastic/mimi/releases/tag/v0.1.0
