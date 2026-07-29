@@ -53,6 +53,8 @@ public actor AppleSpeechTranscriberBackend {
     private var resultTask: Task<Void, Error>?
     private var detectorTask: Task<Void, Error>?
     private var analyzerFormat: AVAudioFormat?
+    private var convertAnalyzerInput: ((AVAudioPCMBuffer) throws -> [AnalyzerInput])?
+    private var flushAnalyzerInput: (() throws -> [AnalyzerInput])?
     private var converter: AVAudioConverter?
     private var converterInputFormat: AVAudioFormat?
     private var converterOutputFormat: AVAudioFormat?
@@ -65,13 +67,13 @@ public actor AppleSpeechTranscriberBackend {
 
     public func prepare() async throws {
         _ = try await locale()
-        let module = makeTranscriber(locale: try await locale())
+        let module = makeTranscriber(locale: try await locale(), reportingOptions: [])
         try await ensureAssets(for: module)
     }
 
     public func transcribe(audioURL: URL) async throws -> String {
         let locale = try await locale()
-        let module = makeTranscriber(locale: locale)
+        let module = makeTranscriber(locale: locale, reportingOptions: [])
         try await ensureAssets(for: module)
         let file = try AVAudioFile(forReading: audioURL)
         let analyzer = SpeechAnalyzer(
@@ -96,7 +98,10 @@ public actor AppleSpeechTranscriberBackend {
         guard analyzer == nil else { throw AppleSpeechTranscriberError.streamAlreadyActive }
 
         let locale = try await locale()
-        let module = makeTranscriber(locale: locale)
+        let module = makeTranscriber(
+            locale: locale,
+            reportingOptions: [.volatileResults, .fastResults]
+        )
         let detector = detectSpeech ? SpeechDetector(
             detectionOptions: SpeechDetector.DetectionOptions(sensitivityLevel: .low),
             reportResults: true
@@ -124,6 +129,11 @@ public actor AppleSpeechTranscriberBackend {
         self.detector = detector
         inputContinuation = continuation
         analyzerFormat = format
+        if #available(macOS 27.0, *) {
+            let analyzerInputConverter = AnalyzerInputConverter(analyzerFormat: format)
+            convertAnalyzerInput = { try analyzerInputConverter.convert($0, at: nil) }
+            flushAnalyzerInput = { try analyzerInputConverter.flush() }
+        }
         converter = nil
         converterInputFormat = nil
         converterOutputFormat = nil
@@ -158,6 +168,13 @@ public actor AppleSpeechTranscriberBackend {
             throw AppleSpeechTranscriberError.streamNotActive
         }
 
+        if let convertAnalyzerInput {
+            for input in try convertAnalyzerInput(buffer) {
+                inputContinuation.yield(input)
+            }
+            return
+        }
+
         let converted = try convert(buffer, to: analyzerFormat)
         inputContinuation.yield(AnalyzerInput(buffer: converted))
     }
@@ -165,8 +182,13 @@ public actor AppleSpeechTranscriberBackend {
     public func finishStream() async throws -> String {
         guard let analyzer else { throw AppleSpeechTranscriberError.streamNotActive }
 
-        inputContinuation?.finish()
         do {
+            if let flushAnalyzerInput {
+                for input in try flushAnalyzerInput() {
+                    inputContinuation?.yield(input)
+                }
+            }
+            inputContinuation?.finish()
             try await analyzer.finalizeAndFinishThroughEndOfInput()
             try await resultTask?.value
             try? await detectorTask?.value
@@ -174,6 +196,8 @@ public actor AppleSpeechTranscriberBackend {
             await cleanupAfterStream()
             return text
         } catch {
+            inputContinuation?.finish()
+            await analyzer.cancelAndFinishNow()
             await cleanupAfterStream()
             throw error
         }
@@ -217,11 +241,14 @@ public actor AppleSpeechTranscriberBackend {
         return final.isEmpty ? latestVolatile : final
     }
 
-    private func makeTranscriber(locale: Locale) -> SpeechTranscriber {
+    private func makeTranscriber(
+        locale: Locale,
+        reportingOptions: Set<SpeechTranscriber.ReportingOption>
+    ) -> SpeechTranscriber {
         SpeechTranscriber(
             locale: locale,
             transcriptionOptions: [],
-            reportingOptions: [.volatileResults, .fastResults],
+            reportingOptions: reportingOptions,
             attributeOptions: [.audioTimeRange]
         )
     }
@@ -342,6 +369,8 @@ public actor AppleSpeechTranscriberBackend {
         resultTask = nil
         detectorTask = nil
         analyzerFormat = nil
+        convertAnalyzerInput = nil
+        flushAnalyzerInput = nil
         converter = nil
         converterInputFormat = nil
         converterOutputFormat = nil

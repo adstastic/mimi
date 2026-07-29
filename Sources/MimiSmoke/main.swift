@@ -12,6 +12,10 @@ struct MimiSmoke {
         }
 
         switch mode {
+        case "apple-file":
+            guard arguments.count >= 2 else { printUsageAndExit() }
+            let url = URL(fileURLWithPath: arguments[1]).standardizedFileURL
+            try await runAppleFile(url: url)
         case "apple-stream-file":
             guard arguments.count >= 2 else { printUsageAndExit() }
             let url = URL(fileURLWithPath: arguments[1]).standardizedFileURL
@@ -35,6 +39,20 @@ struct MimiSmoke {
             try await runTextEditEndToEnd(url: url, pressReturn: arguments.contains("--press-enter"))
         default:
             printUsageAndExit()
+        }
+    }
+
+    private static func runAppleFile(url: URL) async throws {
+        let backend = AppleSpeechTranscriberBackend(locale: Locale(identifier: "en_US"))
+        let clock = ContinuousClock()
+        let started = clock.now
+        let text = try await backend.transcribe(audioURL: url)
+        print("backend=apple-speech-transcriber")
+        print("file=\(url.path)")
+        print("total_ms=\(started.duration(to: clock.now).milliseconds)")
+        print("final=\(text)")
+        guard containsExpectedTerms(text) else {
+            throw SmokeError.unexpectedTranscript(text)
         }
     }
 
@@ -292,6 +310,7 @@ struct MimiSmoke {
     private static func printUsageAndExit() -> Never {
         fputs("""
         Usage:
+          swift run MimiSmoke apple-file /path/to/audio.wav
           swift run MimiSmoke apple-stream-file /path/to/audio.wav
           swift run MimiSmoke voiceprint-enroll /path/to/me1.wav [/path/to/me2.wav] [--output /path/to/profile.json] [--threshold 0.18]
           swift run MimiSmoke voiceprint-verify /path/to/check.wav [--profile /path/to/profile.json]
