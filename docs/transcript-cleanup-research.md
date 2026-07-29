@@ -82,10 +82,11 @@ Apple says volatile results arrive quickly, are tentative, and are replaced by b
 
 At each preview and at finalization, run whole-string O(n) cleanup:
 
-- remove only high-confidence standalone fillers by default: `um`, `uh`, `erm`;
+- remove high-confidence standalone fillers by default: `um`, `uh`, `erm`;
+- also remove standalone `ah`: Mimi's reproducible fixture maps spoken “uh” to finalized “Ah,” so omitting it leaves the reported bug unfixed; quoted/metalinguistic uses remain protected;
 - repair punctuation/whitespace immediately adjacent to removed fillers;
 - preserve substrings (`Ummagumma`, `uh-huh`), quoted/metalinguistic uses, URLs, paths, flags, identifiers, and acronyms;
-- do not default-remove `like`, `so`, `well`, `right`, `you know`, or `ah` because they can carry meaning.
+- do not default-remove `like`, `so`, `well`, `right`, or `you know` because they can carry meaning.
 
 Run final cleanup before history/paste. Keep raw text ephemeral except opt-in diagnostics; persistent raw-plus-clean histories add privacy/storage scope without solving current cleanup. Do not add another ASR pass for cleanup.
 

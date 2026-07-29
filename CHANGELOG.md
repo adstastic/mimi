@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Removed standalone filler sounds such as “um,” “uh,” and “ah” consistently from live previews and pasted transcripts.
+
 ## [0.1.2] - 2026-07-29
 
 ### Changed

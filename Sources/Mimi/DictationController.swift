@@ -28,6 +28,13 @@ protocol ASRServicing: AnyObject {
     func transcribe(audioURL: URL) async throws -> String
 }
 
+@MainActor
+protocol TextInserting: AnyObject {
+    func insert(_ text: String, pressReturn: Bool, enterDelayMilliseconds: Int) async throws
+    func copyToClipboard(_ text: String) throws
+    func pressReturn() throws
+}
+
 protocol VoiceprintVerifying: AnyObject {
     func hasProfile() async -> Bool
     func verify(audioURL: URL, thresholdOverride: Float?) async throws -> VoiceprintVerification?
@@ -84,6 +91,7 @@ extension OverlayShowing {
 
 extension AudioCapture: AudioCapturing {}
 extension ASRService: ASRServicing {}
+extension TextInserter: TextInserting {}
 extension OverlayWindowController: OverlayShowing {}
 
 @MainActor
@@ -138,7 +146,7 @@ final class DictationController {
     private let audioCapture: AudioCapturing
     private let asrService: ASRServicing
     private let voiceprintVerifier: VoiceprintVerifying?
-    private let textInserter: TextInserter
+    private let textInserter: TextInserting
     private let history: HistoryStore
     private let overlay: OverlayShowing
     private let onStatus: (String) -> Void
@@ -167,7 +175,7 @@ final class DictationController {
         audioCapture: AudioCapturing,
         asrService: ASRServicing,
         voiceprintVerifier: VoiceprintVerifying? = nil,
-        textInserter: TextInserter,
+        textInserter: TextInserting,
         history: HistoryStore,
         overlay: OverlayShowing,
         onStatus: @escaping (String) -> Void,
@@ -370,7 +378,7 @@ final class DictationController {
                 plan: plan,
                 useAppleStreamFinal: transcriptionAudio.useAppleStreamFinal
             )
-            let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = TranscriptCleaner.clean(rawText)
             guard !text.isEmpty else {
                 throw NSError(domain: AppBrand.noSpeechErrorDomain, code: 1, userInfo: [NSLocalizedDescriptionKey: "No speech detected."])
             }
@@ -577,8 +585,9 @@ final class DictationController {
 
         guard case .recording(_, let plan) = state else { return }
         guard plan.config.showLiveTranscript else { return }
-        onPartialTranscript(text)
-        overlay.updateDetail(preview(text))
+        let displayText = TranscriptCleaner.clean(text)
+        onPartialTranscript(displayText.isEmpty ? nil : displayText)
+        overlay.updateDetail(displayText.isEmpty ? nil : preview(displayText))
     }
 
     private func handleSpeechDetection(_ detected: Bool) {

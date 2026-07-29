@@ -131,6 +131,86 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertTrue(speechStarted)
     }
 
+    func testLiveTranscriptUsesSameFillerCleanupAsFinalText() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var partials: [String?] = []
+        var config = MimiConfig.defaults
+        config.preferredBackend = .appleSpeechTranscriber
+        config.silenceDetectionMode = .speechActivity
+        config.silenceAutoStopEnabled = false
+        config.voiceprintEnabled = false
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            partialTranscript: { partials.append($0) },
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        let streamStarted = await waitUntil({ asr.snapshotEvents().contains("stream.start") }, timeout: 1.0)
+        XCTAssertTrue(streamStarted)
+        asr.emitPartial("I, um, think so.")
+        let cleanedPartialShown = await waitUntil({ partials.contains("I think so.") }, timeout: 1.0)
+
+        XCTAssertTrue(cleanedPartialShown)
+        XCTAssertFalse(partials.contains("I, um, think so."))
+
+        asr.emitPartial("Um.")
+        let stalePreviewCleared = await waitUntil({ partials.last.map { $0 == nil } ?? false }, timeout: 1.0)
+        XCTAssertTrue(stalePreviewCleared)
+        controller.cancelRecording()
+    }
+
+    func testFinalPasteCleansFillerAddedAfterLivePreview() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let inserter = FakeTextInserter()
+        let history = HistoryStore()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var partials: [String?] = []
+        var config = MimiConfig.defaults
+        config.preferredBackend = .appleSpeechTranscriber
+        config.silenceDetectionMode = .speechActivity
+        config.silenceAutoStopEnabled = false
+        config.voiceprintEnabled = false
+        config.pressEnterAfterPaste = false
+        asr.streamFinalText = "I think we should. Ah, ship it Friday."
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            textInserter: inserter,
+            history: history,
+            overlay: overlay,
+            status: status,
+            partialTranscript: { partials.append($0) },
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        let streamStarted = await waitUntil({ asr.snapshotEvents().contains("stream.start") }, timeout: 1.0)
+        XCTAssertTrue(streamStarted)
+        asr.emitPartial("I think we should. ship it Friday.")
+        let previewShown = await waitUntil({ partials.contains("I think we should. ship it Friday.") }, timeout: 1.0)
+        XCTAssertTrue(previewShown)
+        try await Task.sleep(nanoseconds: 250_000_000)
+        controller.hotkeyUp()
+        let pasted = await waitUntil({ !inserter.insertedTexts.isEmpty }, timeout: 1.0)
+
+        XCTAssertTrue(pasted)
+        XCTAssertEqual(inserter.insertedTexts, ["I think we should. ship it Friday."])
+        XCTAssertEqual(history.lastTranscript, "I think we should. ship it Friday.")
+    }
+
     func testLiveTranscriptToggleSuppressesRawPartials() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
@@ -414,6 +494,8 @@ final class AmbientCrashRegressionTests: XCTestCase {
         audio: AudioCapturing,
         asr: ASRServicing,
         voiceprint: VoiceprintVerifying? = nil,
+        textInserter: TextInserting? = nil,
+        history: HistoryStore? = nil,
         overlay: OverlayShowing,
         status: StatusSink,
         partialTranscript: ((String?) -> Void)? = nil,
@@ -424,8 +506,8 @@ final class AmbientCrashRegressionTests: XCTestCase {
             audioCapture: audio,
             asrService: asr,
             voiceprintVerifier: voiceprint,
-            textInserter: TextInserter(),
-            history: HistoryStore(),
+            textInserter: textInserter ?? TextInserter(),
+            history: history ?? HistoryStore(),
             overlay: overlay,
             onStatus: { status.append($0) },
             onTranscript: { _ in },
@@ -493,6 +575,7 @@ private final class FakeASRService: ASRServicing {
     private var eventHandler: AppleSpeechTranscriberBackend.EventHandler?
     private var cancelsHeld = false
     var startError: Error?
+    var streamFinalText = ""
     private var pendingCancel: CheckedContinuation<Void, Never>?
 
     func holdCancels() {
@@ -546,7 +629,7 @@ private final class FakeASRService: ASRServicing {
 
     func finishAppleStream() async throws -> String {
         record("stream.finish")
-        return ""
+        return streamFinalText
     }
 
     func cancelAppleStream() async {
@@ -619,6 +702,18 @@ private final class FakeVoiceprintVerifier: VoiceprintVerifying {
         extractionThresholds.append(thresholdOverride)
         return extraction
     }
+}
+
+@MainActor
+private final class FakeTextInserter: TextInserting {
+    var insertedTexts: [String] = []
+
+    func insert(_ text: String, pressReturn: Bool, enterDelayMilliseconds: Int) async throws {
+        insertedTexts.append(text)
+    }
+
+    func copyToClipboard(_ text: String) throws {}
+    func pressReturn() throws {}
 }
 
 @MainActor
