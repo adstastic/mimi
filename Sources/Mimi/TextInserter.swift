@@ -53,7 +53,7 @@ final class TextInserter {
     }
 
     private func sendKey(virtualKey: CGKeyCode, flags: CGEventFlags) throws {
-        let source = CGEventSource(stateID: .hidSystemState)
+        let source = CGEventSource(stateID: .combinedSessionState)
         guard let down = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: true),
               let up = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: false)
         else { throw InsertError.eventSourceUnavailable }

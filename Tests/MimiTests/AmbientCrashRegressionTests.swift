@@ -98,6 +98,35 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertTrue(shortcutStarted)
     }
 
+    func testAmbientPressesReturnOnStartWhenEnabled() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let inserter = FakeTextInserter()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = ambientConfig(inputDeviceID: nil)
+        config.ambientPressEnterOnStart = true
+        audio.peakDBFS = -20
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            textInserter: inserter,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.updateAmbientMode()
+        let streamStarted = await waitUntil({ asr.snapshotEvents().contains("stream.start") }, timeout: 1.0)
+        XCTAssertTrue(streamStarted)
+
+        asr.emitPartial("start comment")
+        let returnPressed = await waitUntil({ inserter.returnPressCount == 1 }, timeout: 1.0)
+        XCTAssertTrue(returnPressed)
+    }
+
     func testAmbientStartsWhenTranscriptArrivesAfterLevelFallsBelowNoiseFloor() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
@@ -748,13 +777,17 @@ private final class FakeVoiceprintVerifier: VoiceprintVerifying {
 @MainActor
 private final class FakeTextInserter: TextInserting {
     var insertedTexts: [String] = []
+    var returnPressCount = 0
 
     func insert(_ text: String, pressReturn: Bool, enterDelayMilliseconds: Int) async throws {
         insertedTexts.append(text)
     }
 
     func copyToClipboard(_ text: String) throws {}
-    func pressReturn() throws {}
+
+    func pressReturn() throws {
+        returnPressCount += 1
+    }
 }
 
 @MainActor
