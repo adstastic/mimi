@@ -21,8 +21,7 @@ struct SettingsView: View {
     let refreshInputDevices: () -> Void
 
     var body: some View {
-        ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
             header
 
             SettingsCard("Dictation", systemImage: "waveform") {
@@ -232,11 +231,10 @@ struct SettingsView: View {
                     copyLastTranscript()
                 }
             }
-            }
-            .padding(10)
-            .frame(width: 430, alignment: .topLeading)
         }
-        .frame(width: 430, height: 900)
+        .padding(10)
+        .frame(width: 430, alignment: .topLeading)
+        .fixedSize(horizontal: true, vertical: true)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 

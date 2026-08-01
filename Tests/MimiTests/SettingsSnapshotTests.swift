@@ -32,7 +32,8 @@ final class SettingsSnapshotTests: XCTestCase {
         let host = NSHostingView(rootView: view)
         let size = host.fittingSize
         XCTAssertEqual(size.width, 430, accuracy: 0.5)
-        XCTAssertEqual(size.height, 900, accuracy: 0.5)
+        XCTAssertGreaterThan(size.height, 1_000)
+        XCTAssertLessThanOrEqual(size.height, 1_250)
         print("SETTINGS_SNAPSHOT_SIZE=\(Int(size.width))x\(Int(size.height))")
 
         guard ProcessInfo.processInfo.environment["MIMI_WRITE_SETTINGS_SNAPSHOT"] == "1" else { return }

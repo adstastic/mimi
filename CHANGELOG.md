@@ -13,7 +13,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Kept the settings window within screen bounds as options and transcripts grow.
 - Improved synthetic key delivery to terminal sessions, including SSH workflows.
 
 ## [0.1.3] - 2026-07-29
