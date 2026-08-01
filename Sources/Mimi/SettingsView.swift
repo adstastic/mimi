@@ -133,13 +133,15 @@ struct SettingsView: View {
                         value: "\(config.prePasteKeystrokeDelayMilliseconds) ms",
                         systemImage: "timer"
                     ) {
-                        Stepper(
-                            "Before-paste delay",
-                            value: $config.prePasteKeystrokeDelayMilliseconds,
+                        Slider(
+                            value: Binding(
+                                get: { Double(config.prePasteKeystrokeDelayMilliseconds) },
+                                set: { config.prePasteKeystrokeDelayMilliseconds = Int($0.rounded()) }
+                            ),
                             in: 0 ... 2_000,
                             step: 25
                         )
-                        .labelsHidden()
+                        .frame(width: 170)
                     }
                     .disabled(!backendCapabilities.supportsAmbient)
                     .opacity(backendCapabilities.supportsAmbient ? 1 : 0.45)
@@ -148,13 +150,15 @@ struct SettingsView: View {
                         value: "\(config.postPasteKeystrokeDelayMilliseconds) ms",
                         systemImage: "timer"
                     ) {
-                        Stepper(
-                            "After-paste delay",
-                            value: $config.postPasteKeystrokeDelayMilliseconds,
+                        Slider(
+                            value: Binding(
+                                get: { Double(config.postPasteKeystrokeDelayMilliseconds) },
+                                set: { config.postPasteKeystrokeDelayMilliseconds = Int($0.rounded()) }
+                            ),
                             in: 0 ... 2_000,
                             step: 25
                         )
-                        .labelsHidden()
+                        .frame(width: 170)
                     }
                     .disabled(!backendCapabilities.supportsAmbient)
                     .opacity(backendCapabilities.supportsAmbient ? 1 : 0.45)
