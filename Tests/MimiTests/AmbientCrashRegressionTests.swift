@@ -108,11 +108,12 @@ final class AmbientCrashRegressionTests: XCTestCase {
         let prePasteKeystroke = MimiShortcut(keyCode: 48, modifierFlagsRaw: NSEvent.ModifierFlags.control.rawValue)
         let postPasteKeystroke = MimiShortcut(keyCode: 36, modifierFlagsRaw: NSEvent.ModifierFlags.command.rawValue)
         var config = ambientConfig(inputDeviceID: nil)
-        config.ambientPrePasteKeystroke = prePasteKeystroke
-        config.ambientPostPasteKeystroke = postPasteKeystroke
-        config.prePasteKeystrokeDelayMilliseconds = 325
-        config.postPasteKeystrokeDelayMilliseconds = 475
-        config.pressEnterAfterPaste = false
+        config.ambientPasteSettings = PasteSettings(
+            prePasteKeystroke: prePasteKeystroke,
+            postPasteKeystroke: postPasteKeystroke,
+            prePasteDelayMilliseconds: 325,
+            postPasteDelayMilliseconds: 475
+        )
         audio.peakDBFS = -20
         asr.streamFinalText = "review comment"
 
@@ -142,6 +143,52 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertEqual(inserter.postPasteKeystrokes, [postPasteKeystroke])
         XCTAssertEqual(inserter.prePasteDelays, [325])
         XCTAssertEqual(inserter.postPasteDelays, [475])
+    }
+
+    func testShortcutPassesConfiguredKeystrokesToPasteBoundary() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let inserter = FakeTextInserter()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        let prePasteKeystroke = MimiShortcut(keyCode: 48, modifierFlagsRaw: NSEvent.ModifierFlags.control.rawValue)
+        let postPasteKeystroke = MimiShortcut(keyCode: 36, modifierFlagsRaw: NSEvent.ModifierFlags.command.rawValue)
+        var config = MimiConfig.defaults
+        config.preferredBackend = .appleSpeechTranscriber
+        config.silenceDetectionMode = .speechActivity
+        config.silenceAutoStopEnabled = false
+        config.voiceprintEnabled = false
+        config.dictationPasteSettings = PasteSettings(
+            prePasteKeystroke: prePasteKeystroke,
+            postPasteKeystroke: postPasteKeystroke,
+            prePasteDelayMilliseconds: 225,
+            postPasteDelayMilliseconds: 375
+        )
+        config.ambientPasteSettings = .defaults
+        asr.streamFinalText = "shortcut comment"
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            textInserter: inserter,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        let streamStarted = await waitUntil({ asr.snapshotEvents().contains("stream.start") }, timeout: 1.0)
+        XCTAssertTrue(streamStarted)
+        try await Task.sleep(nanoseconds: 250_000_000)
+        controller.hotkeyUp()
+        let pasted = await waitUntil({ inserter.insertedTexts == ["shortcut comment"] }, timeout: 1.0)
+
+        XCTAssertTrue(pasted)
+        XCTAssertEqual(inserter.prePasteKeystrokes, [prePasteKeystroke])
+        XCTAssertEqual(inserter.postPasteKeystrokes, [postPasteKeystroke])
+        XCTAssertEqual(inserter.prePasteDelays, [225])
+        XCTAssertEqual(inserter.postPasteDelays, [375])
     }
 
     func testAmbientStartsWhenTranscriptArrivesAfterLevelFallsBelowNoiseFloor() async throws {
@@ -227,7 +274,7 @@ final class AmbientCrashRegressionTests: XCTestCase {
         config.silenceDetectionMode = .speechActivity
         config.silenceAutoStopEnabled = false
         config.voiceprintEnabled = false
-        config.pressEnterAfterPaste = false
+        config.dictationPasteSettings.postPasteKeystroke = nil
         asr.streamFinalText = "I think we should. Ah, ship it Friday."
 
         let controller = makeController(
@@ -269,7 +316,7 @@ final class AmbientCrashRegressionTests: XCTestCase {
         config.silenceDetectionMode = .speechActivity
         config.silenceAutoStopEnabled = false
         config.voiceprintEnabled = false
-        config.pressEnterAfterPaste = false
+        config.dictationPasteSettings.postPasteKeystroke = nil
         config.fillerCleanupEnabled = false
         asr.streamFinalText = "I think we should. Ah, ship it Friday."
 

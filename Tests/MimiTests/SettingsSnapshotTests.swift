@@ -8,8 +8,8 @@ final class SettingsSnapshotTests: XCTestCase {
     func testRenderSettingsSnapshot() throws {
         var config = MimiConfig.defaults
         config.ambientModeEnabled = true
-        config.ambientPrePasteKeystroke = .returnKey
-        config.ambientPostPasteKeystroke = .returnKey
+        config.dictationPasteSettings.prePasteKeystroke = .returnKey
+        config.ambientPasteSettings.prePasteKeystroke = .returnKey
 
         let view = SettingsView(
             config: .constant(config),

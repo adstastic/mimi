@@ -7,13 +7,10 @@ final class ConfigDefaultsTests: XCTestCase {
 
         XCTAssertEqual(config.preferredBackend, .appleSpeechTranscriber)
         XCTAssertFalse(config.ambientModeEnabled)
-        XCTAssertNil(config.ambientPrePasteKeystroke)
-        XCTAssertEqual(config.ambientPostPasteKeystroke, .returnKey)
-        XCTAssertEqual(config.prePasteKeystrokeDelayMilliseconds, 150)
-        XCTAssertEqual(config.postPasteKeystrokeDelayMilliseconds, 150)
+        XCTAssertEqual(config.dictationPasteSettings, .defaults)
+        XCTAssertEqual(config.ambientPasteSettings, .defaults)
         XCTAssertTrue(config.modelDownloadEnabled)
         XCTAssertTrue(config.silenceAutoStopEnabled)
-        XCTAssertTrue(config.pressEnterAfterPaste)
         XCTAssertTrue(config.showLiveTranscript)
         XCTAssertTrue(config.fillerCleanupEnabled)
         XCTAssertTrue(config.voiceprintEnabled)
@@ -120,8 +117,8 @@ final class ConfigDefaultsTests: XCTestCase {
 
         XCTAssertEqual(config.dictationShortcut, .rightCommand)
         XCTAssertEqual(config.ambientToggleShortcut, .ambientToggleDefault)
-        XCTAssertNil(config.ambientPrePasteKeystroke)
-        XCTAssertEqual(config.ambientPostPasteKeystroke, .returnKey)
+        XCTAssertEqual(config.dictationPasteSettings, .defaults)
+        XCTAssertEqual(config.ambientPasteSettings, .defaults)
         XCTAssertNil(config.inputDeviceID)
         XCTAssertEqual(config.silenceDetectionMode, .audioLevel)
         XCTAssertTrue(config.showLiveTranscript)
@@ -135,8 +132,8 @@ final class ConfigDefaultsTests: XCTestCase {
 
         let config = try JSONDecoder().decode(MimiConfig.self, from: Data(json.utf8))
 
-        XCTAssertEqual(config.ambientPrePasteKeystroke, .returnKey)
-        XCTAssertEqual(config.ambientPostPasteKeystroke, .returnKey)
+        XCTAssertEqual(config.ambientPasteSettings.prePasteKeystroke, .returnKey)
+        XCTAssertEqual(config.ambientPasteSettings.postPasteKeystroke, .returnKey)
     }
 
     func testStartAndEndKeystrokesMigrateToPasteBoundary() throws {
@@ -144,11 +141,11 @@ final class ConfigDefaultsTests: XCTestCase {
 
         let config = try JSONDecoder().decode(MimiConfig.self, from: Data(json.utf8))
 
-        XCTAssertEqual(config.ambientPrePasteKeystroke, MimiShortcut(keyCode: 48, modifierFlagsRaw: 0))
-        XCTAssertEqual(config.ambientPostPasteKeystroke, .returnKey)
+        XCTAssertEqual(config.ambientPasteSettings.prePasteKeystroke, MimiShortcut(keyCode: 48, modifierFlagsRaw: 0))
+        XCTAssertEqual(config.ambientPasteSettings.postPasteKeystroke, .returnKey)
     }
 
-    func testClearedAmbientKeystrokesPersist() {
+    func testPasteSettingsPersistPerMode() {
         let suiteName = "MimiTests.\(UUID().uuidString)"
         guard let userDefaults = UserDefaults(suiteName: suiteName) else {
             XCTFail("Could not create isolated UserDefaults")
@@ -157,31 +154,48 @@ final class ConfigDefaultsTests: XCTestCase {
         defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
         var config = MimiConfig.defaults
-        config.ambientPrePasteKeystroke = nil
-        config.ambientPostPasteKeystroke = nil
+        config.dictationPasteSettings = PasteSettings(
+            prePasteKeystroke: .returnKey,
+            postPasteKeystroke: nil,
+            prePasteDelayMilliseconds: 325,
+            postPasteDelayMilliseconds: 475
+        )
+        config.ambientPasteSettings = PasteSettings(
+            prePasteKeystroke: nil,
+            postPasteKeystroke: MimiShortcut(keyCode: 48, modifierFlagsRaw: 0),
+            prePasteDelayMilliseconds: 650,
+            postPasteDelayMilliseconds: 825
+        )
         config.save(userDefaults: userDefaults)
 
         let loaded = MimiConfig.load(userDefaults: userDefaults)
-        XCTAssertNil(loaded.ambientPrePasteKeystroke)
-        XCTAssertNil(loaded.ambientPostPasteKeystroke)
+        XCTAssertEqual(loaded.dictationPasteSettings, config.dictationPasteSettings)
+        XCTAssertEqual(loaded.ambientPasteSettings, config.ambientPasteSettings)
     }
 
-    func testPasteKeystrokeDelaysPersist() {
-        let suiteName = "MimiTests.\(UUID().uuidString)"
-        guard let userDefaults = UserDefaults(suiteName: suiteName) else {
-            XCTFail("Could not create isolated UserDefaults")
-            return
-        }
-        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+    func testFlatPasteSettingsMigrateToSeparateModes() throws {
+        let json = #"{"ambientPrePasteKeystroke":{"keyCode":48,"modifierFlagsRaw":0},"ambientPostPasteKeystroke":null,"pressEnterAfterPaste":false,"prePasteKeystrokeDelayMilliseconds":325,"postPasteKeystrokeDelayMilliseconds":475}"#
 
-        var config = MimiConfig.defaults
-        config.prePasteKeystrokeDelayMilliseconds = 325
-        config.postPasteKeystrokeDelayMilliseconds = 475
-        config.save(userDefaults: userDefaults)
+        let config = try JSONDecoder().decode(MimiConfig.self, from: Data(json.utf8))
 
-        let loaded = MimiConfig.load(userDefaults: userDefaults)
-        XCTAssertEqual(loaded.prePasteKeystrokeDelayMilliseconds, 325)
-        XCTAssertEqual(loaded.postPasteKeystrokeDelayMilliseconds, 475)
+        XCTAssertEqual(
+            config.dictationPasteSettings,
+            PasteSettings(
+                prePasteKeystroke: nil,
+                postPasteKeystroke: nil,
+                prePasteDelayMilliseconds: 325,
+                postPasteDelayMilliseconds: 475
+            )
+        )
+        XCTAssertEqual(
+            config.ambientPasteSettings,
+            PasteSettings(
+                prePasteKeystroke: MimiShortcut(keyCode: 48, modifierFlagsRaw: 0),
+                postPasteKeystroke: nil,
+                prePasteDelayMilliseconds: 325,
+                postPasteDelayMilliseconds: 475
+            )
+        )
     }
 
     func testFillerCleanupSettingPersists() {

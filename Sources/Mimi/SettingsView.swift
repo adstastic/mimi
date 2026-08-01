@@ -3,13 +3,21 @@ import MimiSpeech
 import SwiftUI
 
 private enum SettingsField: Hashable {
-    case beforePasteDelay
-    case afterPasteDelay
+    case shortcutBeforePasteDelay
+    case shortcutAfterPasteDelay
+    case ambientBeforePasteDelay
+    case ambientAfterPasteDelay
+}
+
+private enum PasteMode: Hashable {
+    case shortcut
+    case ambient
 }
 
 struct SettingsView: View {
     @Binding var config: MimiConfig
     @FocusState private var focusedField: SettingsField?
+    @State private var pasteMode = PasteMode.shortcut
     let statusText: String
     let permissionStatus: PermissionStatus
     let inputDevices: [AudioInputDevice]
@@ -49,7 +57,6 @@ struct SettingsView: View {
                     )
 
                     ToggleLine("End shortcut on silence", systemImage: "speaker.slash", isOn: $config.silenceAutoStopEnabled)
-                    ToggleLine("Shortcut presses Return", systemImage: "return", isOn: $config.pressEnterAfterPaste)
                     ToggleLine("Show live transcript", systemImage: "text.bubble", isOn: $config.showLiveTranscript)
                     ToggleLine("Remove filler words", systemImage: "text.badge.minus", isOn: $config.fillerCleanupEnabled)
                     Label(
@@ -120,25 +127,29 @@ struct SettingsView: View {
                         isOn: $config.ambientModeEnabled,
                         disabled: !backendCapabilities.supportsAmbient
                     )
-                    OptionalShortcutRecorderRow(
-                        title: "Before paste",
-                        systemImage: "arrow.right.to.line",
-                        shortcut: $config.ambientPrePasteKeystroke,
-                        disabled: !backendCapabilities.supportsAmbient,
-                        onRecordingChanged: shortcutRecordingChanged
+                }
+
+                SettingsCard(
+                    "Paste",
+                    systemImage: "doc.on.clipboard",
+                    trailing: AnyView(
+                        Picker("Paste mode", selection: $pasteMode) {
+                            Text("Shortcut").tag(PasteMode.shortcut)
+                            Text("Ambient").tag(PasteMode.ambient)
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
+                        .controlSize(.small)
+                        .frame(width: 150)
                     )
-                    OptionalShortcutRecorderRow(
-                        title: "After paste",
-                        systemImage: "arrow.left.to.line",
-                        shortcut: $config.ambientPostPasteKeystroke,
-                        disabled: !backendCapabilities.supportsAmbient,
-                        onRecordingChanged: shortcutRecordingChanged
-                    )
-                    PasteDelayLine(
-                        beforeMilliseconds: $config.prePasteKeystrokeDelayMilliseconds,
-                        afterMilliseconds: $config.postPasteKeystrokeDelayMilliseconds,
+                ) {
+                    PasteSettingsEditor(
+                        settings: selectedPasteSettings,
+                        beforeDelayField: selectedDelayFields.before,
+                        afterDelayField: selectedDelayFields.after,
                         focusedField: $focusedField,
-                        disabled: !backendCapabilities.supportsAmbient
+                        disabled: pasteMode == .ambient && !backendCapabilities.supportsAmbient,
+                        onRecordingChanged: shortcutRecordingChanged
                     )
                 }
 
@@ -249,6 +260,24 @@ struct SettingsView: View {
 
     private var backendCapabilities: ASRBackendCapabilities {
         config.preferredBackend.capabilities
+    }
+
+    private var selectedPasteSettings: Binding<PasteSettings> {
+        switch pasteMode {
+        case .shortcut:
+            $config.dictationPasteSettings
+        case .ambient:
+            $config.ambientPasteSettings
+        }
+    }
+
+    private var selectedDelayFields: (before: SettingsField, after: SettingsField) {
+        switch pasteMode {
+        case .shortcut:
+            (.shortcutBeforePasteDelay, .shortcutAfterPasteDelay)
+        case .ambient:
+            (.ambientBeforePasteDelay, .ambientAfterPasteDelay)
+        }
     }
 
     private var header: some View {
@@ -447,9 +476,45 @@ private struct InputDevicePickerLine: View {
     }
 }
 
+private struct PasteSettingsEditor: View {
+    @Binding var settings: PasteSettings
+    let beforeDelayField: SettingsField
+    let afterDelayField: SettingsField
+    let focusedField: FocusState<SettingsField?>.Binding
+    let disabled: Bool
+    let onRecordingChanged: (Bool) -> Void
+
+    var body: some View {
+        OptionalShortcutRecorderRow(
+            title: "Before paste",
+            systemImage: "arrow.right.to.line",
+            shortcut: $settings.prePasteKeystroke,
+            disabled: disabled,
+            onRecordingChanged: onRecordingChanged
+        )
+        OptionalShortcutRecorderRow(
+            title: "After paste",
+            systemImage: "arrow.left.to.line",
+            shortcut: $settings.postPasteKeystroke,
+            disabled: disabled,
+            onRecordingChanged: onRecordingChanged
+        )
+        PasteDelayLine(
+            beforeMilliseconds: $settings.prePasteDelayMilliseconds,
+            afterMilliseconds: $settings.postPasteDelayMilliseconds,
+            beforeField: beforeDelayField,
+            afterField: afterDelayField,
+            focusedField: focusedField,
+            disabled: disabled
+        )
+    }
+}
+
 private struct PasteDelayLine: View {
     @Binding var beforeMilliseconds: Int
     @Binding var afterMilliseconds: Int
+    let beforeField: SettingsField
+    let afterField: SettingsField
     let focusedField: FocusState<SettingsField?>.Binding
     let disabled: Bool
 
@@ -463,13 +528,13 @@ private struct PasteDelayLine: View {
             DelayField(
                 title: "Before",
                 value: $beforeMilliseconds,
-                field: .beforePasteDelay,
+                field: beforeField,
                 focusedField: focusedField
             )
             DelayField(
                 title: "After",
                 value: $afterMilliseconds,
-                field: .afterPasteDelay,
+                field: afterField,
                 focusedField: focusedField
             )
         }

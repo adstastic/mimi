@@ -112,8 +112,7 @@ final class DictationController {
         let isAmbient: Bool
         let usesAppleStream: Bool
         let usesSpeechActivityStop: Bool
-        let prePasteKeystroke: MimiShortcut?
-        let postPasteKeystroke: MimiShortcut?
+        let pasteSettings: PasteSettings
 
         init(config: MimiConfig, isAmbient: Bool) {
             let normalizedConfig = config.normalizedForBackend()
@@ -125,10 +124,9 @@ final class DictationController {
                 silenceDetectionMode: normalizedConfig.silenceDetectionMode
             )
             usesSpeechActivityStop = capabilities.usesSpeechActivityStop(normalizedConfig.silenceDetectionMode)
-            prePasteKeystroke = isAmbient ? normalizedConfig.ambientPrePasteKeystroke : nil
-            postPasteKeystroke = isAmbient
-                ? normalizedConfig.ambientPostPasteKeystroke
-                : normalizedConfig.pressEnterAfterPaste ? .returnKey : nil
+            pasteSettings = isAmbient
+                ? normalizedConfig.ambientPasteSettings
+                : normalizedConfig.dictationPasteSettings
         }
     }
 
@@ -392,10 +390,10 @@ final class DictationController {
             onTranscript(text)
             try await textInserter.insert(
                 text,
-                prePasteKeystroke: plan.prePasteKeystroke,
-                prePasteDelayMilliseconds: plan.config.prePasteKeystrokeDelayMilliseconds,
-                postPasteKeystroke: plan.postPasteKeystroke,
-                postPasteDelayMilliseconds: plan.config.postPasteKeystrokeDelayMilliseconds
+                prePasteKeystroke: plan.pasteSettings.prePasteKeystroke,
+                prePasteDelayMilliseconds: plan.pasteSettings.prePasteDelayMilliseconds,
+                postPasteKeystroke: plan.pasteSettings.postPasteKeystroke,
+                postPasteDelayMilliseconds: plan.pasteSettings.postPasteDelayMilliseconds
             )
             appleStreamTask = nil
             onPartialTranscript(nil)

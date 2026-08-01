@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Configurable keystrokes and delays before and after ambient paste.
+- Independent before/after-paste keystrokes and delays for shortcut and ambient dictation.
 
 ### Fixed
 
