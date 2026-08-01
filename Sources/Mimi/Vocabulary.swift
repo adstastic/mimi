@@ -19,6 +19,40 @@ public struct VocabularyEntry: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+enum VocabularyValidationError: Equatable {
+    case emptyWrittenForm
+    case conflictingPhrase(String, firstWrittenForm: String, secondWrittenForm: String)
+}
+
+enum VocabularyValidator {
+    static func validate(_ entries: [VocabularyEntry]) -> VocabularyValidationError? {
+        var owners: [String: (entryIndex: Int, writtenForm: String)] = [:]
+
+        for (entryIndex, entry) in entries.enumerated() {
+            let writtenForm = entry.writtenForm.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !writtenForm.isEmpty else { return .emptyWrittenForm }
+            var ownKeys: Set<String> = []
+
+            for source in [writtenForm] + entry.spokenAliases {
+                let phrase = source.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !phrase.isEmpty else { continue }
+                let key = VocabularyComparison.key(phrase)
+                guard !key.isEmpty, ownKeys.insert(key).inserted else { continue }
+
+                if let owner = owners[key], owner.entryIndex != entryIndex {
+                    return .conflictingPhrase(
+                        phrase,
+                        firstWrittenForm: owner.writtenForm,
+                        secondWrittenForm: writtenForm
+                    )
+                }
+                owners[key] = (entryIndex, writtenForm)
+            }
+        }
+        return nil
+    }
+}
+
 enum VocabularyCorrector {
     private struct Phrase {
         let key: String
@@ -30,8 +64,6 @@ enum VocabularyCorrector {
         let replacement: String
         let length: Int
     }
-
-    private static let comparisonLocale = Locale(identifier: "en_US_POSIX")
 
     static func correct(_ text: String, entries: [VocabularyEntry]) -> String {
         guard !text.isEmpty else { return text }
@@ -81,7 +113,7 @@ enum VocabularyCorrector {
             for source in [replacement] + entry.spokenAliases {
                 let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { continue }
-                let key = comparisonKey(trimmed)
+                let key = VocabularyComparison.key(trimmed)
                 guard !key.isEmpty, !conflicts.contains(key) else { continue }
 
                 if let owner = owners[key] {
@@ -107,7 +139,7 @@ enum VocabularyCorrector {
             while upperBound < text.endIndex {
                 upperBound = text.index(after: upperBound)
                 let range = lowerBound ..< upperBound
-                let candidateKey = comparisonKey(String(text[range]))
+                let candidateKey = VocabularyComparison.key(String(text[range]))
                 guard phrase.key.hasPrefix(candidateKey) else { break }
 
                 if candidateKey == phrase.key, hasWholeBoundaries(range, in: text) {
@@ -121,12 +153,6 @@ enum VocabularyCorrector {
             lowerBound = text.index(after: lowerBound)
         }
         return result
-    }
-
-    private static func comparisonKey(_ text: String) -> String {
-        text.precomposedStringWithCanonicalMapping
-            .folding(options: .caseInsensitive, locale: comparisonLocale)
-            .precomposedStringWithCanonicalMapping
     }
 
     private static func hasWholeBoundaries(_ range: Range<String.Index>, in text: String) -> Bool {
@@ -152,5 +178,15 @@ enum VocabularyCorrector {
                 false
             }
         }
+    }
+}
+
+enum VocabularyComparison {
+    private static let locale = Locale(identifier: "en_US_POSIX")
+
+    static func key(_ text: String) -> String {
+        text.precomposedStringWithCanonicalMapping
+            .folding(options: .caseInsensitive, locale: locale)
+            .precomposedStringWithCanonicalMapping
     }
 }

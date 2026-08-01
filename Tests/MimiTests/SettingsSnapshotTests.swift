@@ -29,25 +29,62 @@ final class SettingsSnapshotTests: XCTestCase {
             refreshPermissions: {},
             refreshInputDevices: {}
         )
-        let host = NSHostingView(rootView: view)
-        let size = host.fittingSize
+        let size = try render(view, to: "/tmp/mimi-settings-snapshot.png")
         XCTAssertEqual(size.width, 430, accuracy: 0.5)
         XCTAssertGreaterThan(size.height, 1_000)
-        XCTAssertLessThanOrEqual(size.height, 1_250)
+        XCTAssertLessThanOrEqual(size.height, 1_200)
         print("SETTINGS_SNAPSHOT_SIZE=\(Int(size.width))x\(Int(size.height))")
+    }
 
-        guard ProcessInfo.processInfo.environment["MIMI_WRITE_SETTINGS_SNAPSHOT"] == "1" else { return }
+    func testRenderEmptyVocabularySnapshot() throws {
+        let size = try render(
+            VocabularySettingsView(entries: .constant([])),
+            to: "/tmp/mimi-vocabulary-empty-snapshot.png"
+        )
+        XCTAssertEqual(size.width, 540, accuracy: 0.5)
+        XCTAssertEqual(size.height, 420, accuracy: 0.5)
+    }
+
+    func testRenderInvalidVocabularySnapshot() throws {
+        let entries = [
+            VocabularyEntry(writtenForm: "Wispr Flow", spokenAliases: ["shared alias"]),
+            VocabularyEntry(writtenForm: "PyTorch", spokenAliases: ["shared alias"])
+        ]
+        let size = try render(
+            VocabularySettingsView(entries: .constant(entries)),
+            to: "/tmp/mimi-vocabulary-invalid-snapshot.png"
+        )
+        XCTAssertEqual(size.width, 540, accuracy: 0.5)
+        XCTAssertEqual(size.height, 420, accuracy: 0.5)
+    }
+
+    func testRenderVocabularySnapshot() throws {
+        let entries = [
+            VocabularyEntry(writtenForm: "Wispr Flow", spokenAliases: ["whisper flow"]),
+            VocabularyEntry(writtenForm: "PyTorch", spokenAliases: ["pie torch", "pie talk"]),
+            VocabularyEntry(writtenForm: "Kubernetes", spokenAliases: ["kube er net ease"], isEnabled: false)
+        ]
+
+        let size = try render(
+            VocabularySettingsView(entries: .constant(entries)),
+            to: "/tmp/mimi-vocabulary-snapshot.png"
+        )
+        XCTAssertEqual(size.width, 540, accuracy: 0.5)
+        XCTAssertEqual(size.height, 420, accuracy: 0.5)
+        print("VOCABULARY_SNAPSHOT_SIZE=\(Int(size.width))x\(Int(size.height))")
+    }
+
+    private func render<Content: View>(_ view: Content, to path: String) throws -> CGSize {
+        let host = NSHostingView(rootView: view)
+        let size = host.fittingSize
+        guard ProcessInfo.processInfo.environment["MIMI_WRITE_SETTINGS_SNAPSHOT"] == "1" else { return size }
+
         host.frame = NSRect(origin: .zero, size: size)
         host.layoutSubtreeIfNeeded()
-        guard let representation = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
-            XCTFail("Could not create bitmap representation")
-            return
-        }
+        let representation = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
         host.cacheDisplay(in: host.bounds, to: representation)
-        guard let data = representation.representation(using: .png, properties: [:]) else {
-            XCTFail("Could not encode snapshot")
-            return
-        }
-        try data.write(to: URL(fileURLWithPath: "/tmp/mimi-settings-snapshot.png"))
+        let data = try XCTUnwrap(representation.representation(using: .png, properties: [:]))
+        try data.write(to: URL(fileURLWithPath: path))
+        return size
     }
 }

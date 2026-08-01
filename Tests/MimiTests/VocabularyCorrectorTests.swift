@@ -102,6 +102,28 @@ final class VocabularyCorrectorTests: XCTestCase {
         )
     }
 
+    func testValidationRejectsEmptyAndConflictingEntries() {
+        XCTAssertEqual(
+            VocabularyValidator.validate([VocabularyEntry(writtenForm: "  ")]),
+            .emptyWrittenForm
+        )
+
+        let conflict = VocabularyValidator.validate([
+            VocabularyEntry(writtenForm: "CaféKit", spokenAliases: ["café kit"]),
+            VocabularyEntry(writtenForm: "Other", spokenAliases: ["CAFE\u{301} KIT"])
+        ])
+        XCTAssertEqual(
+            conflict,
+            .conflictingPhrase("CAFE\u{301} KIT", firstWrittenForm: "CaféKit", secondWrittenForm: "Other")
+        )
+    }
+
+    func testValidationAllowsDuplicateKeysWithinOneEntry() {
+        XCTAssertNil(VocabularyValidator.validate([
+            VocabularyEntry(writtenForm: "PyTorch", spokenAliases: ["pytorch", "PYTORCH", "pie torch"])
+        ]))
+    }
+
     func testPreservesUntouchedTextExactly() {
         let entries = [VocabularyEntry(writtenForm: "PyTorch", spokenAliases: ["pie torch"])]
         let source = "  First:\tpie torch!\nThen pie torch?  "

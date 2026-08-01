@@ -18,6 +18,7 @@ struct SettingsView: View {
     @Binding var config: MimiConfig
     @FocusState private var focusedField: SettingsField?
     @State private var pasteMode = PasteMode.shortcut
+    @State private var showsVocabularyEditor = false
     let statusText: String
     let permissionStatus: PermissionStatus
     let inputDevices: [AudioInputDevice]
@@ -252,6 +253,9 @@ struct SettingsView: View {
         .fixedSize(horizontal: true, vertical: true)
         .contentShape(Rectangle())
         .onTapGesture { focusedField = nil }
+        .sheet(isPresented: $showsVocabularyEditor) {
+            VocabularySettingsView(entries: $config.vocabularyEntries)
+        }
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
@@ -287,6 +291,13 @@ struct SettingsView: View {
             StatusDot(color: statusColor, title: statusText)
 
             Spacer()
+
+            Button {
+                showsVocabularyEditor = true
+            } label: {
+                Label("Vocabulary…", systemImage: "text.book.closed")
+            }
+            .controlSize(.small)
         }
     }
 
