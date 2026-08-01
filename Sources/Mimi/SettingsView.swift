@@ -114,15 +114,23 @@ struct SettingsView: View {
                         isOn: $config.ambientModeEnabled,
                         disabled: !backendCapabilities.supportsAmbient
                     )
-                    ToggleLine(
-                        "Press Return on start",
-                        systemImage: "return",
-                        isOn: $config.ambientPressEnterOnStart,
-                        disabled: !backendCapabilities.supportsAmbient
+                    OptionalShortcutRecorderRow(
+                        title: "Before recording",
+                        systemImage: "arrow.right.to.line",
+                        shortcut: $config.ambientStartKeystroke,
+                        disabled: !backendCapabilities.supportsAmbient,
+                        onRecordingChanged: shortcutRecordingChanged
+                    )
+                    OptionalShortcutRecorderRow(
+                        title: "After paste",
+                        systemImage: "arrow.left.to.line",
+                        shortcut: $config.ambientEndKeystroke,
+                        disabled: !backendCapabilities.supportsAmbient,
+                        onRecordingChanged: shortcutRecordingChanged
                     )
                     Label(
                         backendCapabilities.supportsAmbient
-                            ? "Ambient always stops on pause and presses Return."
+                            ? "Ambient sends selected keystrokes to the frontmost app."
                             : "Ambient requires Apple SpeechTranscriber.",
                         systemImage: "info.circle"
                     )
@@ -499,15 +507,69 @@ private struct ShortcutRecorderRow: View {
                 .padding(.horizontal, 7)
                 .padding(.vertical, 3)
                 .background(Capsule().fill(Color.primary.opacity(0.08)))
-            ShortcutRecorderButton(shortcut: $shortcut, disabled: disabled, onRecordingChanged: onRecordingChanged)
+            ShortcutRecorderButton(
+                disabled: disabled,
+                capturesEscape: false,
+                onCapture: { self.shortcut = $0 },
+                onRecordingChanged: onRecordingChanged
+            )
+        }
+        .opacity(disabled ? 0.45 : 1)
+    }
+}
+
+private struct OptionalShortcutRecorderRow: View {
+    let title: LocalizedStringKey
+    let systemImage: String
+    @Binding var shortcut: MimiShortcut?
+    let disabled: Bool
+    let onRecordingChanged: (Bool) -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+            Text(title)
+            Spacer()
+            Group {
+                if let shortcut {
+                    Text(shortcut.displayName)
+                } else {
+                    Text("None")
+                }
+            }
+            .font(.system(.body, design: .rounded).weight(.semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(Color.primary.opacity(0.08)))
+            if shortcut != nil {
+                Button {
+                    shortcut = nil
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .help("Clear keystroke")
+                .controlSize(.small)
+                .disabled(disabled)
+            }
+            ShortcutRecorderButton(
+                disabled: disabled,
+                capturesEscape: true,
+                onCapture: { self.shortcut = $0 },
+                onRecordingChanged: onRecordingChanged
+            )
         }
         .opacity(disabled ? 0.45 : 1)
     }
 }
 
 private struct ShortcutRecorderButton: View {
-    @Binding var shortcut: MimiShortcut
     let disabled: Bool
+    let capturesEscape: Bool
+    let onCapture: (MimiShortcut) -> Void
     let onRecordingChanged: (Bool) -> Void
     @StateObject private var recorder = ShortcutRecorder()
 
@@ -519,9 +581,8 @@ private struct ShortcutRecorderButton: View {
             } else {
                 onRecordingChanged(true)
                 recorder.start(
-                    onCapture: { shortcut in
-                        self.shortcut = shortcut
-                    },
+                    capturesEscape: capturesEscape,
+                    onCapture: onCapture,
                     onFinish: {
                         onRecordingChanged(false)
                     }
@@ -552,14 +613,18 @@ private final class ShortcutRecorder: ObservableObject {
     private var pendingModifierShortcut: MimiShortcut?
     private var sawKeyDown = false
 
-    func start(onCapture: @escaping (MimiShortcut) -> Void, onFinish: @escaping () -> Void) {
+    func start(
+        capturesEscape: Bool,
+        onCapture: @escaping (MimiShortcut) -> Void,
+        onFinish: @escaping () -> Void
+    ) {
         stop()
         isRecording = true
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
             guard let self else { return event }
             switch event.type {
             case .keyDown:
-                if event.keyCode == 53 {
+                if event.keyCode == 53, !capturesEscape {
                     self.stop()
                     onFinish()
                     return nil

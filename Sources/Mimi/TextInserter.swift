@@ -17,12 +17,12 @@ final class TextInserter {
         }
     }
 
-    func insert(_ text: String, pressReturn: Bool, enterDelayMilliseconds: Int) async throws {
+    func insert(_ text: String, postPasteKeystroke: MimiShortcut?, delayMilliseconds: Int) async throws {
         try pasteViaClipboard(text)
 
-        if pressReturn {
-            try await sleep(milliseconds: enterDelayMilliseconds)
-            try pressReturnKey()
+        if let postPasteKeystroke {
+            try await sleep(milliseconds: delayMilliseconds)
+            try press(postPasteKeystroke)
         }
     }
 
@@ -34,8 +34,11 @@ final class TextInserter {
         }
     }
 
-    func pressReturn() throws {
-        try pressReturnKey()
+    func press(_ keystroke: MimiShortcut) throws {
+        try sendKey(
+            virtualKey: CGKeyCode(keystroke.keyCode),
+            flags: CGEventFlags(rawValue: UInt64(keystroke.modifierFlagsRaw))
+        )
     }
 
     private func pasteViaClipboard(_ text: String) throws {
@@ -46,10 +49,6 @@ final class TextInserter {
         }
 
         try sendKey(virtualKey: 9, flags: .maskCommand) // V
-    }
-
-    private func pressReturnKey() throws {
-        try sendKey(virtualKey: 36, flags: [])
     }
 
     private func sendKey(virtualKey: CGKeyCode, flags: CGEventFlags) throws {

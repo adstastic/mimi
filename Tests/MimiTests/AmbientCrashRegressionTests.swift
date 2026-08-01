@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import AppKit
 import XCTest
 import MimiSpeech
 @testable import Mimi
@@ -98,15 +99,20 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertTrue(shortcutStarted)
     }
 
-    func testAmbientPressesReturnOnStartWhenEnabled() async throws {
+    func testAmbientUsesConfiguredStartAndEndKeystrokes() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
         let inserter = FakeTextInserter()
         let overlay = FakeOverlay()
         let status = StatusSink()
+        let startKeystroke = MimiShortcut(keyCode: 48, modifierFlagsRaw: NSEvent.ModifierFlags.control.rawValue)
+        let endKeystroke = MimiShortcut(keyCode: 36, modifierFlagsRaw: NSEvent.ModifierFlags.command.rawValue)
         var config = ambientConfig(inputDeviceID: nil)
-        config.ambientPressEnterOnStart = true
+        config.ambientStartKeystroke = startKeystroke
+        config.ambientEndKeystroke = endKeystroke
+        config.pressEnterAfterPaste = false
         audio.peakDBFS = -20
+        asr.streamFinalText = "review comment"
 
         let controller = makeController(
             configProvider: { config },
@@ -123,8 +129,13 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertTrue(streamStarted)
 
         asr.emitPartial("start comment")
-        let returnPressed = await waitUntil({ inserter.returnPressCount == 1 }, timeout: 1.0)
-        XCTAssertTrue(returnPressed)
+        let startPressed = await waitUntil({ inserter.pressedKeystrokes == [startKeystroke] }, timeout: 1.0)
+        XCTAssertTrue(startPressed)
+
+        controller.hotkeyDown()
+        let pasted = await waitUntil({ inserter.insertedTexts == ["review comment"] }, timeout: 1.0)
+        XCTAssertTrue(pasted)
+        XCTAssertEqual(inserter.postPasteKeystrokes, [endKeystroke])
     }
 
     func testAmbientStartsWhenTranscriptArrivesAfterLevelFallsBelowNoiseFloor() async throws {
@@ -777,16 +788,18 @@ private final class FakeVoiceprintVerifier: VoiceprintVerifying {
 @MainActor
 private final class FakeTextInserter: TextInserting {
     var insertedTexts: [String] = []
-    var returnPressCount = 0
+    var postPasteKeystrokes: [MimiShortcut?] = []
+    var pressedKeystrokes: [MimiShortcut] = []
 
-    func insert(_ text: String, pressReturn: Bool, enterDelayMilliseconds: Int) async throws {
+    func insert(_ text: String, postPasteKeystroke: MimiShortcut?, delayMilliseconds: Int) async throws {
         insertedTexts.append(text)
+        postPasteKeystrokes.append(postPasteKeystroke)
     }
 
     func copyToClipboard(_ text: String) throws {}
 
-    func pressReturn() throws {
-        returnPressCount += 1
+    func press(_ keystroke: MimiShortcut) throws {
+        pressedKeystrokes.append(keystroke)
     }
 }
 

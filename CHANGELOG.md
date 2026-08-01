@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Configurable keystrokes before ambient recording and after paste.
+
+### Fixed
+
+- Improved synthetic key delivery to terminal sessions, including SSH workflows.
+
 ## [0.1.3] - 2026-07-29
 
 ### Fixed

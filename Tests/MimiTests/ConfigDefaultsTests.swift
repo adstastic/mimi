@@ -7,7 +7,8 @@ final class ConfigDefaultsTests: XCTestCase {
 
         XCTAssertEqual(config.preferredBackend, .appleSpeechTranscriber)
         XCTAssertFalse(config.ambientModeEnabled)
-        XCTAssertFalse(config.ambientPressEnterOnStart)
+        XCTAssertNil(config.ambientStartKeystroke)
+        XCTAssertEqual(config.ambientEndKeystroke, .returnKey)
         XCTAssertTrue(config.modelDownloadEnabled)
         XCTAssertTrue(config.silenceAutoStopEnabled)
         XCTAssertTrue(config.pressEnterAfterPaste)
@@ -117,13 +118,41 @@ final class ConfigDefaultsTests: XCTestCase {
 
         XCTAssertEqual(config.dictationShortcut, .rightCommand)
         XCTAssertEqual(config.ambientToggleShortcut, .ambientToggleDefault)
-        XCTAssertFalse(config.ambientPressEnterOnStart)
+        XCTAssertNil(config.ambientStartKeystroke)
+        XCTAssertEqual(config.ambientEndKeystroke, .returnKey)
         XCTAssertNil(config.inputDeviceID)
         XCTAssertEqual(config.silenceDetectionMode, .audioLevel)
         XCTAssertTrue(config.showLiveTranscript)
         XCTAssertTrue(config.fillerCleanupEnabled)
         XCTAssertTrue(config.voiceprintEnabled)
         XCTAssertEqual(config.voiceprintThreshold, 0.78)
+    }
+
+    func testLegacyAmbientReturnSettingMigratesToKeystroke() throws {
+        let json = #"{"ambientPressEnterOnStart":true}"#
+
+        let config = try JSONDecoder().decode(MimiConfig.self, from: Data(json.utf8))
+
+        XCTAssertEqual(config.ambientStartKeystroke, .returnKey)
+        XCTAssertEqual(config.ambientEndKeystroke, .returnKey)
+    }
+
+    func testClearedAmbientKeystrokesPersist() {
+        let suiteName = "MimiTests.\(UUID().uuidString)"
+        guard let userDefaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults")
+            return
+        }
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        var config = MimiConfig.defaults
+        config.ambientStartKeystroke = nil
+        config.ambientEndKeystroke = nil
+        config.save(userDefaults: userDefaults)
+
+        let loaded = MimiConfig.load(userDefaults: userDefaults)
+        XCTAssertNil(loaded.ambientStartKeystroke)
+        XCTAssertNil(loaded.ambientEndKeystroke)
     }
 
     func testFillerCleanupSettingPersists() {
