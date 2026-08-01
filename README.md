@@ -13,7 +13,7 @@ Current usable path:
 - silence auto-stop
 - optional ambient VAD mode that keeps mic armed and uses Apple SpeechDetector to start/stop on speech
 - independently configurable silence auto-stop, stop detection mode, microphone input, and pre/post-paste keystrokes and delays for shortcut and ambient dictation
-- normal Dock app window
+- menu bar app with a full settings window available on demand
 - bottom recording overlay with live partials for Apple SpeechTranscriber
 - transcript stays copied to clipboard after dictation
 - recent transcript copy button
@@ -41,7 +41,7 @@ swift run MimiSmoke voiceprint-verify /path/to/check.wav
 swift run MimiSmoke voiceprint-extract /path/to/mixed.wav --output /tmp/owner-only.wav
 ```
 
-The settings window also has My Voice → Enroll / Verify / Reset. If a profile exists, mimi diarizes recordings, keeps matching speaker segments, then transcribes only those.
+Click the mimi logo in the menu bar to open Settings or quit the app. The settings window also has My Voice → Enroll / Verify / Reset. If a profile exists, mimi diarizes recordings, keeps matching speaker segments, then transcribes only those.
 
 Grant:
 

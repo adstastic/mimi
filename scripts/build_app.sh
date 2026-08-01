@@ -24,6 +24,7 @@ cp "$EXECUTABLE" "$MACOS_DIR/$APP_NAME"
 chmod +x "$MACOS_DIR/$APP_NAME"
 cp -R "$ROOT_DIR/Sidecars" "$RESOURCES_DIR/Sidecars"
 cp "$ROOT_DIR/Assets/AppLogo.png" "$RESOURCES_DIR/AppLogo.png"
+cp "$ROOT_DIR/Assets/MenuBarIcon.png" "$RESOURCES_DIR/MenuBarIcon.png"
 cp "$ROOT_DIR/Assets/AppIcon.png" "$RESOURCES_DIR/AppIcon.png"
 
 ICONSET_DIR="$CONTENTS_DIR/AppIcon.iconset"
@@ -68,6 +69,8 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
     <string>26.0</string>
+    <key>LSUIElement</key>
+    <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>

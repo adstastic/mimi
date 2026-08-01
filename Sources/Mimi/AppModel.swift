@@ -102,7 +102,7 @@ final class AppModel: ObservableObject {
         guard !started else { return }
         started = true
 
-        NSApplication.shared.setActivationPolicy(.regular)
+        NSApplication.shared.setActivationPolicy(.accessory)
 
         refreshPermissions()
 

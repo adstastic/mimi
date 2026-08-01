@@ -18,7 +18,14 @@ struct MimiApp: App {
     }
 
     var body: some Scene {
-        WindowGroup(AppBrand.name) {
+        MenuBarExtra {
+            MimiMenu(appModel: appModel)
+        } label: {
+            menuBarLabel
+        }
+        .menuBarExtraStyle(.menu)
+
+        Settings {
             SettingsView(
                 config: $appModel.config,
                 statusText: appModel.statusText,
@@ -52,5 +59,43 @@ struct MimiApp: App {
                 .keyboardShortcut("q")
             }
         }
+    }
+
+    @ViewBuilder
+    private var menuBarLabel: some View {
+        if let image = AppBrand.menuBarImage {
+            Image(nsImage: image)
+                .accessibilityLabel(AppBrand.name)
+        } else {
+            Image(systemName: "ear")
+                .accessibilityLabel(AppBrand.name)
+        }
+    }
+}
+
+private struct MimiMenu: View {
+    @ObservedObject var appModel: AppModel
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        Text(appModel.statusText)
+            .disabled(true)
+
+        Toggle("Ambient Mode", isOn: $appModel.config.ambientModeEnabled)
+
+        Divider()
+
+        Button("Settings…") {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            openSettings()
+        }
+        .keyboardShortcut(",")
+
+        Divider()
+
+        Button("Quit \(AppBrand.name)") {
+            NSApplication.shared.terminate(nil)
+        }
+        .keyboardShortcut("q")
     }
 }
