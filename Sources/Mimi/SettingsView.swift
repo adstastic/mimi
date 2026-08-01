@@ -21,7 +21,8 @@ struct SettingsView: View {
     let refreshInputDevices: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 10) {
             header
 
             SettingsCard("Dictation", systemImage: "waveform") {
@@ -128,40 +129,11 @@ struct SettingsView: View {
                         disabled: !backendCapabilities.supportsAmbient,
                         onRecordingChanged: shortcutRecordingChanged
                     )
-                    SliderLine(
-                        "Before-paste delay",
-                        value: "\(config.prePasteKeystrokeDelayMilliseconds) ms",
-                        systemImage: "timer"
-                    ) {
-                        Slider(
-                            value: Binding(
-                                get: { Double(config.prePasteKeystrokeDelayMilliseconds) },
-                                set: { config.prePasteKeystrokeDelayMilliseconds = Int($0.rounded()) }
-                            ),
-                            in: 0 ... 2_000,
-                            step: 25
-                        )
-                        .frame(width: 170)
-                    }
-                    .disabled(!backendCapabilities.supportsAmbient)
-                    .opacity(backendCapabilities.supportsAmbient ? 1 : 0.45)
-                    SliderLine(
-                        "After-paste delay",
-                        value: "\(config.postPasteKeystrokeDelayMilliseconds) ms",
-                        systemImage: "timer"
-                    ) {
-                        Slider(
-                            value: Binding(
-                                get: { Double(config.postPasteKeystrokeDelayMilliseconds) },
-                                set: { config.postPasteKeystrokeDelayMilliseconds = Int($0.rounded()) }
-                            ),
-                            in: 0 ... 2_000,
-                            step: 25
-                        )
-                        .frame(width: 170)
-                    }
-                    .disabled(!backendCapabilities.supportsAmbient)
-                    .opacity(backendCapabilities.supportsAmbient ? 1 : 0.45)
+                    PasteDelayLine(
+                        beforeMilliseconds: $config.prePasteKeystrokeDelayMilliseconds,
+                        afterMilliseconds: $config.postPasteKeystrokeDelayMilliseconds,
+                        disabled: !backendCapabilities.supportsAmbient
+                    )
                 }
 
                 SettingsCard("Shortcuts", systemImage: "keyboard") {
@@ -260,10 +232,11 @@ struct SettingsView: View {
                     copyLastTranscript()
                 }
             }
+            }
+            .padding(10)
+            .frame(width: 430, alignment: .topLeading)
         }
-        .padding(10)
-        .frame(width: 430, alignment: .topLeading)
-        .fixedSize(horizontal: true, vertical: true)
+        .frame(width: 430, height: 900)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
@@ -463,6 +436,46 @@ private struct InputDevicePickerLine: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
+        }
+    }
+}
+
+private struct PasteDelayLine: View {
+    @Binding var beforeMilliseconds: Int
+    @Binding var afterMilliseconds: Int
+    let disabled: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "timer")
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+            Text("Delays")
+            Spacer(minLength: 8)
+            DelayField(title: "Before", value: $beforeMilliseconds)
+            DelayField(title: "After", value: $afterMilliseconds)
+        }
+        .disabled(disabled)
+        .opacity(disabled ? 0.45 : 1)
+    }
+}
+
+private struct DelayField: View {
+    let title: LocalizedStringKey
+    @Binding var value: Int
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextField(title, value: $value, format: .number)
+                .labelsHidden()
+                .multilineTextAlignment(.trailing)
+                .frame(width: 48)
+            Text("ms")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }
