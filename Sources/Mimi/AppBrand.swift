@@ -17,6 +17,10 @@ enum AppBrand {
         imageResource(named: "AppIcon.png") ?? logoImage
     }
 
+    static var menuBarImage: NSImage? {
+        imageResource(named: "MenuBarIcon.png") ?? logoImage
+    }
+
     private static func imageResource(named filename: String) -> NSImage? {
         if let url = Bundle.main.resourceURL?.appendingPathComponent(filename),
            let image = NSImage(contentsOf: url) {
