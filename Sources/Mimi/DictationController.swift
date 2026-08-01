@@ -33,8 +33,9 @@ protocol TextInserting: AnyObject {
     func insert(
         _ text: String,
         prePasteKeystroke: MimiShortcut?,
+        prePasteDelayMilliseconds: Int,
         postPasteKeystroke: MimiShortcut?,
-        delayMilliseconds: Int
+        postPasteDelayMilliseconds: Int
     ) async throws
     func copyToClipboard(_ text: String) throws
 }
@@ -392,8 +393,9 @@ final class DictationController {
             try await textInserter.insert(
                 text,
                 prePasteKeystroke: plan.prePasteKeystroke,
+                prePasteDelayMilliseconds: plan.config.prePasteKeystrokeDelayMilliseconds,
                 postPasteKeystroke: plan.postPasteKeystroke,
-                delayMilliseconds: plan.config.postPasteKeystrokeDelayMilliseconds
+                postPasteDelayMilliseconds: plan.config.postPasteKeystrokeDelayMilliseconds
             )
             appleStreamTask = nil
             onPartialTranscript(nil)

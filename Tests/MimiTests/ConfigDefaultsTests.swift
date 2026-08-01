@@ -9,6 +9,8 @@ final class ConfigDefaultsTests: XCTestCase {
         XCTAssertFalse(config.ambientModeEnabled)
         XCTAssertNil(config.ambientPrePasteKeystroke)
         XCTAssertEqual(config.ambientPostPasteKeystroke, .returnKey)
+        XCTAssertEqual(config.prePasteKeystrokeDelayMilliseconds, 150)
+        XCTAssertEqual(config.postPasteKeystrokeDelayMilliseconds, 150)
         XCTAssertTrue(config.modelDownloadEnabled)
         XCTAssertTrue(config.silenceAutoStopEnabled)
         XCTAssertTrue(config.pressEnterAfterPaste)
@@ -162,6 +164,24 @@ final class ConfigDefaultsTests: XCTestCase {
         let loaded = MimiConfig.load(userDefaults: userDefaults)
         XCTAssertNil(loaded.ambientPrePasteKeystroke)
         XCTAssertNil(loaded.ambientPostPasteKeystroke)
+    }
+
+    func testPasteKeystrokeDelaysPersist() {
+        let suiteName = "MimiTests.\(UUID().uuidString)"
+        guard let userDefaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults")
+            return
+        }
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        var config = MimiConfig.defaults
+        config.prePasteKeystrokeDelayMilliseconds = 325
+        config.postPasteKeystrokeDelayMilliseconds = 475
+        config.save(userDefaults: userDefaults)
+
+        let loaded = MimiConfig.load(userDefaults: userDefaults)
+        XCTAssertEqual(loaded.prePasteKeystrokeDelayMilliseconds, 325)
+        XCTAssertEqual(loaded.postPasteKeystrokeDelayMilliseconds, 475)
     }
 
     func testFillerCleanupSettingPersists() {

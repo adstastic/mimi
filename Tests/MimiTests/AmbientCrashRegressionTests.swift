@@ -110,6 +110,8 @@ final class AmbientCrashRegressionTests: XCTestCase {
         var config = ambientConfig(inputDeviceID: nil)
         config.ambientPrePasteKeystroke = prePasteKeystroke
         config.ambientPostPasteKeystroke = postPasteKeystroke
+        config.prePasteKeystrokeDelayMilliseconds = 325
+        config.postPasteKeystrokeDelayMilliseconds = 475
         config.pressEnterAfterPaste = false
         audio.peakDBFS = -20
         asr.streamFinalText = "review comment"
@@ -138,6 +140,8 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertTrue(pasted)
         XCTAssertEqual(inserter.prePasteKeystrokes, [prePasteKeystroke])
         XCTAssertEqual(inserter.postPasteKeystrokes, [postPasteKeystroke])
+        XCTAssertEqual(inserter.prePasteDelays, [325])
+        XCTAssertEqual(inserter.postPasteDelays, [475])
     }
 
     func testAmbientStartsWhenTranscriptArrivesAfterLevelFallsBelowNoiseFloor() async throws {
@@ -792,16 +796,21 @@ private final class FakeTextInserter: TextInserting {
     var insertedTexts: [String] = []
     var prePasteKeystrokes: [MimiShortcut?] = []
     var postPasteKeystrokes: [MimiShortcut?] = []
+    var prePasteDelays: [Int] = []
+    var postPasteDelays: [Int] = []
 
     func insert(
         _ text: String,
         prePasteKeystroke: MimiShortcut?,
+        prePasteDelayMilliseconds: Int,
         postPasteKeystroke: MimiShortcut?,
-        delayMilliseconds: Int
+        postPasteDelayMilliseconds: Int
     ) async throws {
         insertedTexts.append(text)
         prePasteKeystrokes.append(prePasteKeystroke)
         postPasteKeystrokes.append(postPasteKeystroke)
+        prePasteDelays.append(prePasteDelayMilliseconds)
+        postPasteDelays.append(postPasteDelayMilliseconds)
     }
 
     func copyToClipboard(_ text: String) throws {}

@@ -128,14 +128,36 @@ struct SettingsView: View {
                         disabled: !backendCapabilities.supportsAmbient,
                         onRecordingChanged: shortcutRecordingChanged
                     )
-                    Label(
-                        backendCapabilities.supportsAmbient
-                            ? "Ambient sends selected keystrokes to the frontmost app."
-                            : "Ambient requires Apple SpeechTranscriber.",
-                        systemImage: "info.circle"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    SliderLine(
+                        "Before-paste delay",
+                        value: "\(config.prePasteKeystrokeDelayMilliseconds) ms",
+                        systemImage: "timer"
+                    ) {
+                        Stepper(
+                            "Before-paste delay",
+                            value: $config.prePasteKeystrokeDelayMilliseconds,
+                            in: 0 ... 2_000,
+                            step: 25
+                        )
+                        .labelsHidden()
+                    }
+                    .disabled(!backendCapabilities.supportsAmbient)
+                    .opacity(backendCapabilities.supportsAmbient ? 1 : 0.45)
+                    SliderLine(
+                        "After-paste delay",
+                        value: "\(config.postPasteKeystrokeDelayMilliseconds) ms",
+                        systemImage: "timer"
+                    ) {
+                        Stepper(
+                            "After-paste delay",
+                            value: $config.postPasteKeystrokeDelayMilliseconds,
+                            in: 0 ... 2_000,
+                            step: 25
+                        )
+                        .labelsHidden()
+                    }
+                    .disabled(!backendCapabilities.supportsAmbient)
+                    .opacity(backendCapabilities.supportsAmbient ? 1 : 0.45)
                 }
 
                 SettingsCard("Shortcuts", systemImage: "keyboard") {

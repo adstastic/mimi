@@ -20,16 +20,18 @@ final class TextInserter {
     func insert(
         _ text: String,
         prePasteKeystroke: MimiShortcut?,
+        prePasteDelayMilliseconds: Int,
         postPasteKeystroke: MimiShortcut?,
-        delayMilliseconds: Int
+        postPasteDelayMilliseconds: Int
     ) async throws {
         try copyToClipboard(text)
         if let prePasteKeystroke {
             try press(prePasteKeystroke)
+            try await sleep(milliseconds: prePasteDelayMilliseconds)
         }
         try pasteClipboard()
         if let postPasteKeystroke {
-            try await sleep(milliseconds: delayMilliseconds)
+            try await sleep(milliseconds: postPasteDelayMilliseconds)
             try press(postPasteKeystroke)
         }
     }

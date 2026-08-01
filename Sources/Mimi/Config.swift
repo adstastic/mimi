@@ -159,6 +159,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         case ambientEndKeystroke
         case ambientPressEnterOnStart
         case pressEnterAfterPaste
+        case prePasteKeystrokeDelayMilliseconds
         case postPasteKeystrokeDelayMilliseconds
         case postPasteEnterDelayMilliseconds
         case showLiveTranscript
@@ -185,6 +186,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
     public var ambientPrePasteKeystroke: MimiShortcut?
     public var ambientPostPasteKeystroke: MimiShortcut?
     public var pressEnterAfterPaste: Bool
+    public var prePasteKeystrokeDelayMilliseconds: Int
     public var postPasteKeystrokeDelayMilliseconds: Int
     public var showLiveTranscript: Bool
     public var fillerCleanupEnabled: Bool
@@ -210,6 +212,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         ambientPrePasteKeystroke: nil,
         ambientPostPasteKeystroke: .returnKey,
         pressEnterAfterPaste: true,
+        prePasteKeystrokeDelayMilliseconds: 150,
         postPasteKeystrokeDelayMilliseconds: 150,
         showLiveTranscript: true,
         fillerCleanupEnabled: true,
@@ -235,6 +238,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         ambientPrePasteKeystroke: MimiShortcut? = nil,
         ambientPostPasteKeystroke: MimiShortcut? = .returnKey,
         pressEnterAfterPaste: Bool,
+        prePasteKeystrokeDelayMilliseconds: Int,
         postPasteKeystrokeDelayMilliseconds: Int,
         showLiveTranscript: Bool = true,
         fillerCleanupEnabled: Bool = true,
@@ -258,6 +262,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         self.ambientPrePasteKeystroke = ambientPrePasteKeystroke
         self.ambientPostPasteKeystroke = ambientPostPasteKeystroke
         self.pressEnterAfterPaste = pressEnterAfterPaste
+        self.prePasteKeystrokeDelayMilliseconds = prePasteKeystrokeDelayMilliseconds
         self.postPasteKeystrokeDelayMilliseconds = postPasteKeystrokeDelayMilliseconds
         self.showLiveTranscript = showLiveTranscript
         self.fillerCleanupEnabled = fillerCleanupEnabled
@@ -298,6 +303,8 @@ public struct MimiConfig: Codable, Equatable, Sendable {
             ambientPostPasteKeystroke = .returnKey
         }
         pressEnterAfterPaste = try container.decodeIfPresent(Bool.self, forKey: .pressEnterAfterPaste) ?? Self.defaults.pressEnterAfterPaste
+        prePasteKeystrokeDelayMilliseconds = try container.decodeIfPresent(Int.self, forKey: .prePasteKeystrokeDelayMilliseconds)
+            ?? Self.defaults.prePasteKeystrokeDelayMilliseconds
         postPasteKeystrokeDelayMilliseconds = try container.decodeIfPresent(Int.self, forKey: .postPasteKeystrokeDelayMilliseconds)
             ?? container.decodeIfPresent(Int.self, forKey: .postPasteEnterDelayMilliseconds)
             ?? Self.defaults.postPasteKeystrokeDelayMilliseconds
@@ -329,6 +336,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         try container.encode(ambientPostPasteKeystroke, forKey: .ambientEndKeystroke)
         try container.encode(ambientPrePasteKeystroke == .returnKey, forKey: .ambientPressEnterOnStart)
         try container.encode(pressEnterAfterPaste, forKey: .pressEnterAfterPaste)
+        try container.encode(prePasteKeystrokeDelayMilliseconds, forKey: .prePasteKeystrokeDelayMilliseconds)
         try container.encode(postPasteKeystrokeDelayMilliseconds, forKey: .postPasteKeystrokeDelayMilliseconds)
         try container.encode(postPasteKeystrokeDelayMilliseconds, forKey: .postPasteEnterDelayMilliseconds)
         try container.encode(showLiveTranscript, forKey: .showLiveTranscript)

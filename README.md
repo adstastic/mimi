@@ -12,7 +12,7 @@ Current usable path:
   - press Escape while recording to cancel
 - silence auto-stop
 - optional ambient VAD mode that keeps mic armed and uses Apple SpeechDetector to start/stop on speech
-- independently configurable silence auto-stop, stop detection mode, microphone input, shortcut Return-after-paste, and ambient pre/post-paste keystrokes
+- independently configurable silence auto-stop, stop detection mode, microphone input, shortcut Return-after-paste, and ambient pre/post-paste keystrokes and delays
 - normal Dock app window
 - bottom recording overlay with live partials for Apple SpeechTranscriber
 - transcript stays copied to clipboard after dictation
