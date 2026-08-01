@@ -56,6 +56,12 @@ struct SettingsView: View {
                         refresh: refreshInputDevices
                     )
 
+                    ToggleLine(
+                        "Ambient mode",
+                        systemImage: "ear.and.waveform",
+                        isOn: $config.ambientModeEnabled,
+                        disabled: !backendCapabilities.supportsAmbient
+                    )
                     ToggleLine("End shortcut on silence", systemImage: "speaker.slash", isOn: $config.silenceAutoStopEnabled)
                     ToggleLine("Show live transcript", systemImage: "text.bubble", isOn: $config.showLiveTranscript)
                     ToggleLine("Remove filler words", systemImage: "text.badge.minus", isOn: $config.fillerCleanupEnabled)
@@ -65,68 +71,6 @@ struct SettingsView: View {
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                }
-
-                SettingsCard("My Voice", systemImage: "person.wave.2") {
-                    HStack(spacing: 8) {
-                        Image(systemName: voiceprintProfileExists ? "checkmark.seal.fill" : "person.badge.plus")
-                            .foregroundStyle(voiceprintProfileExists ? .green : .secondary)
-                            .frame(width: 18)
-                        Text(voiceprintStatus)
-                            .lineLimit(2)
-                        Spacer()
-                        if voiceprintBusy {
-                            ProgressView()
-                                .controlSize(.small)
-                        }
-                    }
-                    ToggleLine("Filter dictation to my voice", systemImage: "person.crop.circle.badge.checkmark", isOn: $config.voiceprintEnabled)
-                    SliderLine(
-                        "Voice threshold",
-                        value: String(format: "%.2f", config.voiceprintThreshold),
-                        systemImage: "slider.horizontal.3"
-                    ) {
-                        Slider(value: $config.voiceprintThreshold, in: 0.45 ... 0.95, step: 0.01)
-                            .frame(width: 170)
-                    }
-                    .disabled(!config.voiceprintEnabled || !voiceprintProfileExists)
-                    Label(
-                        config.voiceprintEnabled
-                            ? "Higher is looser and keeps more speech; lower is stricter."
-                            : "Voice filtering is off; dictation transcribes the whole recording.",
-                        systemImage: "info.circle"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Read twice while enrolling:")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text("“\(VoiceprintPrototype.enrollmentPrompt)”")
-                            .font(.callout)
-                            .textSelection(.enabled)
-                    }
-                    HStack {
-                        Button("Enroll", action: enrollVoiceprint)
-                            .disabled(voiceprintBusy)
-                        Button("Verify", action: verifyVoiceprint)
-                            .disabled(voiceprintBusy || !voiceprintProfileExists)
-                        Button("Reset", action: resetVoiceprint)
-                            .disabled(voiceprintBusy || !voiceprintProfileExists)
-                    }
-                    .controlSize(.small)
-                    Label("Prototype keeps matching speaker segments, then transcribes only those.", systemImage: "info.circle")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                SettingsCard("Ambient", systemImage: "ear.and.waveform") {
-                    ToggleLine(
-                        "Ambient mode",
-                        systemImage: "ear.and.waveform",
-                        isOn: $config.ambientModeEnabled,
-                        disabled: !backendCapabilities.supportsAmbient
-                    )
                 }
 
                 SettingsCard(
@@ -238,6 +182,59 @@ struct SettingsView: View {
                     PermissionLine("Input Monitoring", systemImage: "keyboard.badge.eye", granted: permissionStatus.inputMonitoring) {
                         openPrivacyPane("Privacy_ListenEvent")
                     }
+                }
+
+                SettingsCard("My Voice", systemImage: "person.wave.2") {
+                    HStack(spacing: 8) {
+                        Image(systemName: voiceprintProfileExists ? "checkmark.seal.fill" : "person.badge.plus")
+                            .foregroundStyle(voiceprintProfileExists ? .green : .secondary)
+                            .frame(width: 18)
+                        Text(voiceprintStatus)
+                            .lineLimit(2)
+                        Spacer()
+                        if voiceprintBusy {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                    }
+                    ToggleLine("Filter dictation to my voice", systemImage: "person.crop.circle.badge.checkmark", isOn: $config.voiceprintEnabled)
+                    SliderLine(
+                        "Voice threshold",
+                        value: String(format: "%.2f", config.voiceprintThreshold),
+                        systemImage: "slider.horizontal.3"
+                    ) {
+                        Slider(value: $config.voiceprintThreshold, in: 0.45 ... 0.95, step: 0.01)
+                            .frame(width: 170)
+                    }
+                    .disabled(!config.voiceprintEnabled || !voiceprintProfileExists)
+                    Label(
+                        config.voiceprintEnabled
+                            ? "Higher is looser and keeps more speech; lower is stricter."
+                            : "Voice filtering is off; dictation transcribes the whole recording.",
+                        systemImage: "info.circle"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Read twice while enrolling:")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("“\(VoiceprintPrototype.enrollmentPrompt)”")
+                            .font(.callout)
+                            .textSelection(.enabled)
+                    }
+                    HStack {
+                        Button("Enroll", action: enrollVoiceprint)
+                            .disabled(voiceprintBusy)
+                        Button("Verify", action: verifyVoiceprint)
+                            .disabled(voiceprintBusy || !voiceprintProfileExists)
+                        Button("Reset", action: resetVoiceprint)
+                            .disabled(voiceprintBusy || !voiceprintProfileExists)
+                    }
+                    .controlSize(.small)
+                    Label("Prototype keeps matching speaker segments, then transcribes only those.", systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
             if let liveTranscript, !liveTranscript.isEmpty {
