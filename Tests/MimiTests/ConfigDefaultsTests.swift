@@ -7,8 +7,8 @@ final class ConfigDefaultsTests: XCTestCase {
 
         XCTAssertEqual(config.preferredBackend, .appleSpeechTranscriber)
         XCTAssertFalse(config.ambientModeEnabled)
-        XCTAssertNil(config.ambientStartKeystroke)
-        XCTAssertEqual(config.ambientEndKeystroke, .returnKey)
+        XCTAssertNil(config.ambientPrePasteKeystroke)
+        XCTAssertEqual(config.ambientPostPasteKeystroke, .returnKey)
         XCTAssertTrue(config.modelDownloadEnabled)
         XCTAssertTrue(config.silenceAutoStopEnabled)
         XCTAssertTrue(config.pressEnterAfterPaste)
@@ -118,8 +118,8 @@ final class ConfigDefaultsTests: XCTestCase {
 
         XCTAssertEqual(config.dictationShortcut, .rightCommand)
         XCTAssertEqual(config.ambientToggleShortcut, .ambientToggleDefault)
-        XCTAssertNil(config.ambientStartKeystroke)
-        XCTAssertEqual(config.ambientEndKeystroke, .returnKey)
+        XCTAssertNil(config.ambientPrePasteKeystroke)
+        XCTAssertEqual(config.ambientPostPasteKeystroke, .returnKey)
         XCTAssertNil(config.inputDeviceID)
         XCTAssertEqual(config.silenceDetectionMode, .audioLevel)
         XCTAssertTrue(config.showLiveTranscript)
@@ -133,8 +133,17 @@ final class ConfigDefaultsTests: XCTestCase {
 
         let config = try JSONDecoder().decode(MimiConfig.self, from: Data(json.utf8))
 
-        XCTAssertEqual(config.ambientStartKeystroke, .returnKey)
-        XCTAssertEqual(config.ambientEndKeystroke, .returnKey)
+        XCTAssertEqual(config.ambientPrePasteKeystroke, .returnKey)
+        XCTAssertEqual(config.ambientPostPasteKeystroke, .returnKey)
+    }
+
+    func testStartAndEndKeystrokesMigrateToPasteBoundary() throws {
+        let json = #"{"ambientStartKeystroke":{"keyCode":48,"modifierFlagsRaw":0},"ambientEndKeystroke":{"keyCode":36,"modifierFlagsRaw":0}}"#
+
+        let config = try JSONDecoder().decode(MimiConfig.self, from: Data(json.utf8))
+
+        XCTAssertEqual(config.ambientPrePasteKeystroke, MimiShortcut(keyCode: 48, modifierFlagsRaw: 0))
+        XCTAssertEqual(config.ambientPostPasteKeystroke, .returnKey)
     }
 
     func testClearedAmbientKeystrokesPersist() {
@@ -146,13 +155,13 @@ final class ConfigDefaultsTests: XCTestCase {
         defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
         var config = MimiConfig.defaults
-        config.ambientStartKeystroke = nil
-        config.ambientEndKeystroke = nil
+        config.ambientPrePasteKeystroke = nil
+        config.ambientPostPasteKeystroke = nil
         config.save(userDefaults: userDefaults)
 
         let loaded = MimiConfig.load(userDefaults: userDefaults)
-        XCTAssertNil(loaded.ambientStartKeystroke)
-        XCTAssertNil(loaded.ambientEndKeystroke)
+        XCTAssertNil(loaded.ambientPrePasteKeystroke)
+        XCTAssertNil(loaded.ambientPostPasteKeystroke)
     }
 
     func testFillerCleanupSettingPersists() {

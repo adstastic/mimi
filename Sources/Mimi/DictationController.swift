@@ -30,9 +30,13 @@ protocol ASRServicing: AnyObject {
 
 @MainActor
 protocol TextInserting: AnyObject {
-    func insert(_ text: String, postPasteKeystroke: MimiShortcut?, delayMilliseconds: Int) async throws
+    func insert(
+        _ text: String,
+        prePasteKeystroke: MimiShortcut?,
+        postPasteKeystroke: MimiShortcut?,
+        delayMilliseconds: Int
+    ) async throws
     func copyToClipboard(_ text: String) throws
-    func press(_ keystroke: MimiShortcut) throws
 }
 
 protocol VoiceprintVerifying: AnyObject {
@@ -107,7 +111,7 @@ final class DictationController {
         let isAmbient: Bool
         let usesAppleStream: Bool
         let usesSpeechActivityStop: Bool
-        let startKeystroke: MimiShortcut?
+        let prePasteKeystroke: MimiShortcut?
         let postPasteKeystroke: MimiShortcut?
 
         init(config: MimiConfig, isAmbient: Bool) {
@@ -120,9 +124,9 @@ final class DictationController {
                 silenceDetectionMode: normalizedConfig.silenceDetectionMode
             )
             usesSpeechActivityStop = capabilities.usesSpeechActivityStop(normalizedConfig.silenceDetectionMode)
-            startKeystroke = isAmbient ? normalizedConfig.ambientStartKeystroke : nil
+            prePasteKeystroke = isAmbient ? normalizedConfig.ambientPrePasteKeystroke : nil
             postPasteKeystroke = isAmbient
-                ? normalizedConfig.ambientEndKeystroke
+                ? normalizedConfig.ambientPostPasteKeystroke
                 : normalizedConfig.pressEnterAfterPaste ? .returnKey : nil
         }
     }
@@ -308,8 +312,6 @@ final class DictationController {
             do {
                 if !plan.isAmbient {
                     await self.pauseAmbientMonitoringForShortcutRecording()
-                } else if let startKeystroke = plan.startKeystroke {
-                    try self.textInserter.press(startKeystroke)
                 }
                 try await self.audioCapture.start(
                     preRollMilliseconds: plan.config.preRollMilliseconds,
@@ -389,6 +391,7 @@ final class DictationController {
             onTranscript(text)
             try await textInserter.insert(
                 text,
+                prePasteKeystroke: plan.prePasteKeystroke,
                 postPasteKeystroke: plan.postPasteKeystroke,
                 delayMilliseconds: plan.config.postPasteKeystrokeDelayMilliseconds
             )

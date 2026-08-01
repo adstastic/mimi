@@ -17,9 +17,17 @@ final class TextInserter {
         }
     }
 
-    func insert(_ text: String, postPasteKeystroke: MimiShortcut?, delayMilliseconds: Int) async throws {
-        try pasteViaClipboard(text)
-
+    func insert(
+        _ text: String,
+        prePasteKeystroke: MimiShortcut?,
+        postPasteKeystroke: MimiShortcut?,
+        delayMilliseconds: Int
+    ) async throws {
+        try copyToClipboard(text)
+        if let prePasteKeystroke {
+            try press(prePasteKeystroke)
+        }
+        try pasteClipboard()
         if let postPasteKeystroke {
             try await sleep(milliseconds: delayMilliseconds)
             try press(postPasteKeystroke)
@@ -34,20 +42,14 @@ final class TextInserter {
         }
     }
 
-    func press(_ keystroke: MimiShortcut) throws {
+    private func press(_ keystroke: MimiShortcut) throws {
         try sendKey(
             virtualKey: CGKeyCode(keystroke.keyCode),
             flags: CGEventFlags(rawValue: UInt64(keystroke.modifierFlagsRaw))
         )
     }
 
-    private func pasteViaClipboard(_ text: String) throws {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        guard pasteboard.setString(text, forType: .string) else {
-            throw InsertError.pasteboardWriteFailed
-        }
-
+    private func pasteClipboard() throws {
         try sendKey(virtualKey: 9, flags: .maskCommand) // V
     }
 

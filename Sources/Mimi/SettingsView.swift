@@ -115,16 +115,16 @@ struct SettingsView: View {
                         disabled: !backendCapabilities.supportsAmbient
                     )
                     OptionalShortcutRecorderRow(
-                        title: "Before recording",
+                        title: "Before paste",
                         systemImage: "arrow.right.to.line",
-                        shortcut: $config.ambientStartKeystroke,
+                        shortcut: $config.ambientPrePasteKeystroke,
                         disabled: !backendCapabilities.supportsAmbient,
                         onRecordingChanged: shortcutRecordingChanged
                     )
                     OptionalShortcutRecorderRow(
                         title: "After paste",
                         systemImage: "arrow.left.to.line",
-                        shortcut: $config.ambientEndKeystroke,
+                        shortcut: $config.ambientPostPasteKeystroke,
                         disabled: !backendCapabilities.supportsAmbient,
                         onRecordingChanged: shortcutRecordingChanged
                     )

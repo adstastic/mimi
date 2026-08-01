@@ -99,17 +99,17 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertTrue(shortcutStarted)
     }
 
-    func testAmbientUsesConfiguredStartAndEndKeystrokes() async throws {
+    func testAmbientPassesConfiguredKeystrokesToPasteBoundary() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
         let inserter = FakeTextInserter()
         let overlay = FakeOverlay()
         let status = StatusSink()
-        let startKeystroke = MimiShortcut(keyCode: 48, modifierFlagsRaw: NSEvent.ModifierFlags.control.rawValue)
-        let endKeystroke = MimiShortcut(keyCode: 36, modifierFlagsRaw: NSEvent.ModifierFlags.command.rawValue)
+        let prePasteKeystroke = MimiShortcut(keyCode: 48, modifierFlagsRaw: NSEvent.ModifierFlags.control.rawValue)
+        let postPasteKeystroke = MimiShortcut(keyCode: 36, modifierFlagsRaw: NSEvent.ModifierFlags.command.rawValue)
         var config = ambientConfig(inputDeviceID: nil)
-        config.ambientStartKeystroke = startKeystroke
-        config.ambientEndKeystroke = endKeystroke
+        config.ambientPrePasteKeystroke = prePasteKeystroke
+        config.ambientPostPasteKeystroke = postPasteKeystroke
         config.pressEnterAfterPaste = false
         audio.peakDBFS = -20
         asr.streamFinalText = "review comment"
@@ -129,13 +129,15 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertTrue(streamStarted)
 
         asr.emitPartial("start comment")
-        let startPressed = await waitUntil({ inserter.pressedKeystrokes == [startKeystroke] }, timeout: 1.0)
-        XCTAssertTrue(startPressed)
+        let recordingStarted = await waitUntil({ audio.startInputDeviceIDs.count == 2 }, timeout: 1.0)
+        XCTAssertTrue(recordingStarted)
+        XCTAssertTrue(inserter.insertedTexts.isEmpty)
 
         controller.hotkeyDown()
         let pasted = await waitUntil({ inserter.insertedTexts == ["review comment"] }, timeout: 1.0)
         XCTAssertTrue(pasted)
-        XCTAssertEqual(inserter.postPasteKeystrokes, [endKeystroke])
+        XCTAssertEqual(inserter.prePasteKeystrokes, [prePasteKeystroke])
+        XCTAssertEqual(inserter.postPasteKeystrokes, [postPasteKeystroke])
     }
 
     func testAmbientStartsWhenTranscriptArrivesAfterLevelFallsBelowNoiseFloor() async throws {
@@ -788,19 +790,21 @@ private final class FakeVoiceprintVerifier: VoiceprintVerifying {
 @MainActor
 private final class FakeTextInserter: TextInserting {
     var insertedTexts: [String] = []
+    var prePasteKeystrokes: [MimiShortcut?] = []
     var postPasteKeystrokes: [MimiShortcut?] = []
-    var pressedKeystrokes: [MimiShortcut] = []
 
-    func insert(_ text: String, postPasteKeystroke: MimiShortcut?, delayMilliseconds: Int) async throws {
+    func insert(
+        _ text: String,
+        prePasteKeystroke: MimiShortcut?,
+        postPasteKeystroke: MimiShortcut?,
+        delayMilliseconds: Int
+    ) async throws {
         insertedTexts.append(text)
+        prePasteKeystrokes.append(prePasteKeystroke)
         postPasteKeystrokes.append(postPasteKeystroke)
     }
 
     func copyToClipboard(_ text: String) throws {}
-
-    func press(_ keystroke: MimiShortcut) throws {
-        pressedKeystrokes.append(keystroke)
-    }
 }
 
 @MainActor

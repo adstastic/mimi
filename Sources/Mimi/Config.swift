@@ -153,6 +153,8 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         case inputDeviceID
         case ambientModeEnabled
         case ambientToggleShortcut
+        case ambientPrePasteKeystroke
+        case ambientPostPasteKeystroke
         case ambientStartKeystroke
         case ambientEndKeystroke
         case ambientPressEnterOnStart
@@ -180,8 +182,8 @@ public struct MimiConfig: Codable, Equatable, Sendable {
     public var inputDeviceID: String?
     public var ambientModeEnabled: Bool
     public var ambientToggleShortcut: MimiShortcut
-    public var ambientStartKeystroke: MimiShortcut?
-    public var ambientEndKeystroke: MimiShortcut?
+    public var ambientPrePasteKeystroke: MimiShortcut?
+    public var ambientPostPasteKeystroke: MimiShortcut?
     public var pressEnterAfterPaste: Bool
     public var postPasteKeystrokeDelayMilliseconds: Int
     public var showLiveTranscript: Bool
@@ -205,8 +207,8 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         inputDeviceID: nil,
         ambientModeEnabled: false,
         ambientToggleShortcut: .ambientToggleDefault,
-        ambientStartKeystroke: nil,
-        ambientEndKeystroke: .returnKey,
+        ambientPrePasteKeystroke: nil,
+        ambientPostPasteKeystroke: .returnKey,
         pressEnterAfterPaste: true,
         postPasteKeystrokeDelayMilliseconds: 150,
         showLiveTranscript: true,
@@ -230,8 +232,8 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         inputDeviceID: String? = nil,
         ambientModeEnabled: Bool,
         ambientToggleShortcut: MimiShortcut = .ambientToggleDefault,
-        ambientStartKeystroke: MimiShortcut? = nil,
-        ambientEndKeystroke: MimiShortcut? = .returnKey,
+        ambientPrePasteKeystroke: MimiShortcut? = nil,
+        ambientPostPasteKeystroke: MimiShortcut? = .returnKey,
         pressEnterAfterPaste: Bool,
         postPasteKeystrokeDelayMilliseconds: Int,
         showLiveTranscript: Bool = true,
@@ -253,8 +255,8 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         self.inputDeviceID = inputDeviceID
         self.ambientModeEnabled = ambientModeEnabled
         self.ambientToggleShortcut = ambientToggleShortcut
-        self.ambientStartKeystroke = ambientStartKeystroke
-        self.ambientEndKeystroke = ambientEndKeystroke
+        self.ambientPrePasteKeystroke = ambientPrePasteKeystroke
+        self.ambientPostPasteKeystroke = ambientPostPasteKeystroke
         self.pressEnterAfterPaste = pressEnterAfterPaste
         self.postPasteKeystrokeDelayMilliseconds = postPasteKeystrokeDelayMilliseconds
         self.showLiveTranscript = showLiveTranscript
@@ -280,16 +282,20 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         inputDeviceID = try container.decodeIfPresent(String.self, forKey: .inputDeviceID)
         ambientModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .ambientModeEnabled) ?? Self.defaults.ambientModeEnabled
         ambientToggleShortcut = try container.decodeIfPresent(MimiShortcut.self, forKey: .ambientToggleShortcut) ?? Self.defaults.ambientToggleShortcut
-        if container.contains(.ambientStartKeystroke) {
-            ambientStartKeystroke = try container.decodeIfPresent(MimiShortcut.self, forKey: .ambientStartKeystroke)
+        if container.contains(.ambientPrePasteKeystroke) {
+            ambientPrePasteKeystroke = try container.decodeIfPresent(MimiShortcut.self, forKey: .ambientPrePasteKeystroke)
+        } else if container.contains(.ambientStartKeystroke) {
+            ambientPrePasteKeystroke = try container.decodeIfPresent(MimiShortcut.self, forKey: .ambientStartKeystroke)
         } else {
             let legacyPressReturn = try container.decodeIfPresent(Bool.self, forKey: .ambientPressEnterOnStart) ?? false
-            ambientStartKeystroke = legacyPressReturn ? .returnKey : nil
+            ambientPrePasteKeystroke = legacyPressReturn ? .returnKey : nil
         }
-        if container.contains(.ambientEndKeystroke) {
-            ambientEndKeystroke = try container.decodeIfPresent(MimiShortcut.self, forKey: .ambientEndKeystroke)
+        if container.contains(.ambientPostPasteKeystroke) {
+            ambientPostPasteKeystroke = try container.decodeIfPresent(MimiShortcut.self, forKey: .ambientPostPasteKeystroke)
+        } else if container.contains(.ambientEndKeystroke) {
+            ambientPostPasteKeystroke = try container.decodeIfPresent(MimiShortcut.self, forKey: .ambientEndKeystroke)
         } else {
-            ambientEndKeystroke = .returnKey
+            ambientPostPasteKeystroke = .returnKey
         }
         pressEnterAfterPaste = try container.decodeIfPresent(Bool.self, forKey: .pressEnterAfterPaste) ?? Self.defaults.pressEnterAfterPaste
         postPasteKeystrokeDelayMilliseconds = try container.decodeIfPresent(Int.self, forKey: .postPasteKeystrokeDelayMilliseconds)
@@ -317,9 +323,11 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         try container.encodeIfPresent(inputDeviceID, forKey: .inputDeviceID)
         try container.encode(ambientModeEnabled, forKey: .ambientModeEnabled)
         try container.encode(ambientToggleShortcut, forKey: .ambientToggleShortcut)
-        try container.encode(ambientStartKeystroke, forKey: .ambientStartKeystroke)
-        try container.encode(ambientEndKeystroke, forKey: .ambientEndKeystroke)
-        try container.encode(ambientStartKeystroke == .returnKey, forKey: .ambientPressEnterOnStart)
+        try container.encode(ambientPrePasteKeystroke, forKey: .ambientPrePasteKeystroke)
+        try container.encode(ambientPostPasteKeystroke, forKey: .ambientPostPasteKeystroke)
+        try container.encode(ambientPrePasteKeystroke, forKey: .ambientStartKeystroke)
+        try container.encode(ambientPostPasteKeystroke, forKey: .ambientEndKeystroke)
+        try container.encode(ambientPrePasteKeystroke == .returnKey, forKey: .ambientPressEnterOnStart)
         try container.encode(pressEnterAfterPaste, forKey: .pressEnterAfterPaste)
         try container.encode(postPasteKeystrokeDelayMilliseconds, forKey: .postPasteKeystrokeDelayMilliseconds)
         try container.encode(postPasteKeystrokeDelayMilliseconds, forKey: .postPasteEnterDelayMilliseconds)
