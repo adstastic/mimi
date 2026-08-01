@@ -502,6 +502,53 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertEqual(inserter.postPasteDelays, [375])
     }
 
+    func testVocabularyCorrectionMatchesAppleAndParakeetFinalPaths() async throws {
+        for backend in ASRBackend.allCases {
+            let audio = FakeAudioCapture()
+            let asr = FakeASRService()
+            let inserter = FakeTextInserter()
+            let history = HistoryStore()
+            let overlay = FakeOverlay()
+            let status = StatusSink()
+            var transcripts: [String?] = []
+            var config = MimiConfig.defaults
+            config.preferredBackend = backend
+            config.silenceAutoStopEnabled = false
+            config.voiceprintEnabled = false
+            config.dictationPasteSettings.postPasteKeystroke = nil
+            config.vocabularyEntries = [
+                VocabularyEntry(writtenForm: "Wispr Flow", spokenAliases: ["whisper flow"]),
+                VocabularyEntry(writtenForm: "PyTorch", spokenAliases: ["pie torch"])
+            ]
+            asr.appleFinalText = "Um, whisper flow uses pie torch."
+            asr.batchFinalText = "Um, whisper flow uses pie torch."
+
+            let controller = makeController(
+                configProvider: { config },
+                audio: audio,
+                asr: asr,
+                textInserter: inserter,
+                history: history,
+                overlay: overlay,
+                status: status,
+                transcript: { transcripts.append($0) },
+                missingInputTimeout: 10
+            )
+
+            controller.hotkeyDown()
+            let started = await waitUntil({ audio.startInputDeviceIDs == [nil] }, timeout: 1.0)
+            XCTAssertTrue(started, backend.displayName)
+            try await Task.sleep(nanoseconds: 250_000_000)
+            controller.hotkeyUp()
+            let pasted = await waitUntil({ !inserter.insertedTexts.isEmpty }, timeout: 1.0)
+
+            XCTAssertTrue(pasted, backend.displayName)
+            XCTAssertEqual(inserter.insertedTexts, ["Wispr Flow uses PyTorch."], backend.displayName)
+            XCTAssertEqual(history.lastTranscript, "Wispr Flow uses PyTorch.", backend.displayName)
+            XCTAssertEqual(transcripts.last, "Wispr Flow uses PyTorch.", backend.displayName)
+        }
+    }
+
     func testAmbientStartsWhenTranscriptArrivesAfterLevelFallsBelowNoiseFloor() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
@@ -943,6 +990,7 @@ final class AmbientCrashRegressionTests: XCTestCase {
         history: HistoryStore? = nil,
         overlay: OverlayShowing,
         status: StatusSink,
+        transcript: ((String?) -> Void)? = nil,
         partialTranscript: ((String?) -> Void)? = nil,
         missingInputTimeout: TimeInterval
     ) -> DictationController {
@@ -955,7 +1003,7 @@ final class AmbientCrashRegressionTests: XCTestCase {
             history: history ?? HistoryStore(),
             overlay: overlay,
             onStatus: { status.append($0) },
-            onTranscript: { _ in },
+            onTranscript: { transcript?($0) },
             onPartialTranscript: { partialTranscript?($0) },
             missingInputTimeout: missingInputTimeout
         )
@@ -1044,6 +1092,8 @@ private final class FakeASRService: ASRServicing {
     private var nextStartError: Error?
     var startError: Error?
     var streamFinalText = ""
+    var appleFinalText = ""
+    var batchFinalText = ""
     private var pendingCancel: CheckedContinuation<Void, Never>?
 
     func holdCancels() {
@@ -1091,7 +1141,7 @@ private final class FakeASRService: ASRServicing {
     func transcribeApple(audioURL: URL) async throws -> String {
         record("transcribe.apple")
         record("transcribe.apple.path=\(audioURL.path)")
-        return ""
+        return appleFinalText
     }
 
     func startAppleStream(
@@ -1139,7 +1189,7 @@ private final class FakeASRService: ASRServicing {
     func transcribe(audioURL: URL) async throws -> String {
         record("transcribe")
         record("transcribe.path=\(audioURL.path)")
-        return ""
+        return batchFinalText
     }
 
     private func recordStart(_ handler: @escaping AppleSpeechTranscriberBackend.EventHandler) {

@@ -428,7 +428,8 @@ final class DictationController {
                 plan: plan,
                 useAppleStreamFinal: transcriptionAudio.useAppleStreamFinal
             )
-            let text = transcriptText(rawText, config: plan.config)
+            let cleanedText = transcriptText(rawText, config: plan.config)
+            let text = VocabularyCorrector.correct(cleanedText, entries: plan.config.vocabularyEntries)
             guard !text.isEmpty else {
                 throw NSError(domain: AppBrand.noSpeechErrorDomain, code: 1, userInfo: [NSLocalizedDescriptionKey: "No speech detected."])
             }

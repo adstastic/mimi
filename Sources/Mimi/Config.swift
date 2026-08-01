@@ -192,6 +192,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         case postPasteEnterDelayMilliseconds
         case showLiveTranscript
         case fillerCleanupEnabled
+        case vocabularyEntries
         case voiceprintEnabled
         case voiceprintThreshold
         case modelDownloadEnabled
@@ -215,6 +216,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
     public var ambientPasteSettings: PasteSettings
     public var showLiveTranscript: Bool
     public var fillerCleanupEnabled: Bool
+    public var vocabularyEntries: [VocabularyEntry]
     public var voiceprintEnabled: Bool
     public var voiceprintThreshold: Double
     // TODO(ponytail): delete if no model-download toggle UI/runtime behavior appears.
@@ -238,6 +240,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         ambientPasteSettings: .defaults,
         showLiveTranscript: true,
         fillerCleanupEnabled: true,
+        vocabularyEntries: [],
         voiceprintEnabled: true,
         voiceprintThreshold: 0.78,
         modelDownloadEnabled: true
@@ -261,6 +264,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         ambientPasteSettings: PasteSettings = .defaults,
         showLiveTranscript: Bool = true,
         fillerCleanupEnabled: Bool = true,
+        vocabularyEntries: [VocabularyEntry] = [],
         voiceprintEnabled: Bool = true,
         voiceprintThreshold: Double = 0.78,
         modelDownloadEnabled: Bool
@@ -282,6 +286,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         self.ambientPasteSettings = ambientPasteSettings
         self.showLiveTranscript = showLiveTranscript
         self.fillerCleanupEnabled = fillerCleanupEnabled
+        self.vocabularyEntries = vocabularyEntries
         self.voiceprintEnabled = voiceprintEnabled
         self.voiceprintThreshold = voiceprintThreshold
         self.modelDownloadEnabled = modelDownloadEnabled
@@ -353,6 +358,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         }
         showLiveTranscript = try container.decodeIfPresent(Bool.self, forKey: .showLiveTranscript) ?? Self.defaults.showLiveTranscript
         fillerCleanupEnabled = try container.decodeIfPresent(Bool.self, forKey: .fillerCleanupEnabled) ?? Self.defaults.fillerCleanupEnabled
+        vocabularyEntries = try container.decodeIfPresent([VocabularyEntry].self, forKey: .vocabularyEntries) ?? []
         voiceprintEnabled = try container.decodeIfPresent(Bool.self, forKey: .voiceprintEnabled) ?? Self.defaults.voiceprintEnabled
         voiceprintThreshold = try container.decodeIfPresent(Double.self, forKey: .voiceprintThreshold) ?? Self.defaults.voiceprintThreshold
         modelDownloadEnabled = try container.decodeIfPresent(Bool.self, forKey: .modelDownloadEnabled) ?? Self.defaults.modelDownloadEnabled
@@ -386,6 +392,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         try container.encode(dictationPasteSettings.postPasteDelayMilliseconds, forKey: .postPasteEnterDelayMilliseconds)
         try container.encode(showLiveTranscript, forKey: .showLiveTranscript)
         try container.encode(fillerCleanupEnabled, forKey: .fillerCleanupEnabled)
+        try container.encode(vocabularyEntries, forKey: .vocabularyEntries)
         try container.encode(voiceprintEnabled, forKey: .voiceprintEnabled)
         try container.encode(voiceprintThreshold, forKey: .voiceprintThreshold)
         try container.encode(modelDownloadEnabled, forKey: .modelDownloadEnabled)

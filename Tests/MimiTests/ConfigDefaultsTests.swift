@@ -13,6 +13,7 @@ final class ConfigDefaultsTests: XCTestCase {
         XCTAssertTrue(config.silenceAutoStopEnabled)
         XCTAssertTrue(config.showLiveTranscript)
         XCTAssertTrue(config.fillerCleanupEnabled)
+        XCTAssertEqual(config.vocabularyEntries, [])
         XCTAssertTrue(config.voiceprintEnabled)
         XCTAssertEqual(config.voiceprintThreshold, 0.78)
         XCTAssertEqual(config.hotkeyKeyCode, 54)
@@ -123,6 +124,7 @@ final class ConfigDefaultsTests: XCTestCase {
         XCTAssertEqual(config.silenceDetectionMode, .audioLevel)
         XCTAssertTrue(config.showLiveTranscript)
         XCTAssertTrue(config.fillerCleanupEnabled)
+        XCTAssertEqual(config.vocabularyEntries, [])
         XCTAssertTrue(config.voiceprintEnabled)
         XCTAssertEqual(config.voiceprintThreshold, 0.78)
     }
@@ -196,6 +198,24 @@ final class ConfigDefaultsTests: XCTestCase {
                 postPasteDelayMilliseconds: 475
             )
         )
+    }
+
+    func testVocabularyEntriesPersist() {
+        let suiteName = "MimiTests.\(UUID().uuidString)"
+        guard let userDefaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults")
+            return
+        }
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        var config = MimiConfig.defaults
+        config.vocabularyEntries = [
+            VocabularyEntry(writtenForm: "Wispr Flow", spokenAliases: ["whisper flow"]),
+            VocabularyEntry(writtenForm: "PyTorch", spokenAliases: ["pie torch"], isEnabled: false)
+        ]
+        config.save(userDefaults: userDefaults)
+
+        XCTAssertEqual(MimiConfig.load(userDefaults: userDefaults).vocabularyEntries, config.vocabularyEntries)
     }
 
     func testFillerCleanupSettingPersists() {
