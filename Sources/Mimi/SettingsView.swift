@@ -2,8 +2,14 @@ import AppKit
 import MimiSpeech
 import SwiftUI
 
+private enum SettingsField: Hashable {
+    case beforePasteDelay
+    case afterPasteDelay
+}
+
 struct SettingsView: View {
     @Binding var config: MimiConfig
+    @FocusState private var focusedField: SettingsField?
     let statusText: String
     let permissionStatus: PermissionStatus
     let inputDevices: [AudioInputDevice]
@@ -131,6 +137,7 @@ struct SettingsView: View {
                     PasteDelayLine(
                         beforeMilliseconds: $config.prePasteKeystrokeDelayMilliseconds,
                         afterMilliseconds: $config.postPasteKeystrokeDelayMilliseconds,
+                        focusedField: $focusedField,
                         disabled: !backendCapabilities.supportsAmbient
                     )
                 }
@@ -235,6 +242,8 @@ struct SettingsView: View {
         .padding(10)
         .frame(width: 430, alignment: .topLeading)
         .fixedSize(horizontal: true, vertical: true)
+        .contentShape(Rectangle())
+        .onTapGesture { focusedField = nil }
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
@@ -441,6 +450,7 @@ private struct InputDevicePickerLine: View {
 private struct PasteDelayLine: View {
     @Binding var beforeMilliseconds: Int
     @Binding var afterMilliseconds: Int
+    let focusedField: FocusState<SettingsField?>.Binding
     let disabled: Bool
 
     var body: some View {
@@ -450,8 +460,18 @@ private struct PasteDelayLine: View {
                 .frame(width: 18)
             Text("Delays")
             Spacer(minLength: 8)
-            DelayField(title: "Before", value: $beforeMilliseconds)
-            DelayField(title: "After", value: $afterMilliseconds)
+            DelayField(
+                title: "Before",
+                value: $beforeMilliseconds,
+                field: .beforePasteDelay,
+                focusedField: focusedField
+            )
+            DelayField(
+                title: "After",
+                value: $afterMilliseconds,
+                field: .afterPasteDelay,
+                focusedField: focusedField
+            )
         }
         .disabled(disabled)
         .opacity(disabled ? 0.45 : 1)
@@ -461,6 +481,8 @@ private struct PasteDelayLine: View {
 private struct DelayField: View {
     let title: LocalizedStringKey
     @Binding var value: Int
+    let field: SettingsField
+    let focusedField: FocusState<SettingsField?>.Binding
 
     var body: some View {
         HStack(spacing: 4) {
@@ -469,6 +491,7 @@ private struct DelayField: View {
                 .foregroundStyle(.secondary)
             TextField(title, value: $value, format: .number)
                 .labelsHidden()
+                .focused(focusedField, equals: field)
                 .multilineTextAlignment(.trailing)
                 .frame(width: 48)
             Text("ms")
