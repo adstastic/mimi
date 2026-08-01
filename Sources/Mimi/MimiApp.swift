@@ -66,10 +66,6 @@ struct MimiApp: App {
     private var menuBarLabel: some View {
         if let image = AppBrand.menuBarImage {
             Image(nsImage: image)
-                .renderingMode(.template)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 14, height: 18)
                 .accessibilityLabel(AppBrand.name)
         } else {
             Image(systemName: "ear")
