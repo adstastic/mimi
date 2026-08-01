@@ -2,6 +2,32 @@ import AudioUnit
 import AVFoundation
 import Foundation
 
+@MainActor
+final class AudioStartGate {
+    private var occupied = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    var waitingCount: Int { waiters.count }
+
+    func acquire() async throws {
+        try Task.checkCancellation()
+        while occupied {
+            await withCheckedContinuation { continuation in
+                waiters.append(continuation)
+            }
+            try Task.checkCancellation()
+        }
+        occupied = true
+    }
+
+    func release() {
+        occupied = false
+        let waiting = waiters
+        waiters.removeAll()
+        waiting.forEach { $0.resume() }
+    }
+}
+
 final class AudioCapture {
     enum CaptureError: LocalizedError {
         case microphoneDenied
@@ -26,10 +52,12 @@ final class AudioCapture {
         }
     }
 
-    private let engine = AVAudioEngine()
+    private var engine = AVAudioEngine()
     private let lock = NSLock()
     private var tapInstalled = false
-    private var starting = false
+    private var inputRouteConfigured = false
+    private var configuredInputDeviceID: String?
+    private let startGate: AudioStartGate
     private var startSeq = 0
     private var ringSamples: [Float] = []
     private var recordingSamples: [Float] = []
@@ -44,25 +72,46 @@ final class AudioCapture {
     private var lastMonitorLogAt = Date.distantPast
 
     @MainActor
+    init() {
+        startGate = AudioStartGate()
+    }
+
+    @MainActor
     func start(preRollMilliseconds: Int, inputDeviceID: String?) async throws {
         guard try await Self.requestMicrophoneAccess() else {
             throw CaptureError.microphoneDenied
         }
         try Task.checkCancellation()
 
-        // Serialize on the main actor and reject re-entry: ambient mode restarts
-        // the mic from a 2s watchdog, config changes, and the device watcher,
-        // any of which can call start() while another is mid-flight. Two taps
-        // on the same bus makes installTap raise an uncatchable Obj-C exception
-        // that aborts the process. The guard is set with no await before it, so
-        // it is atomic on the main actor.
-        if engine.isRunning || starting { return }
-        starting = true
-        defer { starting = false }
+        // Serialize on the main actor: ambient mode restarts the mic from a
+        // watchdog, config changes, and the device watcher. A replacement start
+        // must wait for a canceled start to unwind; treating re-entry as success
+        // can begin recording on an engine that never started.
+        try await startGate.acquire()
+        defer { startGate.release() }
+        let effectiveInputDeviceID = inputDeviceID ?? AudioInputDevice.defaultInputDeviceUID()
+        let shouldRecreateEngine = Self.requiresFreshEngine(
+            routeConfigured: inputRouteConfigured,
+            configuredInputDeviceID: configuredInputDeviceID,
+            effectiveInputDeviceID: effectiveInputDeviceID
+        )
+        if engine.isRunning {
+            guard shouldRecreateEngine else { return }
+            engine.stop()
+            if tapInstalled {
+                engine.inputNode.removeTap(onBus: 0)
+                tapInstalled = false
+            }
+        }
         startSeq += 1
         let seq = startSeq
 
         resetBuffersForStart()
+        inputRouteConfigured = false
+        if shouldRecreateEngine {
+            engine = AVAudioEngine()
+            tapInstalled = false
+        }
 
         let input = engine.inputNode
         try applyInputDevice(inputDeviceID, to: input)
@@ -98,7 +147,20 @@ final class AudioCapture {
         tapInstalled = true
 
         engine.prepare()
-        try engine.start()
+        do {
+            try engine.start()
+            try Task.checkCancellation()
+            configuredInputDeviceID = effectiveInputDeviceID
+            inputRouteConfigured = true
+        } catch {
+            engine.stop()
+            if tapInstalled {
+                input.removeTap(onBus: 0)
+                tapInstalled = false
+            }
+            inputRouteConfigured = false
+            throw error
+        }
     }
 
     func setMonitorBufferHandler(_ handler: ((AVAudioPCMBuffer) -> Void)?) {
@@ -213,6 +275,14 @@ final class AudioCapture {
         recentLevels = []
         lastBufferAt = nil
         lock.unlock()
+    }
+
+    static func requiresFreshEngine(
+        routeConfigured: Bool,
+        configuredInputDeviceID: String?,
+        effectiveInputDeviceID: String?
+    ) -> Bool {
+        !routeConfigured || configuredInputDeviceID != effectiveInputDeviceID
     }
 
     private static func isValid(_ format: AVAudioFormat) -> Bool {

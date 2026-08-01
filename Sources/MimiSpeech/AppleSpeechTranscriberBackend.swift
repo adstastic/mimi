@@ -160,7 +160,7 @@ public actor AppleSpeechTranscriberBackend {
         do {
             try await analyzer.start(inputSequence: stream)
         } catch {
-            await cleanupAfterStream()
+            await cancelStream()
             throw error
         }
     }
@@ -198,9 +198,7 @@ public actor AppleSpeechTranscriberBackend {
             await cleanupAfterStream()
             return text
         } catch {
-            inputContinuation?.finish()
-            await analyzer.cancelAndFinishNow()
-            await cleanupAfterStream()
+            await cancelStream()
             throw error
         }
     }
@@ -210,6 +208,8 @@ public actor AppleSpeechTranscriberBackend {
         await analyzer?.cancelAndFinishNow()
         resultTask?.cancel()
         detectorTask?.cancel()
+        _ = try? await resultTask?.value
+        _ = try? await detectorTask?.value
         await cleanupAfterStream()
     }
 

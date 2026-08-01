@@ -66,7 +66,7 @@ final class AmbientCrashRegressionTests: XCTestCase {
         let asr = FakeASRService()
         let overlay = FakeOverlay()
         let status = StatusSink()
-        let config = ambientConfig(inputDeviceID: "shared-mic")
+        var config = ambientConfig(inputDeviceID: "shared-mic")
         asr.holdCancels()
 
         let controller = makeController(
@@ -97,6 +97,317 @@ final class AmbientCrashRegressionTests: XCTestCase {
             audio.startInputDeviceIDs == ["shared-mic", "shared-mic"]
         }, timeout: 1.0)
         XCTAssertTrue(shortcutStarted)
+
+        config = ambientConfig(inputDeviceID: "new-mic")
+        controller.updateAmbientMode()
+        try await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertEqual(audio.startInputDeviceIDs, ["shared-mic", "shared-mic"])
+
+        controller.cancelRecording()
+        let ambientResumedOnNewInput = await waitUntil({
+            audio.startInputDeviceIDs == ["shared-mic", "shared-mic", "new-mic"]
+        }, timeout: 1.0)
+        XCTAssertTrue(ambientResumedOnNewInput)
+        try await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertEqual(audio.startInputDeviceIDs, ["shared-mic", "shared-mic", "new-mic"])
+    }
+
+    func testShortcutStreamStartFailureRestartsAmbientMonitoring() async {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = ambientConfig(inputDeviceID: "shared-mic")
+        config.silenceDetectionMode = .speechActivity
+        config.voiceprintEnabled = false
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.updateAmbientMode()
+        let ambientStarted = await waitUntil({
+            audio.startInputDeviceIDs == ["shared-mic"]
+                && asr.snapshotEvents().filter { $0 == "stream.start" }.count == 1
+        }, timeout: 1.0)
+        XCTAssertTrue(ambientStarted)
+
+        asr.failNextStart(NSError(
+            domain: "FakeSpeechAnalyzer",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Request was rejected"]
+        ))
+        controller.hotkeyDown()
+
+        let ambientRestarted = await waitUntil({
+            audio.startInputDeviceIDs == ["shared-mic", "shared-mic", "shared-mic"]
+                && asr.snapshotEvents().filter { $0 == "stream.start" }.count == 2
+        }, timeout: 1.0)
+        XCTAssertTrue(ambientRestarted)
+        XCTAssertEqual(audio.stopCount, 1)
+    }
+
+    func testReplacementRecordingWaitsForCanceledStreamCleanup() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = MimiConfig.defaults
+        config.silenceDetectionMode = .speechActivity
+        config.voiceprintEnabled = false
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        let firstStarted = await waitUntil({
+            audio.startInputDeviceIDs.count == 1
+                && asr.snapshotEvents().filter { $0 == "stream.start" }.count == 1
+        }, timeout: 1.0)
+        XCTAssertTrue(firstStarted)
+
+        asr.holdCancels()
+        controller.cancelRecording()
+        let cancelStarted = await waitUntil({
+            asr.snapshotEvents().contains("stream.cancel.begin")
+        }, timeout: 1.0)
+        XCTAssertTrue(cancelStarted)
+
+        controller.hotkeyDown()
+        try await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertEqual(audio.startInputDeviceIDs.count, 1)
+        XCTAssertEqual(asr.snapshotEvents().filter { $0 == "stream.start" }.count, 1)
+
+        asr.releaseCancels()
+        let replacementStarted = await waitUntil({
+            audio.startInputDeviceIDs.count == 2
+                && asr.snapshotEvents().filter { $0 == "stream.start" }.count == 2
+        }, timeout: 1.0)
+        XCTAssertTrue(replacementStarted)
+        let events = asr.snapshotEvents()
+        XCTAssertLessThan(
+            try XCTUnwrap(events.firstIndex(of: "stream.cancel.end")),
+            try XCTUnwrap(events.lastIndex(of: "stream.start"))
+        )
+        controller.cancelRecording()
+    }
+
+    func testReplacementRecordingIgnoresStaleStreamEvents() async {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var partials: [String?] = []
+        var config = MimiConfig.defaults
+        config.silenceDetectionMode = .speechActivity
+        config.voiceprintEnabled = false
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            partialTranscript: { partials.append($0) },
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        let firstStarted = await waitUntil({
+            asr.snapshotEvents().filter { $0 == "stream.start" }.count == 1
+        }, timeout: 1.0)
+        XCTAssertTrue(firstStarted)
+
+        controller.cancelRecording()
+        controller.hotkeyDown()
+        let replacementStarted = await waitUntil({
+            asr.snapshotEvents().filter { $0 == "stream.start" }.count == 2
+        }, timeout: 1.0)
+        XCTAssertTrue(replacementStarted)
+
+        asr.emitPartial("stale", streamIndex: 0)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertFalse(partials.compactMap { $0 }.contains("stale"))
+
+        asr.emitPartial("current", streamIndex: 1)
+        let currentDisplayed = await waitUntil({
+            partials.compactMap { $0 }.contains("current")
+        }, timeout: 1.0)
+        XCTAssertTrue(currentDisplayed)
+        controller.cancelRecording()
+    }
+
+    func testCanceledMicStartCannotOverwriteReplacementRecording() async {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = MimiConfig.defaults
+        config.silenceAutoStopEnabled = false
+        config.voiceprintEnabled = false
+        audio.holdFirstStart = true
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        let firstStartPending = await waitUntil({ audio.firstStartPending }, timeout: 1.0)
+        XCTAssertTrue(firstStartPending)
+
+        controller.cancelRecording()
+        controller.hotkeyDown()
+        let replacementStarted = await waitUntil({
+            audio.startInputDeviceIDs.count == 2 && status.values.last == "Recording…"
+        }, timeout: 1.0)
+        XCTAssertTrue(replacementStarted)
+
+        audio.releaseFirstStart()
+        let canceledStartFinished = await waitUntil({ audio.firstStartFinished }, timeout: 1.0)
+        XCTAssertTrue(canceledStartFinished)
+        XCTAssertEqual(status.values.last, "Recording…")
+        controller.cancelRecording()
+    }
+
+    func testAmbientUpdateRejectsAlreadyQueuedOldEvent() async {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = ambientConfig(inputDeviceID: "old-mic")
+        audio.peakDBFS = -20
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.updateAmbientMode()
+        let firstStarted = await waitUntil({
+            asr.snapshotEvents().filter { $0 == "stream.start" }.count == 1
+        }, timeout: 1.0)
+        XCTAssertTrue(firstStarted)
+
+        asr.emitPartial("queued before update", streamIndex: 0)
+        config = ambientConfig(inputDeviceID: "new-mic")
+        controller.updateAmbientMode()
+
+        let replacementStarted = await waitUntil({
+            audio.startInputDeviceIDs == ["old-mic", "new-mic"]
+                && asr.snapshotEvents().filter { $0 == "stream.start" }.count == 2
+        }, timeout: 1.0)
+        XCTAssertTrue(replacementStarted)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(audio.startInputDeviceIDs, ["old-mic", "new-mic"])
+    }
+
+    func testReplacedAmbientStreamIgnoresStaleEvents() async {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = ambientConfig(inputDeviceID: "old-mic")
+        audio.peakDBFS = -20
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.updateAmbientMode()
+        let firstStarted = await waitUntil({
+            asr.snapshotEvents().filter { $0 == "stream.start" }.count == 1
+        }, timeout: 1.0)
+        XCTAssertTrue(firstStarted)
+
+        config = ambientConfig(inputDeviceID: "new-mic")
+        controller.updateAmbientMode()
+        let replacementStarted = await waitUntil({
+            audio.startInputDeviceIDs == ["old-mic", "new-mic"]
+                && asr.snapshotEvents().filter { $0 == "stream.start" }.count == 2
+        }, timeout: 1.0)
+        XCTAssertTrue(replacementStarted)
+
+        asr.emitPartial("stale", streamIndex: 0)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(audio.startInputDeviceIDs, ["old-mic", "new-mic"])
+
+        asr.emitPartial("current", streamIndex: 1)
+        let currentStartedRecording = await waitUntil({
+            audio.startInputDeviceIDs == ["old-mic", "new-mic", "new-mic"]
+        }, timeout: 1.0)
+        XCTAssertTrue(currentStartedRecording)
+        controller.cancelRecording()
+    }
+
+    func testAmbientInputChangeDuringRecordingRestartsOnceAfterRecording() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let inserter = FakeTextInserter()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = ambientConfig(inputDeviceID: "old-mic")
+        audio.peakDBFS = -20
+        asr.streamFinalText = "changed input"
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            textInserter: inserter,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.updateAmbientMode()
+        let ambientStarted = await waitUntil({
+            audio.startInputDeviceIDs == ["old-mic"] && asr.snapshotEvents().contains("stream.start")
+        }, timeout: 1.0)
+        XCTAssertTrue(ambientStarted)
+
+        asr.emitPartial("start recording")
+        let recordingStarted = await waitUntil({
+            audio.startInputDeviceIDs == ["old-mic", "old-mic"]
+        }, timeout: 1.0)
+        XCTAssertTrue(recordingStarted)
+
+        config = ambientConfig(inputDeviceID: "new-mic")
+        controller.updateAmbientMode()
+        try await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertEqual(audio.startInputDeviceIDs, ["old-mic", "old-mic"])
+
+        controller.hotkeyDown()
+        let restarted = await waitUntil({
+            audio.startInputDeviceIDs == ["old-mic", "old-mic", "new-mic"]
+        }, timeout: 1.0)
+        XCTAssertTrue(restarted)
+        try await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertEqual(audio.startInputDeviceIDs, ["old-mic", "old-mic", "new-mic"])
     }
 
     func testAmbientPassesConfiguredKeystrokesToPasteBoundary() async throws {
@@ -668,10 +979,32 @@ private final class FakeAudioCapture: AudioCapturing {
     var dbfs: Double = -120
     var peakDBFS: Double = -120
     var startError: Error?
+    var holdFirstStart = false
+    private(set) var firstStartFinished = false
+    private var firstStartContinuation: CheckedContinuation<Void, Never>?
+
+    var firstStartPending: Bool {
+        firstStartContinuation != nil
+    }
 
     func start(preRollMilliseconds: Int, inputDeviceID: String?) async throws {
+        let isFirstStart = startInputDeviceIDs.isEmpty
         startInputDeviceIDs.append(inputDeviceID)
+        defer {
+            if isFirstStart { firstStartFinished = true }
+        }
+        if holdFirstStart, isFirstStart {
+            await withCheckedContinuation { continuation in
+                firstStartContinuation = continuation
+            }
+            try Task.checkCancellation()
+        }
         if let startError { throw startError }
+    }
+
+    func releaseFirstStart() {
+        firstStartContinuation?.resume()
+        firstStartContinuation = nil
     }
 
     func setMonitorBufferHandler(_ handler: ((AVAudioPCMBuffer) -> Void)?) {
@@ -706,8 +1039,9 @@ private final class FakeAudioCapture: AudioCapturing {
 private final class FakeASRService: ASRServicing {
     private let lock = NSLock()
     private var events: [String] = []
-    private var eventHandler: AppleSpeechTranscriberBackend.EventHandler?
+    private var eventHandlers: [AppleSpeechTranscriberBackend.EventHandler] = []
     private var cancelsHeld = false
+    private var nextStartError: Error?
     var startError: Error?
     var streamFinalText = ""
     private var pendingCancel: CheckedContinuation<Void, Never>?
@@ -715,6 +1049,12 @@ private final class FakeASRService: ASRServicing {
     func holdCancels() {
         lock.lock()
         cancelsHeld = true
+        lock.unlock()
+    }
+
+    func failNextStart(_ error: Error) {
+        lock.lock()
+        nextStartError = error
         lock.unlock()
     }
 
@@ -734,10 +1074,14 @@ private final class FakeASRService: ASRServicing {
         return events
     }
 
-    func emitPartial(_ text: String) {
+    func emitPartial(_ text: String, streamIndex: Int? = nil) {
         let handler: AppleSpeechTranscriberBackend.EventHandler?
         lock.lock()
-        handler = eventHandler
+        if let streamIndex, eventHandlers.indices.contains(streamIndex) {
+            handler = eventHandlers[streamIndex]
+        } else {
+            handler = eventHandlers.last
+        }
         lock.unlock()
         handler?(.partial(text))
     }
@@ -755,6 +1099,12 @@ private final class FakeASRService: ASRServicing {
         onEvent: @escaping AppleSpeechTranscriberBackend.EventHandler,
         onDetection: AppleSpeechTranscriberBackend.DetectionHandler?
     ) async throws {
+        let oneShotError = lock.withLock {
+            let error = nextStartError
+            nextStartError = nil
+            return error
+        }
+        if let oneShotError { throw oneShotError }
         if let startError { throw startError }
         recordStart(onEvent)
     }
@@ -794,7 +1144,7 @@ private final class FakeASRService: ASRServicing {
 
     private func recordStart(_ handler: @escaping AppleSpeechTranscriberBackend.EventHandler) {
         lock.lock()
-        eventHandler = handler
+        eventHandlers.append(handler)
         events.append("stream.start")
         lock.unlock()
     }

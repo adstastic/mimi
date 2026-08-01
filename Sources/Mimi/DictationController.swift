@@ -113,8 +113,9 @@ final class DictationController {
         let usesAppleStream: Bool
         let usesSpeechActivityStop: Bool
         let pasteSettings: PasteSettings
+        let ambientUpdateGeneration: Int
 
-        init(config: MimiConfig, isAmbient: Bool) {
+        init(config: MimiConfig, isAmbient: Bool, ambientUpdateGeneration: Int) {
             let normalizedConfig = config.normalizedForBackend()
             let capabilities = normalizedConfig.preferredBackend.capabilities
             self.config = normalizedConfig
@@ -127,6 +128,7 @@ final class DictationController {
             pasteSettings = isAmbient
                 ? normalizedConfig.ambientPasteSettings
                 : normalizedConfig.dictationPasteSettings
+            self.ambientUpdateGeneration = ambientUpdateGeneration
         }
     }
 
@@ -160,6 +162,7 @@ final class DictationController {
     private let missingInputTimeout: TimeInterval
 
     private var state: State = .idle
+    private var recordingGeneration = 0
     private var silenceTask: Task<Void, Never>?
     private var ambientTask: Task<Void, Never>?
     private var speechDetectedByDetector = false
@@ -170,10 +173,17 @@ final class DictationController {
     private var ambientMicStartedAt: Date?
     private var engineStartTask: Task<Void, Never>?
     private var appleStreamTask: Task<Void, Never>?
+    private var appleStreamCleanupTask: Task<Void, Never>?
+    private var appleStreamCleanupGeneration = 0
     private var ambientStreamGeneration = 0
     private var ambientReconcileTask: Task<Void, Never>?
     private var ambientReconcilePending = false
+    private var ambientUpdateGeneration = 0
     private var lastAmbientDecisionLogAt = Date.distantPast
+
+    private var isAmbientRecording: Bool {
+        if case .recording(.ambient, _) = state { true } else { false }
+    }
 
     init(
         configProvider: @escaping () -> MimiConfig,
@@ -245,6 +255,7 @@ final class DictationController {
     }
 
     func updateAmbientMode() {
+        ambientUpdateGeneration &+= 1
         ambientReconcilePending = true
         guard ambientReconcileTask == nil else { return }
         ambientReconcileTask = Task { [weak self] in
@@ -265,6 +276,8 @@ final class DictationController {
 
     func cancelRecording() {
         guard case .recording(_, let plan) = state else { return }
+        recordingGeneration &+= 1
+        if plan.isAmbient { ambientStreamGeneration &+= 1 }
         let resumeAmbient = shouldRunAmbientMonitoring()
         silenceTask?.cancel()
         silenceTask = nil
@@ -282,12 +295,19 @@ final class DictationController {
         onPartialTranscript(nil)
         state = .idle
         if plan.usesAppleStream || resumeAmbient {
-            Task { [weak self, asrService] in
+            appleStreamCleanupGeneration &+= 1
+            let cleanupGeneration = appleStreamCleanupGeneration
+            let canceledRecordingGeneration = recordingGeneration
+            let previousCleanupTask = appleStreamCleanupTask
+            appleStreamCleanupTask = Task { @MainActor [weak self, asrService] in
+                await previousCleanupTask?.value
                 await asrService.cancelAppleStream()
-                await MainActor.run {
-                    guard let self, resumeAmbient else { return }
-                    self.resumeAmbientMonitoringAfterRecording()
-                }
+                guard let self, self.appleStreamCleanupGeneration == cleanupGeneration else { return }
+                self.appleStreamCleanupTask = nil
+                guard resumeAmbient,
+                      self.recordingGeneration == canceledRecordingGeneration,
+                      case .idle = self.state else { return }
+                self.resumeAmbientMonitoringAfterRecording(plan: plan)
             }
         }
         onStatus(resumeAmbient ? "Ambient armed" : "Cancelled")
@@ -296,8 +316,14 @@ final class DictationController {
     }
 
     private func startRecording(mode: RecordingMode, speechAlreadyDetected: Bool = false) {
+        recordingGeneration &+= 1
+        let generation = recordingGeneration
         let isAmbient = if case .ambient = mode { true } else { false }
-        let plan = RecordingPlan(config: configProvider(), isAmbient: isAmbient)
+        let plan = RecordingPlan(
+            config: configProvider(),
+            isAmbient: isAmbient,
+            ambientUpdateGeneration: ambientUpdateGeneration
+        )
         onPartialTranscript(nil)
         sawSpeech = speechAlreadyDetected
         silenceBeganAt = nil
@@ -309,26 +335,32 @@ final class DictationController {
         engineStartTask = Task { [weak self] in
             guard let self else { return }
             do {
+                await self.appleStreamCleanupTask?.value
+                guard self.recordingGeneration == generation else { return }
                 if !plan.isAmbient {
                     await self.pauseAmbientMonitoringForShortcutRecording()
                 }
+                guard self.recordingGeneration == generation else { return }
                 try await self.audioCapture.start(
                     preRollMilliseconds: plan.config.preRollMilliseconds,
                     inputDeviceID: plan.config.inputDeviceID
                 )
-                guard case .recording = self.state else { return }
+                guard self.recordingGeneration == generation,
+                      case .recording = self.state else { return }
 
                 if plan.usesAppleStream && !plan.isAmbient {
                     try await self.asrService.startAppleStream(
                         detectSpeech: plan.usesSpeechActivityStop,
                         onEvent: { [weak self] event in
                             Task { @MainActor in
-                                self?.handleAppleEvent(event)
+                                guard let self, self.recordingGeneration == generation else { return }
+                                self.handleAppleEvent(event)
                             }
                         },
                         onDetection: { [weak self] detected in
                             Task { @MainActor in
-                                self?.handleSpeechDetection(detected)
+                                guard let self, self.recordingGeneration == generation else { return }
+                                self.handleSpeechDetection(detected)
                             }
                         }
                     )
@@ -345,9 +377,24 @@ final class DictationController {
                 self.overlay.show("Recording", detail: "Speak now", level: self.audioCapture.currentDBFS())
                 self.startSilenceLoop()
             } catch {
+                guard self.recordingGeneration == generation else { return }
+                let resumeAmbient = self.shouldRunAmbientMonitoring()
+                self.audioCapture.stop()
+                if resumeAmbient {
+                    await self.stopAmbientMonitoring()
+                }
+                guard self.recordingGeneration == generation else { return }
+                self.recordingGeneration &+= 1
                 self.state = .idle
                 self.onStatus("Mic error: \(error.localizedDescription)")
                 self.overlay.show("Mic error", detail: error.localizedDescription)
+                if resumeAmbient {
+                    if plan.ambientUpdateGeneration == self.ambientUpdateGeneration {
+                        self.startAmbientMonitoring()
+                    } else {
+                        self.updateAmbientMode()
+                    }
+                }
             }
         }
     }
@@ -397,9 +444,11 @@ final class DictationController {
             )
             appleStreamTask = nil
             onPartialTranscript(nil)
+            recordingGeneration &+= 1
+            if plan.isAmbient { ambientStreamGeneration &+= 1 }
             state = .idle
             if resumeAmbient {
-                resumeAmbientMonitoringAfterRecording()
+                resumeAmbientMonitoringAfterRecording(plan: plan)
             }
             onStatus(resumeAmbient ? "Ambient armed" : "Inserted + copied")
             overlay.show("Inserted + copied", detail: preview(text))
@@ -418,9 +467,11 @@ final class DictationController {
             if plan.usesAppleStream {
                 await asrService.cancelAppleStream()
             }
+            recordingGeneration &+= 1
+            if plan.isAmbient { ambientStreamGeneration &+= 1 }
             state = .idle
             if resumeAmbient {
-                resumeAmbientMonitoringAfterRecording()
+                resumeAmbientMonitoringAfterRecording(plan: plan)
             }
             onStatus("Error: \(error.localizedDescription)")
             overlay.show(AppBrand.errorTitle, detail: error.localizedDescription)
@@ -449,9 +500,11 @@ final class DictationController {
         guard let ownerAudioURL = extraction.audioURL else {
             appleStreamTask = nil
             onPartialTranscript(nil)
+            recordingGeneration &+= 1
+            if plan.isAmbient { ambientStreamGeneration &+= 1 }
             state = .idle
             if resumeAmbient {
-                resumeAmbientMonitoringAfterRecording()
+                resumeAmbientMonitoringAfterRecording(plan: plan)
             }
             let best = extraction.bestDistance.map { String(format: "%.2f", $0) } ?? "none"
             let detail = "best distance \(best), threshold \(String(format: "%.2f", extraction.threshold))"
@@ -484,7 +537,8 @@ final class DictationController {
         }
     }
 
-    private func resumeAmbientMonitoringAfterRecording() {
+    private func resumeAmbientMonitoringAfterRecording(plan: RecordingPlan) {
+        guard plan.ambientUpdateGeneration == ambientUpdateGeneration else { return }
         ambientCooldownUntil = Date().addingTimeInterval(1)
         if ambientTask == nil {
             startAmbientMonitoring()
@@ -499,19 +553,29 @@ final class DictationController {
         lastSpeechDetectedAt = nil
         ambientStreamGeneration += 1
         let generation = ambientStreamGeneration
+        let updateGeneration = ambientUpdateGeneration
+        let cleanupTask = appleStreamCleanupTask
         appleStreamTask?.cancel()
         appleStreamTask = Task { [asrService, audioCapture, weak self] in
             do {
+                await cleanupTask?.value
+                try Task.checkCancellation()
                 try await asrService.startAppleStream(
                     detectSpeech: true,
                     onEvent: { [weak self] event in
                         Task { @MainActor in
-                            self?.handleAppleEvent(event)
+                            guard let self,
+                                  self.ambientStreamGeneration == generation,
+                                  self.ambientUpdateGeneration == updateGeneration || self.isAmbientRecording else { return }
+                            self.handleAppleEvent(event)
                         }
                     },
                     onDetection: { [weak self] detected in
                         Task { @MainActor in
-                            self?.handleSpeechDetection(detected)
+                            guard let self,
+                                  self.ambientStreamGeneration == generation,
+                                  self.ambientUpdateGeneration == updateGeneration || self.isAmbientRecording else { return }
+                            self.handleSpeechDetection(detected)
                         }
                     }
                 )
@@ -536,6 +600,7 @@ final class DictationController {
                 await MainActor.run {
                     guard let self, self.ambientStreamGeneration == generation else { return }
                     self.audioCapture.setMonitorBufferHandler(nil)
+                    self.ambientStreamGeneration &+= 1
                     self.ambientTask?.cancel()
                     self.ambientTask = nil
                     self.appleStreamTask = nil
@@ -546,6 +611,7 @@ final class DictationController {
                         self.audioCapture.stop()
                         self.silenceTask?.cancel()
                         self.silenceTask = nil
+                        self.recordingGeneration &+= 1
                         self.state = .idle
                     }
                     self.onStatus("Apple Speech error: \(error.localizedDescription)")
@@ -660,6 +726,11 @@ final class DictationController {
     }
 
     private func reconcileAmbientMode() async {
+        guard case .idle = state else {
+            ambientReconcilePending = true
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            return
+        }
         if shouldRunAmbientMonitoring() {
             if ambientTask == nil {
                 startAmbientMonitoring()

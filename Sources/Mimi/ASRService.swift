@@ -2,6 +2,21 @@
 import Foundation
 import MimiSpeech
 
+protocol AppleSpeechServing: Sendable {
+    func prepare() async throws
+    func transcribe(audioURL: URL) async throws -> String
+    func startStream(
+        detectSpeech: Bool,
+        onEvent: @escaping AppleSpeechTranscriberBackend.EventHandler,
+        onDetection: AppleSpeechTranscriberBackend.DetectionHandler?
+    ) async throws
+    func append(_ buffer: AVAudioPCMBuffer) async throws
+    func finishStream() async throws -> String
+    func cancelStream() async
+}
+
+extension AppleSpeechTranscriberBackend: AppleSpeechServing {}
+
 actor ASRService {
     enum ASRError: LocalizedError {
         case uvNotFound
@@ -36,13 +51,19 @@ actor ASRService {
     private var ready = false
     private var readyContinuation: CheckedContinuation<Void, Error>?
     private var pending: [String: CheckedContinuation<String, Error>] = [:]
-    private let appleBackend = AppleSpeechTranscriberBackend()
+    private let appleBackend: any AppleSpeechServing
     private var appleStreamStarting = false
     private var appleStreamActive = false
     private var applePendingBuffers: [AVAudioPCMBuffer] = []
+    private var appleLifecycleBusy = false
+    private var appleLifecycleWaiters: [CheckedContinuation<Void, Never>] = []
     private let onStatus: @Sendable (String) -> Void
 
-    init(onStatus: @escaping @Sendable (String) -> Void = { _ in }) {
+    init(
+        appleBackend: any AppleSpeechServing = AppleSpeechTranscriberBackend(),
+        onStatus: @escaping @Sendable (String) -> Void = { _ in }
+    ) {
+        self.appleBackend = appleBackend
         self.onStatus = onStatus
     }
 
@@ -66,21 +87,31 @@ actor ASRService {
         onEvent: @escaping AppleSpeechTranscriberBackend.EventHandler,
         onDetection: AppleSpeechTranscriberBackend.DetectionHandler? = nil
     ) async throws {
+        await acquireAppleLifecycle()
+        defer { releaseAppleLifecycle() }
         appleStreamStarting = true
         appleStreamActive = false
         applePendingBuffers = []
+        var backendStarted = false
         do {
+            try Task.checkCancellation()
             DebugLog.write("apple stream starting detectSpeech=\(detectSpeech)")
             try await appleBackend.startStream(detectSpeech: detectSpeech, onEvent: onEvent, onDetection: onDetection)
+            backendStarted = true
+            try Task.checkCancellation()
             DebugLog.write("apple stream started detectSpeech=\(detectSpeech)")
             appleStreamActive = true
             appleStreamStarting = false
             let buffers = applePendingBuffers
             applePendingBuffers = []
             for buffer in buffers {
+                try Task.checkCancellation()
                 try await appleBackend.append(buffer)
             }
         } catch {
+            if backendStarted {
+                await appleBackend.cancelStream()
+            }
             appleStreamStarting = false
             appleStreamActive = false
             applePendingBuffers = []
@@ -103,6 +134,11 @@ actor ASRService {
         appleStreamStarting = false
         appleStreamActive = false
         applePendingBuffers = []
+        await acquireAppleLifecycle()
+        defer { releaseAppleLifecycle() }
+        appleStreamStarting = false
+        appleStreamActive = false
+        applePendingBuffers = []
         return try await appleBackend.finishStream()
     }
 
@@ -110,7 +146,33 @@ actor ASRService {
         appleStreamStarting = false
         appleStreamActive = false
         applePendingBuffers = []
+        await acquireAppleLifecycle()
+        defer { releaseAppleLifecycle() }
+        appleStreamStarting = false
+        appleStreamActive = false
+        applePendingBuffers = []
         await appleBackend.cancelStream()
+        appleStreamStarting = false
+        appleStreamActive = false
+        applePendingBuffers = []
+    }
+
+    private func acquireAppleLifecycle() async {
+        if !appleLifecycleBusy {
+            appleLifecycleBusy = true
+            return
+        }
+        await withCheckedContinuation { continuation in
+            appleLifecycleWaiters.append(continuation)
+        }
+    }
+
+    private func releaseAppleLifecycle() {
+        if appleLifecycleWaiters.isEmpty {
+            appleLifecycleBusy = false
+        } else {
+            appleLifecycleWaiters.removeFirst().resume()
+        }
     }
 
     private func prepareMLX() async throws {
