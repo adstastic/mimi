@@ -21,7 +21,7 @@ enum AppBrand {
         guard let source = imageResource(named: "MenuBarIcon.png") ?? logoImage,
               let image = source.copy() as? NSImage else { return nil }
         image.isTemplate = true
-        image.size = NSSize(width: 11, height: 15)
+        image.size = NSSize(width: 12, height: 16)
         return image
     }
 
