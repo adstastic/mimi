@@ -33,11 +33,23 @@ final class AudioInputDeviceTests: XCTestCase {
         gate.release()
     }
 
+    func testCaptureUsesFreshEngineWhenCoreAudioReassignsDeviceAfterWake() {
+        XCTAssertTrue(AudioCapture.requiresFreshEngine(
+            routeConfigured: true,
+            configuredInputDeviceID: "webcam",
+            effectiveInputDeviceID: "webcam",
+            configuredAudioDeviceID: 222,
+            effectiveAudioDeviceID: 231
+        ))
+    }
+
     func testCaptureUsesFreshEngineAfterRouteChangeOrFailedStart() {
         XCTAssertFalse(AudioCapture.requiresFreshEngine(
             routeConfigured: true,
             configuredInputDeviceID: "mic-a",
-            effectiveInputDeviceID: "mic-a"
+            effectiveInputDeviceID: "mic-a",
+            configuredAudioDeviceID: 222,
+            effectiveAudioDeviceID: 222
         ))
         XCTAssertTrue(AudioCapture.requiresFreshEngine(
             routeConfigured: true,

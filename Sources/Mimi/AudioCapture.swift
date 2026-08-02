@@ -57,6 +57,7 @@ final class AudioCapture {
     private var tapInstalled = false
     private var inputRouteConfigured = false
     private var configuredInputDeviceID: String?
+    private var configuredAudioDeviceID: AudioDeviceID?
     private let startGate: AudioStartGate
     private var startSeq = 0
     private var ringSamples: [Float] = []
@@ -90,10 +91,19 @@ final class AudioCapture {
         try await startGate.acquire()
         defer { startGate.release() }
         let effectiveInputDeviceID = inputDeviceID ?? AudioInputDevice.defaultInputDeviceUID()
+        // UIDs survive sleep, but CoreAudio may assign the same device a new object ID.
+        let effectiveAudioDeviceID = effectiveInputDeviceID.flatMap(AudioInputDevice.deviceID(for:))
         let shouldRecreateEngine = Self.requiresFreshEngine(
             routeConfigured: inputRouteConfigured,
             configuredInputDeviceID: configuredInputDeviceID,
-            effectiveInputDeviceID: effectiveInputDeviceID
+            effectiveInputDeviceID: effectiveInputDeviceID,
+            configuredAudioDeviceID: configuredAudioDeviceID,
+            effectiveAudioDeviceID: effectiveAudioDeviceID
+        )
+        DebugLog.write(
+            "audio route previous=\(configuredAudioDeviceID.map(String.init) ?? "none") "
+                + "current=\(effectiveAudioDeviceID.map(String.init) ?? "none") "
+                + "fresh=\(shouldRecreateEngine ? "Y" : "N")"
         )
         if engine.isRunning {
             guard shouldRecreateEngine else { return }
@@ -151,6 +161,7 @@ final class AudioCapture {
             try engine.start()
             try Task.checkCancellation()
             configuredInputDeviceID = effectiveInputDeviceID
+            configuredAudioDeviceID = effectiveAudioDeviceID
             inputRouteConfigured = true
         } catch {
             engine.stop()
@@ -159,6 +170,7 @@ final class AudioCapture {
                 tapInstalled = false
             }
             inputRouteConfigured = false
+            configuredAudioDeviceID = nil
             throw error
         }
     }
@@ -280,9 +292,13 @@ final class AudioCapture {
     static func requiresFreshEngine(
         routeConfigured: Bool,
         configuredInputDeviceID: String?,
-        effectiveInputDeviceID: String?
+        effectiveInputDeviceID: String?,
+        configuredAudioDeviceID: AudioDeviceID? = nil,
+        effectiveAudioDeviceID: AudioDeviceID? = nil
     ) -> Bool {
-        !routeConfigured || configuredInputDeviceID != effectiveInputDeviceID
+        !routeConfigured
+            || configuredInputDeviceID != effectiveInputDeviceID
+            || configuredAudioDeviceID != effectiveAudioDeviceID
     }
 
     private static func isValid(_ format: AVAudioFormat) -> Bool {

@@ -378,6 +378,8 @@ final class DictationController {
                 self.startSilenceLoop()
             } catch {
                 guard self.recordingGeneration == generation else { return }
+                let nsError = error as NSError
+                DebugLog.write("recording start error domain=\(nsError.domain) code=\(nsError.code) detail=\(nsError.localizedDescription)")
                 let resumeAmbient = self.shouldRunAmbientMonitoring()
                 self.audioCapture.stop()
                 if resumeAmbient {
@@ -455,6 +457,8 @@ final class DictationController {
             overlay.show("Inserted + copied", detail: preview(text))
             overlay.hide(after: 1_200)
         } catch {
+            let nsError = error as NSError
+            DebugLog.write("recording completion error domain=\(nsError.domain) code=\(nsError.code) detail=\(nsError.localizedDescription)")
             appleStreamTask = nil
             onPartialTranscript(nil)
             let resumeAmbient = shouldRunAmbientMonitoring()
