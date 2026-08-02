@@ -226,6 +226,7 @@ final class DictationController {
     }
 
     func hotkeyDown() {
+        DebugLog.write("dictation hotkey down")
         switch state {
         case .idle:
             startRecording(mode: .pressing(startedAt: Date()))
@@ -245,6 +246,7 @@ final class DictationController {
         guard case .recording(.pressing(let startedAt), let plan) = state else { return }
 
         let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1_000)
+        DebugLog.write("dictation hotkey up elapsedMs=\(elapsedMs)")
         if elapsedMs < plan.config.tapThresholdMilliseconds {
             state = .recording(.toggle, plan)
             onStatus("Recording — tap Right Command again to stop")
@@ -403,12 +405,16 @@ final class DictationController {
 
     private func stopAndTranscribe(reason: StopReason) async {
         guard case .recording = state else { return }
+        let generation = recordingGeneration
         silenceTask?.cancel()
         silenceTask = nil
         let startTask = engineStartTask
         await startTask?.value
         engineStartTask = nil
-        guard case .recording(_, let plan) = state else { return }
+        guard recordingGeneration == generation, case .recording = state else { return }
+        let audioReady = await waitForFirstAudioBuffer(recordingGeneration: generation)
+        DebugLog.write("recording stop audio-ready=\(audioReady ? "Y" : "N")")
+        guard recordingGeneration == generation, case .recording(_, let plan) = state else { return }
         state = .processing
         onStatus("Transcribing…")
         overlay.show("Transcribing…", detail: reason.rawValue)
@@ -481,6 +487,23 @@ final class DictationController {
             onStatus("Error: \(error.localizedDescription)")
             overlay.show(AppBrand.errorTitle, detail: error.localizedDescription)
         }
+    }
+
+    private func waitForFirstAudioBuffer(recordingGeneration generation: Int) async -> Bool {
+        guard audioCapture.secondsSinceLastBuffer() == nil else { return true }
+
+        // AVAudioEngine.start() can return before a cold USB input delivers its
+        // first tap buffer. Give queued key-up handling time to receive one.
+        let deadline = Date().addingTimeInterval(0.5)
+        while recordingGeneration == generation, Date() < deadline {
+            do {
+                try await Task.sleep(nanoseconds: 10_000_000)
+            } catch {
+                return false
+            }
+            if audioCapture.secondsSinceLastBuffer() != nil { return true }
+        }
+        return false
     }
 
     private func prepareVoiceprintAudio(audioURL: URL, plan: RecordingPlan, resumeAmbient: Bool) async throws -> TranscriptionAudio? {

@@ -12,6 +12,7 @@ final class AmbientCrashRegressionTests: XCTestCase {
         let overlay = FakeOverlay()
         let status = StatusSink()
         let config = ambientConfig(inputDeviceID: nil)
+        audio.lastBufferAge = nil
 
         let controller = makeController(
             configProvider: { config },
@@ -282,6 +283,114 @@ final class AmbientCrashRegressionTests: XCTestCase {
         let canceledStartFinished = await waitUntil({ audio.firstStartFinished }, timeout: 1.0)
         XCTAssertTrue(canceledStartFinished)
         XCTAssertEqual(status.values.last, "Recording…")
+        controller.cancelRecording()
+    }
+
+    func testReleaseDuringColdStartWaitsForFirstAudioBuffer() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let inserter = FakeTextInserter()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = MimiConfig.defaults
+        config.preferredBackend = .mlxParakeetV2
+        config.silenceAutoStopEnabled = false
+        config.voiceprintEnabled = false
+        config.dictationPasteSettings.postPasteKeystroke = nil
+        audio.lastBufferAge = nil
+        asr.batchFinalText = "cold start recovered"
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            textInserter: inserter,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        let started = await waitUntil({ status.values.last == "Recording…" }, timeout: 1.0)
+        XCTAssertTrue(started)
+        try await Task.sleep(nanoseconds: 250_000_000)
+        controller.hotkeyUp()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(audio.finishCount, 0)
+
+        audio.lastBufferAge = 0
+        let pasted = await waitUntil({ inserter.insertedTexts == ["cold start recovered"] }, timeout: 1.0)
+        XCTAssertTrue(pasted)
+        XCTAssertEqual(audio.finishCount, 1)
+    }
+
+    func testColdStartWaitIsBoundedWhenNoBufferArrives() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = MimiConfig.defaults
+        config.preferredBackend = .mlxParakeetV2
+        config.silenceAutoStopEnabled = false
+        config.voiceprintEnabled = false
+        audio.lastBufferAge = nil
+        asr.batchFinalText = "bounded"
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        let started = await waitUntil({ status.values.last == "Recording…" }, timeout: 1.0)
+        XCTAssertTrue(started)
+        try await Task.sleep(nanoseconds: 250_000_000)
+        controller.hotkeyUp()
+
+        let finished = await waitUntil({ audio.finishCount == 1 }, timeout: 1.0)
+        XCTAssertTrue(finished)
+    }
+
+    func testColdStartWaitCannotFinishReplacementRecording() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = MimiConfig.defaults
+        config.preferredBackend = .mlxParakeetV2
+        config.silenceAutoStopEnabled = false
+        config.voiceprintEnabled = false
+        audio.lastBufferAge = nil
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        let firstStarted = await waitUntil({ audio.startInputDeviceIDs.count == 1 }, timeout: 1.0)
+        XCTAssertTrue(firstStarted)
+        try await Task.sleep(nanoseconds: 250_000_000)
+        controller.hotkeyUp()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(audio.finishCount, 0)
+
+        controller.cancelRecording()
+        controller.hotkeyDown()
+        let replacementStarted = await waitUntil({ audio.startInputDeviceIDs.count == 2 }, timeout: 1.0)
+        XCTAssertTrue(replacementStarted)
+        audio.lastBufferAge = 0
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(audio.finishCount, 0)
         controller.cancelRecording()
     }
 
@@ -1028,7 +1137,9 @@ private final class FakeAudioCapture: AudioCapturing {
     var peakDBFS: Double = -120
     var startError: Error?
     var holdFirstStart = false
+    var lastBufferAge: TimeInterval? = 0
     private(set) var firstStartFinished = false
+    private(set) var finishCount = 0
     private var firstStartContinuation: CheckedContinuation<Void, Never>?
 
     var firstStartPending: Bool {
@@ -1062,7 +1173,8 @@ private final class FakeAudioCapture: AudioCapturing {
     func beginRecording(bufferHandler: ((AVAudioPCMBuffer) -> Void)?, replayPreRollToHandler: Bool) {}
 
     func finishRecording() throws -> URL {
-        FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("wav")
+        finishCount += 1
+        return FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("wav")
     }
 
     func cancelRecording() {}
@@ -1080,7 +1192,7 @@ private final class FakeAudioCapture: AudioCapturing {
     }
 
     func secondsSinceLastBuffer() -> TimeInterval? {
-        nil
+        lastBufferAge
     }
 }
 
