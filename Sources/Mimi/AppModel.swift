@@ -13,13 +13,23 @@ final class AppModel: ObservableObject {
     @Published private(set) var voiceprintStatus = "No voice enrolled"
     @Published private(set) var voiceprintProfileExists = false
     @Published private(set) var voiceprintBusy = false
+    @Published private(set) var configErrorText: String?
+    @Published private(set) var correctionRequestID = 0
     @Published var config: MimiConfig {
         didSet {
             let normalized = config.normalizedForBackend()
             if normalized != config {
                 config = normalized
             }
-            config.save()
+            if !isApplyingConfigReload {
+                do {
+                    try configStore.save(config)
+                    configErrorText = nil
+                } catch {
+                    configErrorText = error.localizedDescription
+                    applyStatus("Config error: \(error.localizedDescription)")
+                }
+            }
             if oldValue.preferredBackend != config.preferredBackend {
                 dictationController.prepareASR()
                 if config.ambientModeEnabled {
@@ -34,14 +44,18 @@ final class AppModel: ObservableObject {
             }
             if !shortcutRecording,
                oldValue.dictationShortcut != config.dictationShortcut
-                || oldValue.ambientToggleShortcut != config.ambientToggleShortcut {
+                || oldValue.ambientToggleShortcut != config.ambientToggleShortcut
+                || oldValue.correctionShortcut != config.correctionShortcut {
                 restartHotkeyMonitor()
             }
         }
     }
 
-    let history = HistoryStore()
+    let history: HistoryStore
 
+    var lastDictation: TranscriptEntry? { history.latest }
+
+    private let configStore: MimiConfigFileStore
     private let audioCapture = AudioCapture()
     private let textInserter = TextInserter()
     private let voiceprintService = VoiceprintEmbeddingService()
@@ -51,22 +65,30 @@ final class AppModel: ObservableObject {
     private var dictationController: DictationController!
     private var hotkeyMonitor: HotkeyMonitor!
     private var wakeCancellable: AnyCancellable?
+    private var terminationCancellable: AnyCancellable?
     private var inputDeviceTask: Task<Void, Never>?
     private var ambientModeUpdateTask: Task<Void, Never>?
     private var audioPreparationTask: Task<Void, Never>?
+    private var voiceprintTemporaryAudioURL: URL?
     private var lastDefaultInputDeviceID = AudioInputDevice.defaultInputDeviceUID()
     private var started = false
     private var shortcutRecording = false
+    private var isApplyingConfigReload = false
 
     init() {
+        TemporaryAudioFiles.removeStaleFiles()
+        let configStore = MimiConfigFileStore()
+        self.configStore = configStore
+        history = HistoryStore(audioStorageURL: HistoryStore.productionAudioStorageURL)
         let loadedInputDevices = AudioInputDevice.available()
-        var loadedConfig = MimiConfig.load()
+        var loadedConfig = configStore.loadInitial()
         let validInputDeviceID = AudioInputDevice.validSelection(loadedConfig.inputDeviceID, in: loadedInputDevices)
         if validInputDeviceID != loadedConfig.inputDeviceID {
             loadedConfig.inputDeviceID = validInputDeviceID
-            loadedConfig.save()
+            try? configStore.save(loadedConfig)
         }
         config = loadedConfig
+        configErrorText = configStore.errorDescription
         inputDevices = loadedInputDevices
         refreshVoiceprintState()
 
@@ -91,11 +113,20 @@ final class AppModel: ObservableObject {
         hotkeyMonitor = HotkeyMonitor(
             dictationShortcut: config.dictationShortcut,
             ambientToggleShortcut: config.ambientToggleShortcut,
+            correctionShortcut: config.correctionShortcut,
             onDictationDown: { [weak self] in self?.dictationController.hotkeyDown() },
             onDictationUp: { [weak self] in self?.dictationController.hotkeyUp() },
             onAmbientToggle: { [weak self] in self?.toggleAmbientModeFromShortcut() },
+            onCorrection: { [weak self] in self?.requestLastTranscriptCorrection() },
             onCancel: { [weak self] in self?.dictationController.cancelRecording() }
         )
+        terminationCancellable = NotificationCenter.default
+            .publisher(for: NSApplication.willTerminateNotification)
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.cleanupForTermination()
+                }
+            }
 
         Task { await start() }
     }
@@ -211,7 +242,8 @@ final class AppModel: ObservableObject {
     private func restartHotkeyMonitor() {
         hotkeyMonitor.update(
             dictationShortcut: config.dictationShortcut,
-            ambientToggleShortcut: config.ambientToggleShortcut
+            ambientToggleShortcut: config.ambientToggleShortcut,
+            correctionShortcut: config.correctionShortcut
         )
         guard started else { return }
         hotkeyMonitor.stop()
@@ -248,6 +280,99 @@ final class AppModel: ObservableObject {
         dictationController.copyLastTranscript()
     }
 
+    func requestLastTranscriptCorrection() {
+        guard history.latest != nil else {
+            overlay.show("Nothing to correct", detail: "Dictate something first.")
+            overlay.hide(after: 1_200)
+            return
+        }
+        correctionRequestID &+= 1
+        NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+
+    func consumeCorrectionRequest(_ requestID: Int) {
+        if correctionRequestID == requestID {
+            correctionRequestID = 0
+        }
+    }
+
+    func correctLastTranscript(
+        id: UUID,
+        text: String,
+        corrections: [VocabularyCorrectionSuggestion]
+    ) -> Result<Void, Error> {
+        guard history.latest?.id == id else {
+            return .failure(MimiConfigFileError.invalid("Last dictation changed. Open Correct again."))
+        }
+
+        do {
+            if !corrections.isEmpty {
+                var updatedConfig = config
+                updatedConfig.vocabulary = try VocabularyEntryUpdater.addingCorrections(
+                    corrections,
+                    to: config.vocabulary
+                )
+                try configStore.save(updatedConfig)
+                isApplyingConfigReload = true
+                config = updatedConfig
+                isApplyingConfigReload = false
+                configErrorText = nil
+            }
+            guard dictationController.correctLastTranscript(id: id, text: text) else {
+                return .failure(MimiConfigFileError.invalid("Last dictation changed. Open Correct again."))
+            }
+            return .success(())
+        } catch {
+            isApplyingConfigReload = false
+            configErrorText = error.localizedDescription
+            applyStatus("Config error: \(error.localizedDescription)")
+            return .failure(error)
+        }
+    }
+
+    func openConfigFile() {
+        NSWorkspace.shared.open(configStore.fileURL)
+    }
+
+    func reloadConfig() {
+        do {
+            let loaded = try configStore.reload()
+            isApplyingConfigReload = true
+            config = loaded
+            isApplyingConfigReload = false
+            configErrorText = nil
+            applyStatus("Config reloaded")
+            overlay.show("Config reloaded", detail: configStore.fileURL.path)
+            overlay.hide(after: 1_200)
+        } catch {
+            isApplyingConfigReload = false
+            configErrorText = error.localizedDescription
+            applyStatus("Config error: \(error.localizedDescription)")
+            overlay.show("Config error", detail: error.localizedDescription)
+        }
+    }
+
+    func quit() {
+        cleanupForTermination()
+        NSApplication.shared.terminate(nil)
+    }
+
+    private func cleanupForTermination() {
+        inputDeviceTask?.cancel()
+        ambientModeUpdateTask?.cancel()
+        audioPreparationTask?.cancel()
+        hotkeyMonitor.stop()
+        dictationController.shutdown()
+        removeVoiceprintTemporaryAudio()
+        history.clear()
+    }
+
+    private func removeVoiceprintTemporaryAudio() {
+        guard let voiceprintTemporaryAudioURL else { return }
+        try? FileManager.default.removeItem(at: voiceprintTemporaryAudioURL)
+        self.voiceprintTemporaryAudioURL = nil
+    }
+
     func enrollVoiceprint() {
         Task { await runVoiceprintEnrollment() }
     }
@@ -281,6 +406,8 @@ final class AppModel: ObservableObject {
             applyStatus("Voice enroll — read prompt")
             overlay.show("Voice enroll", detail: "Read the My Voice phrase for 8 seconds")
             let audioURL = try await recordVoiceprintClip(seconds: 8)
+            voiceprintTemporaryAudioURL = audioURL
+            defer { removeVoiceprintTemporaryAudio() }
             applyStatus("Building voiceprint…")
             voiceprintStatus = "Building speaker embedding…"
             let profile = try await voiceprintService.makeProfile(audioURLs: [audioURL])
@@ -309,6 +436,8 @@ final class AppModel: ObservableObject {
             applyStatus("Voice verify — speak for 5s")
             overlay.show("Voice verify", detail: "Speak normally for 5 seconds")
             let audioURL = try await recordVoiceprintClip(seconds: 5)
+            voiceprintTemporaryAudioURL = audioURL
+            defer { removeVoiceprintTemporaryAudio() }
             applyStatus("Verifying voice…")
             voiceprintStatus = "Comparing speaker embedding…"
             let result = try await voiceprintService.verify(

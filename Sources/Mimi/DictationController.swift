@@ -181,6 +181,7 @@ final class DictationController {
     private var ambientReconcilePending = false
     private var ambientUpdateGeneration = 0
     private var lastAmbientDecisionLogAt = Date.distantPast
+    private var temporaryAudioURLs: Set<URL> = []
 
     private var isAmbientRecording: Bool {
         if case .recording(.ambient, _) = state { true } else { false }
@@ -318,6 +319,40 @@ final class DictationController {
         } catch {
             overlay.show("Copy error", detail: error.localizedDescription)
         }
+    }
+
+    @discardableResult
+    func correctLastTranscript(id: UUID, text: String) -> Bool {
+        guard let corrected = history.updateLastTranscript(id: id, text: text) else {
+            onStatus("Last dictation changed — correction not saved")
+            overlay.show("Last dictation changed", detail: "Open Correct again")
+            overlay.hide(after: 1_200)
+            return false
+        }
+        onTranscript(corrected)
+        do {
+            try textInserter.copyToClipboard(corrected)
+            onStatus("Correction saved + copied")
+            overlay.show("Correction saved + copied", detail: preview(corrected))
+            overlay.hide(after: 1_200)
+        } catch {
+            onStatus("Correction saved; copy failed")
+            overlay.show("Copy error", detail: error.localizedDescription)
+        }
+        return true
+    }
+
+    func shutdown() {
+        recordingGeneration &+= 1
+        ambientStreamGeneration &+= 1
+        silenceTask?.cancel()
+        engineStartTask?.cancel()
+        appleStreamTask?.cancel()
+        ambientTask?.cancel()
+        ambientReconcileTask?.cancel()
+        audioCapture.stop()
+        cleanupTemporaryAudio()
+        state = .idle
     }
 
     func cancelRecording() {
@@ -474,9 +509,12 @@ final class DictationController {
         onStatus("Transcribing…")
         overlay.show("Transcribing…", detail: reason.rawValue)
 
+        defer { cleanupTemporaryAudio() }
+
         do {
             let resumeAmbient = shouldRunAmbientMonitoring()
             let audioURL = try audioCapture.finishRecording()
+            temporaryAudioURLs.insert(audioURL)
             if plan.usesAppleStream {
                 audioCapture.setMonitorBufferHandler(nil)
             }
@@ -486,18 +524,26 @@ final class DictationController {
             guard let transcriptionAudio = try await prepareVoiceprintAudio(audioURL: audioURL, plan: plan, resumeAmbient: resumeAmbient) else {
                 return
             }
+            temporaryAudioURLs.insert(transcriptionAudio.url)
+            guard recordingGeneration == generation else { return }
             let rawText = try await transcribe(
                 audioURL: transcriptionAudio.url,
                 plan: plan,
                 useAppleStreamFinal: transcriptionAudio.useAppleStreamFinal
             )
+            guard recordingGeneration == generation else { return }
             let cleanedText = transcriptText(rawText, config: plan.config)
-            let text = VocabularyCorrector.correct(cleanedText, entries: plan.config.vocabularyEntries)
+            let text = VocabularyCorrector.correct(cleanedText, entries: plan.config.vocabulary)
             guard !text.isEmpty else {
                 throw NSError(domain: AppBrand.noSpeechErrorDomain, code: 1, userInfo: [NSLocalizedDescriptionKey: "No speech detected."])
             }
 
-            history.record(text)
+            history.record(
+                sourceText: cleanedText,
+                text: text,
+                backend: plan.config.preferredBackend,
+                audioURL: transcriptionAudio.url
+            )
             onTranscript(text)
             try await textInserter.insert(
                 text,
@@ -518,6 +564,7 @@ final class DictationController {
             overlay.show("Inserted + copied", detail: preview(text))
             overlay.hide(after: 1_200)
         } catch {
+            guard recordingGeneration == generation else { return }
             let nsError = error as NSError
             DebugLog.write("recording completion error domain=\(nsError.domain) code=\(nsError.code) detail=\(nsError.localizedDescription)")
             appleStreamTask = nil
@@ -541,6 +588,14 @@ final class DictationController {
             }
             onStatus("Error: \(error.localizedDescription)")
             overlay.show(AppBrand.errorTitle, detail: error.localizedDescription)
+        }
+    }
+
+    private func cleanupTemporaryAudio() {
+        let urls = temporaryAudioURLs
+        temporaryAudioURLs.removeAll()
+        for url in urls {
+            try? FileManager.default.removeItem(at: url)
         }
     }
 

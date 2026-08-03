@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-08-03
+
+### Added
+
+- Custom vocabulary with deterministic spelling and casing across Apple SpeechTranscriber and Parakeet.
+- Correct Last Dictation from the menu bar or configurable global shortcut, with a preview of reusable word-level corrections before saving.
+- User-editable settings and vocabulary in `~/.config/mimi/config.json`, with Open Config File and Reload Config commands.
+
+### Changed
+
+- Mimi now primes the microphone after wake and waits for cold audio inputs before finishing dictation.
+
+### Fixed
+
+- Restored Escape cancellation while holding the dictation shortcut on macOS 27.
+- Improved recovery when CoreAudio reassigns or temporarily loses the selected microphone.
+
 ## [0.1.4] - 2026-08-01
 
 ### Added
@@ -53,7 +70,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configurable microphone, silence detection, shortcuts, and Return after paste.
 - Local-only operation with no account or telemetry.
 
-[Unreleased]: https://github.com/adstastic/mimi/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/adstastic/mimi/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/adstastic/mimi/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/adstastic/mimi/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/adstastic/mimi/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/adstastic/mimi/compare/v0.1.1...v0.1.2

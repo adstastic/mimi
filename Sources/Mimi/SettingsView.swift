@@ -18,25 +18,28 @@ struct SettingsView: View {
     @Binding var config: MimiConfig
     @FocusState private var focusedField: SettingsField?
     @State private var pasteMode = PasteMode.shortcut
-    @State private var showsVocabularyEditor = false
+    @State private var correctionEntry: TranscriptEntry?
     let statusText: String
     let permissionStatus: PermissionStatus
     let inputDevices: [AudioInputDevice]
     let voiceprintStatus: String
     let voiceprintProfileExists: Bool
     let voiceprintBusy: Bool
-    let lastTranscript: String?
+    let lastDictation: TranscriptEntry?
     let liveTranscript: String?
+    let correctionRequestID: Int
+    let consumeCorrectionRequest: (Int) -> Void
     let enrollVoiceprint: () -> Void
     let verifyVoiceprint: () -> Void
     let resetVoiceprint: () -> Void
     let copyLastTranscript: () -> Void
+    let correctLastTranscript: (UUID, String, [VocabularyCorrectionSuggestion]) -> Result<Void, Error>
     let shortcutRecordingChanged: (Bool) -> Void
     let refreshPermissions: () -> Void
     let refreshInputDevices: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             header
 
             SettingsCard("Dictation", systemImage: "waveform") {
@@ -112,8 +115,20 @@ struct SettingsView: View {
                         disabled: !backendCapabilities.supportsAmbient,
                         onRecordingChanged: shortcutRecordingChanged
                     )
+                    ShortcutRecorderRow(
+                        title: "Correct last",
+                        systemImage: "pencil.line",
+                        shortcut: $config.correctionShortcut,
+                        onRecordingChanged: shortcutRecordingChanged
+                    )
                     if config.dictationShortcut == config.ambientToggleShortcut {
                         Label("Ambient shortcut ignored because it matches dictation.", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                    if config.correctionShortcut == config.dictationShortcut
+                        || config.correctionShortcut == config.ambientToggleShortcut {
+                        Label("Correct last shortcut ignored because it matches another shortcut.", systemImage: "exclamationmark.triangle.fill")
                             .font(.caption)
                             .foregroundStyle(.orange)
                     }
@@ -242,19 +257,38 @@ struct SettingsView: View {
                 TranscriptCard(title: "Live", systemImage: "text.bubble", text: liveTranscript)
             }
 
-            if let lastTranscript {
-                TranscriptCard(title: "Last", systemImage: "doc.on.clipboard", text: lastTranscript) {
-                    copyLastTranscript()
-                }
+            if let lastDictation {
+                TranscriptCard(
+                    title: "Last",
+                    systemImage: "doc.on.clipboard",
+                    text: lastDictation.text,
+                    action: copyLastTranscript,
+                    secondaryAction: { correctionEntry = lastDictation }
+                )
             }
         }
-        .padding(10)
+        .padding(.horizontal, 10)
+        .padding(.top, 10)
+        .padding(.bottom, 13)
         .frame(width: 430, alignment: .topLeading)
         .fixedSize(horizontal: true, vertical: true)
         .contentShape(Rectangle())
         .onTapGesture { focusedField = nil }
-        .sheet(isPresented: $showsVocabularyEditor) {
-            VocabularySettingsView(entries: $config.vocabularyEntries)
+        .sheet(item: $correctionEntry) { entry in
+            LastDictationCorrectionView(
+                entry: entry,
+                save: correctLastTranscript
+            )
+        }
+        .onChange(of: lastDictation?.id) { _, latestID in
+            if let correctionEntry, correctionEntry.id != latestID {
+                self.correctionEntry = nil
+            }
+        }
+        .task(id: correctionRequestID) {
+            guard correctionRequestID > 0, let lastDictation else { return }
+            correctionEntry = lastDictation
+            consumeCorrectionRequest(correctionRequestID)
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }
@@ -291,13 +325,6 @@ struct SettingsView: View {
             StatusDot(color: statusColor, title: statusText)
 
             Spacer()
-
-            Button {
-                showsVocabularyEditor = true
-            } label: {
-                Label("Vocabulary…", systemImage: "text.book.closed")
-            }
-            .controlSize(.small)
         }
     }
 
@@ -837,12 +864,20 @@ private struct TranscriptCard: View {
     let systemImage: String
     let text: String
     let action: (() -> Void)?
+    let secondaryAction: (() -> Void)?
 
-    init(title: String, systemImage: String, text: String, action: (() -> Void)? = nil) {
+    init(
+        title: String,
+        systemImage: String,
+        text: String,
+        action: (() -> Void)? = nil,
+        secondaryAction: (() -> Void)? = nil
+    ) {
         self.title = title
         self.systemImage = systemImage
         self.text = text
         self.action = action
+        self.secondaryAction = secondaryAction
     }
 
     var body: some View {
@@ -852,9 +887,19 @@ private struct TranscriptCard: View {
                     .lineLimit(4)
                     .textSelection(.enabled)
                 Spacer()
+                if let secondaryAction {
+                    Button(action: secondaryAction) {
+                        Image(systemName: "pencil")
+                    }
+                    .help("Correct last dictation")
+                    .controlSize(.small)
+                }
                 if let action {
-                    Button("Copy", action: action)
-                        .controlSize(.small)
+                    Button(action: action) {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    .help("Copy transcript")
+                    .controlSize(.small)
                 }
             }
         }

@@ -7,6 +7,7 @@ struct MimiApp: App {
     private static let instanceGuard = SingleInstanceGuard()
 
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.openSettings) private var openSettings
     @StateObject private var appModel: AppModel
 
     init() {
@@ -34,12 +35,17 @@ struct MimiApp: App {
                 voiceprintStatus: appModel.voiceprintStatus,
                 voiceprintProfileExists: appModel.voiceprintProfileExists,
                 voiceprintBusy: appModel.voiceprintBusy,
-                lastTranscript: appModel.lastTranscript,
+                lastDictation: appModel.lastDictation,
                 liveTranscript: appModel.liveTranscript,
+                correctionRequestID: appModel.correctionRequestID,
+                consumeCorrectionRequest: { appModel.consumeCorrectionRequest($0) },
                 enrollVoiceprint: { appModel.enrollVoiceprint() },
                 verifyVoiceprint: { appModel.verifyVoiceprint() },
                 resetVoiceprint: { appModel.resetVoiceprint() },
                 copyLastTranscript: { appModel.copyLastTranscript() },
+                correctLastTranscript: {
+                    appModel.correctLastTranscript(id: $0, text: $1, corrections: $2)
+                },
                 shortcutRecordingChanged: { appModel.setShortcutRecording($0) },
                 refreshPermissions: { appModel.refreshPermissions() },
                 refreshInputDevices: { appModel.refreshInputDevices() }
@@ -54,7 +60,7 @@ struct MimiApp: App {
         .commands {
             CommandGroup(replacing: .appTermination) {
                 Button("Quit \(AppBrand.name)") {
-                    NSApplication.shared.terminate(nil)
+                    appModel.quit()
                 }
                 .keyboardShortcut("q")
             }
@@ -63,12 +69,18 @@ struct MimiApp: App {
 
     @ViewBuilder
     private var menuBarLabel: some View {
-        if let image = AppBrand.menuBarImage {
-            Image(nsImage: image)
-                .accessibilityLabel(AppBrand.name)
-        } else {
-            Image(systemName: "ear")
-                .accessibilityLabel(AppBrand.name)
+        Group {
+            if let image = AppBrand.menuBarImage {
+                Image(nsImage: image)
+                    .accessibilityLabel(AppBrand.name)
+            } else {
+                Image(systemName: "ear")
+                    .accessibilityLabel(AppBrand.name)
+            }
+        }
+        .onChange(of: appModel.correctionRequestID) { _, newValue in
+            guard newValue > 0 else { return }
+            openSettings()
         }
     }
 }
@@ -80,10 +92,20 @@ private struct MimiMenu: View {
     var body: some View {
         Text(appModel.statusText)
             .disabled(true)
+        if let configErrorText = appModel.configErrorText {
+            Text(configErrorText)
+                .disabled(true)
+        }
 
         Toggle("Ambient Mode", isOn: $appModel.config.ambientModeEnabled)
 
         Divider()
+
+        Button("Correct Last Dictation…") {
+            appModel.requestLastTranscriptCorrection()
+            openSettings()
+        }
+        .disabled(appModel.lastDictation == nil)
 
         Button("Settings…") {
             NSApplication.shared.activate(ignoringOtherApps: true)
@@ -91,10 +113,18 @@ private struct MimiMenu: View {
         }
         .keyboardShortcut(",")
 
+        Button("Open Config File") {
+            appModel.openConfigFile()
+        }
+
+        Button("Reload Config") {
+            appModel.reloadConfig()
+        }
+
         Divider()
 
         Button("Quit \(AppBrand.name)") {
-            NSApplication.shared.terminate(nil)
+            appModel.quit()
         }
         .keyboardShortcut("q")
     }

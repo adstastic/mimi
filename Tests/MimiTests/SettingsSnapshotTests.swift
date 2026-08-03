@@ -19,12 +19,21 @@ final class SettingsSnapshotTests: XCTestCase {
             voiceprintStatus: "Enrolled — 256D threshold 0.78",
             voiceprintProfileExists: true,
             voiceprintBusy: false,
-            lastTranscript: "This is a representative recent transcript long enough to wrap across several lines in the settings window and expose its maximum practical height.",
+            lastDictation: TranscriptEntry(
+                sourceText: "This is a representative recent transcript long enough to wrap across several lines in the settings window and expose its maximum practical height.",
+                text: "This is a representative recent transcript long enough to wrap across several lines in the settings window and expose its maximum practical height.",
+                backend: .appleSpeechTranscriber,
+                audioURL: nil,
+                createdAt: Date(timeIntervalSince1970: 0)
+            ),
             liveTranscript: "This is a representative live transcript long enough to wrap across several lines while recording remains active.",
+            correctionRequestID: 0,
+            consumeCorrectionRequest: { _ in },
             enrollVoiceprint: {},
             verifyVoiceprint: {},
             resetVoiceprint: {},
             copyLastTranscript: {},
+            correctLastTranscript: { _, _, _ in .success(()) },
             shortcutRecordingChanged: { _ in },
             refreshPermissions: {},
             refreshInputDevices: {}
@@ -36,42 +45,25 @@ final class SettingsSnapshotTests: XCTestCase {
         print("SETTINGS_SNAPSHOT_SIZE=\(Int(size.width))x\(Int(size.height))")
     }
 
-    func testRenderEmptyVocabularySnapshot() throws {
-        let size = try render(
-            VocabularySettingsView(entries: .constant([])),
-            to: "/tmp/mimi-vocabulary-empty-snapshot.png"
+    func testRenderLastDictationCorrectionSnapshot() throws {
+        let entry = TranscriptEntry(
+            sourceText: "We use pie torch and whisper flow.",
+            text: "We use pie torch and whisper flow.",
+            backend: .appleSpeechTranscriber,
+            audioURL: URL(fileURLWithPath: "/tmp/latest.wav"),
+            createdAt: Date(timeIntervalSince1970: 0)
         )
-        XCTAssertEqual(size.width, 540, accuracy: 0.5)
-        XCTAssertEqual(size.height, 420, accuracy: 0.5)
-    }
-
-    func testRenderInvalidVocabularySnapshot() throws {
-        let entries = [
-            VocabularyEntry(writtenForm: "Wispr Flow", spokenAliases: ["shared alias"]),
-            VocabularyEntry(writtenForm: "PyTorch", spokenAliases: ["shared alias"])
-        ]
         let size = try render(
-            VocabularySettingsView(entries: .constant(entries)),
-            to: "/tmp/mimi-vocabulary-invalid-snapshot.png"
+            LastDictationCorrectionView(
+                entry: entry,
+                initialCorrectedText: "We use PyTorch and Wispr Flow.",
+                save: { _, _, _ in .success(()) }
+            ),
+            to: "/tmp/mimi-last-dictation-correction-snapshot.png"
         )
-        XCTAssertEqual(size.width, 540, accuracy: 0.5)
+        XCTAssertEqual(size.width, 560, accuracy: 0.5)
         XCTAssertEqual(size.height, 420, accuracy: 0.5)
-    }
-
-    func testRenderVocabularySnapshot() throws {
-        let entries = [
-            VocabularyEntry(writtenForm: "Wispr Flow", spokenAliases: ["whisper flow"]),
-            VocabularyEntry(writtenForm: "PyTorch", spokenAliases: ["pie torch", "pie talk"]),
-            VocabularyEntry(writtenForm: "Kubernetes", spokenAliases: ["kube er net ease"], isEnabled: false)
-        ]
-
-        let size = try render(
-            VocabularySettingsView(entries: .constant(entries)),
-            to: "/tmp/mimi-vocabulary-snapshot.png"
-        )
-        XCTAssertEqual(size.width, 540, accuracy: 0.5)
-        XCTAssertEqual(size.height, 420, accuracy: 0.5)
-        print("VOCABULARY_SNAPSHOT_SIZE=\(Int(size.width))x\(Int(size.height))")
+        print("LAST_DICTATION_CORRECTION_SNAPSHOT_SIZE=\(Int(size.width))x\(Int(size.height))")
     }
 
     private func render<Content: View>(_ view: Content, to path: String) throws -> CGSize {

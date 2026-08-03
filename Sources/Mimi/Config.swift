@@ -22,6 +22,11 @@ public struct MimiShortcut: Codable, Equatable, Sendable {
         modifierFlagsRaw: NSEvent.ModifierFlags([.control, .option]).rawValue
     )
 
+    public static let correctionDefault = MimiShortcut(
+        keyCode: 8, // C
+        modifierFlagsRaw: NSEvent.ModifierFlags([.control, .option]).rawValue
+    )
+
     static func legacySingleKey(keyCode: Int) -> MimiShortcut {
         MimiShortcut(
             keyCode: keyCode,
@@ -71,6 +76,33 @@ public struct PasteSettings: Codable, Equatable, Sendable {
         prePasteDelayMilliseconds: 150,
         postPasteDelayMilliseconds: 150
     )
+}
+
+private struct LegacyVocabularyEntry: Decodable {
+    let writtenForm: String
+    let spokenAliases: [String]
+    let isEnabled: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case writtenForm
+        case spokenAliases
+        case isEnabled
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        writtenForm = try container.decode(String.self, forKey: .writtenForm)
+        spokenAliases = try container.decodeIfPresent([String].self, forKey: .spokenAliases) ?? []
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+    }
+
+    var pairing: VocabularyEntry? {
+        guard isEnabled else { return nil }
+        let sources = spokenAliases.filter {
+            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return VocabularyEntry(from: sources, to: writtenForm)
+    }
 }
 
 public enum ASRBackend: String, CaseIterable, Codable, Equatable, Sendable {
@@ -179,6 +211,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         case inputDeviceID
         case ambientModeEnabled
         case ambientToggleShortcut
+        case correctionShortcut
         case dictationPasteSettings
         case ambientPasteSettings
         case ambientPrePasteKeystroke
@@ -192,6 +225,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         case postPasteEnterDelayMilliseconds
         case showLiveTranscript
         case fillerCleanupEnabled
+        case vocabulary
         case vocabularyEntries
         case voiceprintEnabled
         case voiceprintThreshold
@@ -212,11 +246,12 @@ public struct MimiConfig: Codable, Equatable, Sendable {
     public var inputDeviceID: String?
     public var ambientModeEnabled: Bool
     public var ambientToggleShortcut: MimiShortcut
+    public var correctionShortcut: MimiShortcut
     public var dictationPasteSettings: PasteSettings
     public var ambientPasteSettings: PasteSettings
     public var showLiveTranscript: Bool
     public var fillerCleanupEnabled: Bool
-    public var vocabularyEntries: [VocabularyEntry]
+    public var vocabulary: [VocabularyEntry]
     public var voiceprintEnabled: Bool
     public var voiceprintThreshold: Double
     // TODO(ponytail): delete if no model-download toggle UI/runtime behavior appears.
@@ -236,11 +271,12 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         inputDeviceID: nil,
         ambientModeEnabled: false,
         ambientToggleShortcut: .ambientToggleDefault,
+        correctionShortcut: .correctionDefault,
         dictationPasteSettings: .defaults,
         ambientPasteSettings: .defaults,
         showLiveTranscript: true,
         fillerCleanupEnabled: true,
-        vocabularyEntries: [],
+        vocabulary: [],
         voiceprintEnabled: true,
         voiceprintThreshold: 0.78,
         modelDownloadEnabled: true
@@ -260,11 +296,12 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         inputDeviceID: String? = nil,
         ambientModeEnabled: Bool,
         ambientToggleShortcut: MimiShortcut = .ambientToggleDefault,
+        correctionShortcut: MimiShortcut = .correctionDefault,
         dictationPasteSettings: PasteSettings = .defaults,
         ambientPasteSettings: PasteSettings = .defaults,
         showLiveTranscript: Bool = true,
         fillerCleanupEnabled: Bool = true,
-        vocabularyEntries: [VocabularyEntry] = [],
+        vocabulary: [VocabularyEntry] = [],
         voiceprintEnabled: Bool = true,
         voiceprintThreshold: Double = 0.78,
         modelDownloadEnabled: Bool
@@ -282,11 +319,12 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         self.inputDeviceID = inputDeviceID
         self.ambientModeEnabled = ambientModeEnabled
         self.ambientToggleShortcut = ambientToggleShortcut
+        self.correctionShortcut = correctionShortcut
         self.dictationPasteSettings = dictationPasteSettings
         self.ambientPasteSettings = ambientPasteSettings
         self.showLiveTranscript = showLiveTranscript
         self.fillerCleanupEnabled = fillerCleanupEnabled
-        self.vocabularyEntries = vocabularyEntries
+        self.vocabulary = vocabulary
         self.voiceprintEnabled = voiceprintEnabled
         self.voiceprintThreshold = voiceprintThreshold
         self.modelDownloadEnabled = modelDownloadEnabled
@@ -308,6 +346,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         inputDeviceID = try container.decodeIfPresent(String.self, forKey: .inputDeviceID)
         ambientModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .ambientModeEnabled) ?? Self.defaults.ambientModeEnabled
         ambientToggleShortcut = try container.decodeIfPresent(MimiShortcut.self, forKey: .ambientToggleShortcut) ?? Self.defaults.ambientToggleShortcut
+        correctionShortcut = try container.decodeIfPresent(MimiShortcut.self, forKey: .correctionShortcut) ?? Self.defaults.correctionShortcut
 
         let legacyPrePasteDelay = try container.decodeIfPresent(Int.self, forKey: .prePasteKeystrokeDelayMilliseconds)
             ?? PasteSettings.defaults.prePasteDelayMilliseconds
@@ -358,7 +397,12 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         }
         showLiveTranscript = try container.decodeIfPresent(Bool.self, forKey: .showLiveTranscript) ?? Self.defaults.showLiveTranscript
         fillerCleanupEnabled = try container.decodeIfPresent(Bool.self, forKey: .fillerCleanupEnabled) ?? Self.defaults.fillerCleanupEnabled
-        vocabularyEntries = try container.decodeIfPresent([VocabularyEntry].self, forKey: .vocabularyEntries) ?? []
+        if let decodedVocabulary = try container.decodeIfPresent([VocabularyEntry].self, forKey: .vocabulary) {
+            vocabulary = decodedVocabulary
+        } else {
+            vocabulary = try container.decodeIfPresent([LegacyVocabularyEntry].self, forKey: .vocabularyEntries)?
+                .compactMap(\.pairing) ?? []
+        }
         voiceprintEnabled = try container.decodeIfPresent(Bool.self, forKey: .voiceprintEnabled) ?? Self.defaults.voiceprintEnabled
         voiceprintThreshold = try container.decodeIfPresent(Double.self, forKey: .voiceprintThreshold) ?? Self.defaults.voiceprintThreshold
         modelDownloadEnabled = try container.decodeIfPresent(Bool.self, forKey: .modelDownloadEnabled) ?? Self.defaults.modelDownloadEnabled
@@ -379,6 +423,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         try container.encodeIfPresent(inputDeviceID, forKey: .inputDeviceID)
         try container.encode(ambientModeEnabled, forKey: .ambientModeEnabled)
         try container.encode(ambientToggleShortcut, forKey: .ambientToggleShortcut)
+        try container.encode(correctionShortcut, forKey: .correctionShortcut)
         try container.encode(dictationPasteSettings, forKey: .dictationPasteSettings)
         try container.encode(ambientPasteSettings, forKey: .ambientPasteSettings)
         try container.encode(ambientPasteSettings.prePasteKeystroke, forKey: .ambientPrePasteKeystroke)
@@ -392,7 +437,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         try container.encode(dictationPasteSettings.postPasteDelayMilliseconds, forKey: .postPasteEnterDelayMilliseconds)
         try container.encode(showLiveTranscript, forKey: .showLiveTranscript)
         try container.encode(fillerCleanupEnabled, forKey: .fillerCleanupEnabled)
-        try container.encode(vocabularyEntries, forKey: .vocabularyEntries)
+        try container.encode(vocabulary, forKey: .vocabulary)
         try container.encode(voiceprintEnabled, forKey: .voiceprintEnabled)
         try container.encode(voiceprintThreshold, forKey: .voiceprintThreshold)
         try container.encode(modelDownloadEnabled, forKey: .modelDownloadEnabled)

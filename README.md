@@ -16,10 +16,38 @@ Current usable path:
 - menu bar app with a full settings window available on demand
 - bottom recording overlay with live partials for Apple SpeechTranscriber
 - transcript stays copied to clipboard after dictation
-- recent transcript copy button
+- latest-transcript correction from menu bar or configurable global shortcut (default Control-Option-C), with vocabulary-rule preview
+- canonical user-editable config at `~/.config/mimi/config.json`
 - no telemetry, no cloud app service
 
 Apple SpeechTranscriber may download Apple-managed on-device speech assets. MLX fallback may download the local model from Hugging Face through `uv`/`parakeet-mlx`. After caches/assets exist, dictation is local.
+
+## Config
+
+Mimi reads and atomically writes `~/.config/mimi/config.json`. On first launch it migrates existing settings and vocabulary from `UserDefaults`. Use the menu-bar commands **Open Config File** and **Reload Config** after manual edits.
+
+Missing keys use defaults. Unknown keys, wrong types, invalid ranges, and conflicting vocabulary aliases reject reload; Mimi keeps its last-good configuration and does not overwrite the invalid file.
+
+Vocabulary pairs group observed forms under exact output:
+
+```json
+{
+  "vocabulary": [
+    {
+      "from": ["Jason"],
+      "to": "JSON"
+    },
+    {
+      "from": ["nema", "neema"],
+      "to": "nima"
+    }
+  ]
+}
+```
+
+`to` also acts as a case-insensitive self-alias, preserving canonical casing. Delete a pairing to disable it.
+
+Correcting the latest transcript learns each separate replacement across multiple sentences. Insertions, deletions, and punctuation-only edits do not create vocabulary rules.
 
 ## Run
 
@@ -47,6 +75,7 @@ Grant:
 
 - Microphone permission
 - Accessibility permission
+- Input Monitoring permission
 
 Then focus a text field and use the dictation shortcut.
 
