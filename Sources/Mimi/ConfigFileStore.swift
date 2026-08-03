@@ -98,9 +98,7 @@ final class MimiConfigFileStore {
 
     private func write(_ config: MimiConfig) throws {
         try validate(config)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        let data = try encoder.encode(CanonicalMimiConfig(config))
+        let data = try encodeCanonicalConfig(config)
         let directory = fileURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
@@ -130,6 +128,32 @@ final class MimiConfigFileStore {
         config.save(userDefaults: legacyDefaults)
         isWritable = true
         errorDescription = nil
+    }
+
+    private func encodeCanonicalConfig(_ config: MimiConfig) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        let data = try encoder.encode(CanonicalMimiConfig(config))
+        guard var json = String(data: data, encoding: .utf8),
+              let marker = json.range(of: "\"vocabulary\" : ["),
+              let closing = json.range(of: "\n  ],", range: marker.upperBound ..< json.endIndex) else {
+            throw MimiConfigFileError.invalid("Could not format vocabulary config.")
+        }
+        let arrayStart = json.index(before: marker.upperBound)
+        let arrayEnd = json.index(closing.lowerBound, offsetBy: 3)
+
+        let scalarEncoder = JSONEncoder()
+        scalarEncoder.outputFormatting = [.withoutEscapingSlashes]
+        let lines = try config.vocabulary.map { entry in
+            let sources = try entry.from.map {
+                try String(decoding: scalarEncoder.encode($0), as: UTF8.self)
+            }.joined(separator: ", ")
+            let target = try String(decoding: scalarEncoder.encode(entry.to), as: UTF8.self)
+            return "    { \"from\" : [\(sources)], \"to\" : \(target) }"
+        }
+        let compactArray = lines.isEmpty ? "[]" : "[\n\(lines.joined(separator: ",\n"))\n  ]"
+        json.replaceSubrange(arrayStart ... arrayEnd, with: compactArray)
+        return Data(json.utf8)
     }
 
     private func replaceAtomically(

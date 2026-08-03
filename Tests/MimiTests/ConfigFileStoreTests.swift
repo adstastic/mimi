@@ -33,6 +33,8 @@ final class ConfigFileStoreTests: XCTestCase {
         XCTAssertNil(object["vocabularyEntries"])
         XCTAssertNil(object["hotkeyKeyCode"])
         XCTAssertNil(object["ambientStartKeystroke"])
+        let text = try String(contentsOf: fixture.configURL, encoding: .utf8)
+        XCTAssertTrue(text.contains(#"    { "from" : ["nema", "neema"], "to" : "nima" }"#))
         let permissions = try FileManager.default.attributesOfItem(atPath: fixture.configURL.path)[.posixPermissions] as? NSNumber
         XCTAssertEqual(permissions?.intValue, 0o600)
     }
