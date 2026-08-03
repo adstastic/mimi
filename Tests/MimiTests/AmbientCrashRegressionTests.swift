@@ -860,7 +860,7 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertTrue(speechStarted)
     }
 
-    func testRecordingMeterSeparatesBackgroundFromSpeechAndBridgesBriefSpeechDips() async throws {
+    func testRecordingMeterTracksQuietSpeechBelowSilenceThreshold() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
         let overlay = FakeOverlay()
@@ -868,7 +868,7 @@ final class AmbientCrashRegressionTests: XCTestCase {
         var config = MimiConfig.defaults
         config.silenceAutoStopEnabled = false
         config.silenceThresholdDBFS = -40
-        audio.dbfs = -35
+        audio.dbfs = -55
 
         let controller = makeController(
             configProvider: { config },
@@ -880,42 +880,17 @@ final class AmbientCrashRegressionTests: XCTestCase {
         )
 
         controller.hotkeyDown()
-        let sampledResidual = await waitUntil({ overlay.updatedLevels.count >= 2 }, timeout: 1.0)
-        XCTAssertTrue(sampledResidual)
-        XCTAssertTrue(overlay.updatedLevels.allSatisfy { $0 == -120 })
+        let quietSpeechVisible = await waitUntil({ overlay.updatedLevels.contains(-55) }, timeout: 1.0)
+        XCTAssertTrue(quietSpeechVisible)
 
-        let backgroundStart = overlay.updatedLevels.count
-        audio.dbfs = -33
-        let visibleBackground = await waitUntil({ overlay.updatedLevels.count > backgroundStart }, timeout: 1.0)
-        XCTAssertTrue(visibleBackground)
-        let backgroundLevel = try XCTUnwrap(overlay.updatedLevels.last)
-        XCTAssertGreaterThan(backgroundLevel, -120)
-
-        let speechStart = overlay.updatedLevels.count
-        audio.dbfs = -20
-        let visibleSpeech = await waitUntil({ overlay.updatedLevels.count > speechStart }, timeout: 1.0)
-        XCTAssertTrue(visibleSpeech)
-        let speechLevel = try XCTUnwrap(overlay.updatedLevels.last)
-        XCTAssertGreaterThan(speechLevel - backgroundLevel, 20, "Speech should be visually distinct from background near the meter gate.")
-
-        let updateCount = overlay.updatedLevels.count
         audio.dbfs = -45
-        try await Task.sleep(nanoseconds: 100_000_000)
-        XCTAssertTrue(overlay.updatedLevels.dropFirst(updateCount).allSatisfy { $0 > -120 })
+        let louderQuietSpeechVisible = await waitUntil({ overlay.updatedLevels.contains(-45) }, timeout: 1.0)
+        XCTAssertTrue(louderQuietSpeechVisible)
 
-        let hiddenAfterHold = await waitUntil({ overlay.updatedLevels.last == -120 }, timeout: 1.0)
-        XCTAssertTrue(hiddenAfterHold)
+        audio.dbfs = -20
+        let visibleSpeech = await waitUntil({ overlay.updatedLevels.contains(-20) }, timeout: 1.0)
+        XCTAssertTrue(visibleSpeech)
         controller.cancelRecording()
-    }
-
-    func testWaveformAdvancesAtItsFloorWithoutFlatteningSpeechContrast() {
-        let floor = waveformAmplitude(for: -120)
-        let background = waveformAmplitude(for: -58)
-        let speech = waveformAmplitude(for: -27)
-
-        XCTAssertGreaterThanOrEqual(floor, 0.08, "The waveform floor should remain visibly populated.")
-        XCTAssertGreaterThan(background, floor, "Background variation should remain visible above the floor.")
-        XCTAssertGreaterThan(speech - background, 0.5, "Speech should remain visually distinct from background.")
     }
 
     func testLiveTranscriptUsesSameFillerCleanupAsFinalText() async throws {

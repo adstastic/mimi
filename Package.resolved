@@ -1,15 +1,6 @@
 {
   "pins" : [
     {
-      "identity" : "dswaveformimage",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/dmrschmidt/DSWaveformImage.git",
-      "state" : {
-        "revision" : "00afb7930863b9cc3bd011389d601735e548093c",
-        "version" : "14.5.0"
-      }
-    },
-    {
       "identity" : "fluidaudio",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/FluidInference/FluidAudio.git",

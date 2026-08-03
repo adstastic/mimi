@@ -181,8 +181,6 @@ final class DictationController {
     private var ambientReconcilePending = false
     private var ambientUpdateGeneration = 0
     private var lastAmbientDecisionLogAt = Date.distantPast
-    private var meterOpen = false
-    private var meterReleaseDeadline = Date.distantPast
     private var temporaryAudioURLs: Set<URL> = []
 
     private var isAmbientRecording: Bool {
@@ -296,7 +294,7 @@ final class DictationController {
             overlay.show(
                 "Recording",
                 detail: "Tap Right Command again or pause",
-                level: meterLevel(audioCapture.currentDBFS(), threshold: plan.config.silenceThresholdDBFS)
+                level: audioCapture.currentDBFS()
             )
         } else {
             Task { await stopAndTranscribe(reason: .released) }
@@ -410,14 +408,12 @@ final class DictationController {
         onPartialTranscript(nil)
         sawSpeech = speechAlreadyDetected
         silenceBeganAt = nil
-        meterOpen = false
-        meterReleaseDeadline = .distantPast
         state = .recording(mode, plan)
         onStatus(plan.isAmbient ? "Ambient recording…" : "Starting mic…")
         overlay.show(
             plan.isAmbient ? "Ambient recording" : "Starting mic",
             detail: "Speak now",
-            level: meterLevel(audioCapture.currentDBFS(), threshold: plan.config.silenceThresholdDBFS)
+            level: audioCapture.currentDBFS()
         )
 
         engineStartTask?.cancel()
@@ -466,10 +462,7 @@ final class DictationController {
                 self.overlay.show(
                     "Recording",
                     detail: "Speak now",
-                    level: self.meterLevel(
-                        self.audioCapture.currentDBFS(),
-                        threshold: plan.config.silenceThresholdDBFS
-                    )
+                    level: self.audioCapture.currentDBFS()
                 )
                 self.startSilenceLoop()
             } catch {
@@ -950,7 +943,7 @@ final class DictationController {
         guard case .recording(_, let plan) = state else { return }
 
         let level = audioCapture.currentDBFS()
-        overlay.updateLevel(meterLevel(level, threshold: plan.config.silenceThresholdDBFS))
+        overlay.updateLevel(level)
 
         let now = Date()
         guard plan.config.silenceAutoStopEnabled || plan.isAmbient else { return }
@@ -992,30 +985,6 @@ final class DictationController {
 
     private func isAboveNoiseFloor(_ config: MimiConfig) -> Bool {
         audioCapture.peakDBFS(within: 1.5) >= config.normalizedForBackend().silenceThresholdDBFS
-    }
-
-    private func meterLevel(_ level: Double, threshold: Double) -> Double {
-        let now = Date()
-        if meterOpen {
-            if level >= threshold {
-                meterReleaseDeadline = now.addingTimeInterval(0.35)
-                return visualMeterLevel(level, threshold: threshold)
-            }
-            if now < meterReleaseDeadline { return -60 }
-            meterOpen = false
-            return -120
-        }
-
-        // ponytail: fixed visual deadband; add a setting only if real-world tuning needs one.
-        guard level >= threshold + 6 else { return -120 }
-        meterOpen = true
-        meterReleaseDeadline = now.addingTimeInterval(0.35)
-        return visualMeterLevel(level, threshold: threshold)
-    }
-
-    private func visualMeterLevel(_ level: Double, threshold: Double) -> Double {
-        let normalizedLevel = min(1, max(0, (level - threshold - 6) / 18))
-        return -60 + normalizedLevel * 42
     }
 
     private func recentlyDetectedSpeech(within seconds: TimeInterval) -> Bool {

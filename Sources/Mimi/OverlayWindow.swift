@@ -1,6 +1,4 @@
 import AppKit
-import DSWaveformImage
-import DSWaveformImageViews
 import SwiftUI
 
 @MainActor
@@ -121,7 +119,7 @@ private struct OverlayPillView: View {
 
             if let level = state.level {
                 LevelMeter(level: level)
-                    .frame(width: 112, height: 24)
+                    .frame(width: 72, height: 10)
             }
 
             if showsDismissButton {
@@ -156,26 +154,15 @@ private struct OverlayPillView: View {
 
 private struct LevelMeter: View {
     let level: Double
-    @State private var samples: [Float] = []
 
     var body: some View {
-        WaveformLiveCanvas(
-            samples: samples,
-            configuration: .init(
-                style: .striped(.init(color: .systemRed, width: 3, spacing: 3)),
-                verticalScalingFactor: 0.48,
-                shouldAntialias: true
-            ),
-            shouldDrawSilencePadding: true
-        )
-        .onChange(of: level, initial: true) { _, level in
-            let sample = 1 - waveformAmplitude(for: level)
-            samples.append(contentsOf: repeatElement(sample, count: 12))
+        GeometryReader { proxy in
+            let normalizedLevel = min(1, max(0, (level + 60) / 42))
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.15))
+                Capsule().fill(Color.red.opacity(0.85))
+                    .frame(width: proxy.size.width * normalizedLevel)
+            }
         }
     }
-}
-
-func waveformAmplitude(for level: Double) -> Float {
-    let normalizedLevel = min(1, max(0, (level + 60) / 42))
-    return 0.08 + Float(normalizedLevel) * 0.92
 }
