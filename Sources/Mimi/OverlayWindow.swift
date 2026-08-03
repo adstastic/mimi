@@ -157,11 +157,11 @@ private struct LevelMeter: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let normalized = min(1, max(0, (level + 60) / 60))
+            let normalizedLevel = min(1, max(0, (level + 60) / 42))
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.white.opacity(0.15))
                 Capsule().fill(Color.red.opacity(0.85))
-                    .frame(width: proxy.size.width * normalized)
+                    .frame(width: proxy.size.width * normalizedLevel)
             }
         }
     }

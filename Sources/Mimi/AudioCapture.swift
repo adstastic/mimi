@@ -53,6 +53,7 @@ final class AudioCapture {
     }
 
     private var engine = AVAudioEngine()
+    private let echoCancellation = EchoCancellationPipeline()
     private let lock = NSLock()
     private var tapInstalled = false
     private var inputRouteConfigured = false
@@ -152,7 +153,7 @@ final class AudioCapture {
         // double-installing.
         input.removeTap(onBus: 0)
         input.installTap(onBus: 0, bufferSize: 1_024, format: format) { [weak self] buffer, _ in
-            self?.handle(buffer: buffer)
+            self?.handleCaptured(buffer: buffer)
         }
         tapInstalled = true
 
@@ -163,6 +164,7 @@ final class AudioCapture {
             configuredInputDeviceID = effectiveInputDeviceID
             configuredAudioDeviceID = effectiveAudioDeviceID
             inputRouteConfigured = true
+            echoCancellation.start()
         } catch {
             engine.stop()
             if tapInstalled {
@@ -204,6 +206,11 @@ final class AudioCapture {
     }
 
     func finishRecording() throws -> URL {
+        let trailingSamples = echoCancellation.flushCapture()
+        if let trailingBuffer = Self.makeBuffer(samples: trailingSamples, sampleRate: sampleRate) {
+            handle(buffer: trailingBuffer)
+        }
+
         let samples: [Float]
         let rate: Double
 
@@ -243,6 +250,7 @@ final class AudioCapture {
     func stop() {
         DebugLog.write("audio stop running=\(engine.isRunning ? "Y" : "N") tap=\(tapInstalled ? "Y" : "N")")
         engine.stop()
+        echoCancellation.stop()
         if tapInstalled {
             engine.inputNode.removeTap(onBus: 0)
             tapInstalled = false
@@ -329,6 +337,23 @@ final class AudioCapture {
         guard status == noErr else {
             throw CaptureError.inputDeviceUnavailable
         }
+    }
+
+    private func handleCaptured(buffer: AVAudioPCMBuffer) {
+        guard let channel = buffer.floatChannelData?[0] else { return }
+        let count = Int(buffer.frameLength)
+        guard count > 0 else { return }
+
+        let samples = Array(UnsafeBufferPointer(start: channel, count: count))
+        let processed = echoCancellation.processCapture(
+            samples,
+            sampleRate: Int32(buffer.format.sampleRate.rounded())
+        )
+        guard let processedBuffer = Self.makeBuffer(
+            samples: processed,
+            sampleRate: buffer.format.sampleRate
+        ) else { return }
+        handle(buffer: processedBuffer)
     }
 
     private func handle(buffer: AVAudioPCMBuffer) {
