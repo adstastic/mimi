@@ -119,7 +119,7 @@ private struct OverlayPillView: View {
 
             if let level = state.level {
                 LevelMeter(level: level)
-                    .frame(width: 72, height: 10)
+                    .frame(width: 112, height: 24)
             }
 
             if showsDismissButton {
@@ -166,7 +166,7 @@ private struct LevelMeter: View {
         }
         .onChange(of: level, initial: true) { _, level in
             amplitudes.removeFirst()
-            amplitudes.append(min(1, max(0, (level + 60) / 60)))
+            amplitudes.append(min(1, max(0, (level + 60) / 42)))
         }
     }
 }
