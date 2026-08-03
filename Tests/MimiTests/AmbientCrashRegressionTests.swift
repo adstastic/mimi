@@ -860,6 +860,39 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertTrue(speechStarted)
     }
 
+    func testRecordingMeterTracksQuietSpeechBelowSilenceThreshold() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = MimiConfig.defaults
+        config.silenceAutoStopEnabled = false
+        config.silenceThresholdDBFS = -40
+        audio.dbfs = -55
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        let quietSpeechVisible = await waitUntil({ overlay.updatedLevels.contains(-55) }, timeout: 1.0)
+        XCTAssertTrue(quietSpeechVisible)
+
+        audio.dbfs = -45
+        let louderQuietSpeechVisible = await waitUntil({ overlay.updatedLevels.contains(-45) }, timeout: 1.0)
+        XCTAssertTrue(louderQuietSpeechVisible)
+
+        audio.dbfs = -20
+        let visibleSpeech = await waitUntil({ overlay.updatedLevels.contains(-20) }, timeout: 1.0)
+        XCTAssertTrue(visibleSpeech)
+        controller.cancelRecording()
+    }
+
     func testLiveTranscriptUsesSameFillerCleanupAsFinalText() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
@@ -1741,13 +1774,16 @@ private final class FakeTextInserter: TextInserting {
 @MainActor
 private final class FakeOverlay: OverlayShowing {
     var messages: [(message: String, detail: String?, level: Double?)] = []
+    var updatedLevels: [Double] = []
     var hiddenAfter: [Int] = []
 
     func show(_ message: String, detail: String?, level: Double?) {
         messages.append((message, detail, level))
     }
 
-    func updateLevel(_ level: Double) {}
+    func updateLevel(_ level: Double) {
+        updatedLevels.append(level)
+    }
 
     func updateDetail(_ detail: String?) {}
 

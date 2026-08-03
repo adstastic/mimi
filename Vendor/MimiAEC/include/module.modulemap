@@ -1,0 +1,4 @@
+module MimiAEC {
+    header "MimiAEC.h"
+    export *
+}

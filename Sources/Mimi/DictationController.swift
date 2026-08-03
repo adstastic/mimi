@@ -291,7 +291,11 @@ final class DictationController {
         if elapsedMs < plan.config.tapThresholdMilliseconds {
             state = .recording(.toggle, plan)
             onStatus("Recording — tap Right Command again to stop")
-            overlay.show("Recording", detail: "Tap Right Command again or pause", level: audioCapture.currentDBFS())
+            overlay.show(
+                "Recording",
+                detail: "Tap Right Command again or pause",
+                level: audioCapture.currentDBFS()
+            )
         } else {
             Task { await stopAndTranscribe(reason: .released) }
         }
@@ -406,7 +410,11 @@ final class DictationController {
         silenceBeganAt = nil
         state = .recording(mode, plan)
         onStatus(plan.isAmbient ? "Ambient recording…" : "Starting mic…")
-        overlay.show(plan.isAmbient ? "Ambient recording" : "Starting mic", detail: "Speak now", level: audioCapture.currentDBFS())
+        overlay.show(
+            plan.isAmbient ? "Ambient recording" : "Starting mic",
+            detail: "Speak now",
+            level: audioCapture.currentDBFS()
+        )
 
         engineStartTask?.cancel()
         engineStartTask = Task { [weak self] in
@@ -451,7 +459,11 @@ final class DictationController {
                     replayPreRollToHandler: !plan.isAmbient
                 )
                 self.onStatus("Recording…")
-                self.overlay.show("Recording", detail: "Speak now", level: self.audioCapture.currentDBFS())
+                self.overlay.show(
+                    "Recording",
+                    detail: "Speak now",
+                    level: self.audioCapture.currentDBFS()
+                )
                 self.startSilenceLoop()
             } catch {
                 guard self.recordingGeneration == generation else { return }

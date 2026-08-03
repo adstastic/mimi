@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-08-03
+
+### Fixed
+
+- Prevented speaker playback from reaching dictation by using system audio only as an echo-cancellation reference.
+- Restored a responsive microphone level meter that remains sensitive to quiet speech.
+
 ## [0.1.5] - 2026-08-03
 
 ### Added
@@ -70,7 +77,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configurable microphone, silence detection, shortcuts, and Return after paste.
 - Local-only operation with no account or telemetry.
 
-[Unreleased]: https://github.com/adstastic/mimi/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/adstastic/mimi/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/adstastic/mimi/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/adstastic/mimi/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/adstastic/mimi/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/adstastic/mimi/compare/v0.1.2...v0.1.3

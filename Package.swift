@@ -19,10 +19,18 @@ let package = Package(
             dependencies: [.product(name: "FluidAudio", package: "FluidAudio")],
             path: "Sources/MimiSpeech"
         ),
+        .binaryTarget(
+            name: "MimiAEC",
+            path: "Vendor/MimiAEC.xcframework"
+        ),
         .executableTarget(
             name: "Mimi",
-            dependencies: ["MimiSpeech"],
-            path: "Sources/Mimi"
+            dependencies: ["MimiSpeech", "MimiAEC"],
+            path: "Sources/Mimi",
+            linkerSettings: [
+                .linkedLibrary("c++"),
+                .linkedFramework("CoreFoundation")
+            ]
         ),
         .executableTarget(
             name: "MimiSmoke",
@@ -31,8 +39,12 @@ let package = Package(
         ),
         .testTarget(
             name: "MimiTests",
-            dependencies: ["Mimi", "MimiSpeech"],
-            path: "Tests/MimiTests"
+            dependencies: ["Mimi", "MimiSpeech", "MimiAEC"],
+            path: "Tests/MimiTests",
+            linkerSettings: [
+                .linkedLibrary("c++"),
+                .linkedFramework("CoreFoundation")
+            ]
         )
     ]
 )
