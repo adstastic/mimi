@@ -11,7 +11,7 @@ Must remain true / non-goals:
 - No continuously armed microphone.
 - No config-system or broader review-finding work in this slice.
 - Existing dictation, ambient mode, route switching, and cancellation behavior remain unchanged.
-Current phase: green implementation; verifying
+Current phase: adversarial review
 Completed evidence:
 - 2026-08-03 live log: CoreAudio ID 132→358; fresh engine startup consumed 368 ms of a 411 ms hold; only ~32 ms audio preceded SFSpeechErrorDomain code 1 RecogRejected; retry reused warm engine and worked.
 - User approved brief microphone/privacy-indicator activation after launch and wake.
@@ -19,8 +19,9 @@ Completed evidence:
 - RED: `swift test --filter AmbientCrashRegressionTests.testPreparingAudioWaitsForInputAndShowsReady` failed because no audio start, stop, or ready overlay occurred.
 - RED: `swift test --filter SystemWakeMonitorTests.testWorkspaceWakeNotificationCallsHandler` timed out because wake was not observed.
 - GREEN: both focused tests pass. Controller primes through first input buffer, stops capture, and shows “Mimi ready”; AppModel primes before hotkeys on launch and observes NSWorkspace wake for another bounded prime.
+- CHECKS: `swift test` passed 71 tests; `swift test --sanitize=thread` passed 71 tests; `git diff --check` passed.
 Current hypothesis: Priming the fresh route through its first buffer before user input removes wake-only startup latency and rejection.
-Next action: Run full suite/TSan, inspect diff, then adversarial review.
+Next action: Run behavior, structure, concurrency-correctness, and code-quality reviewers; verify and fix findings.
 Owned files: .phoenix/ACTIVE.md, Sources/Mimi/AppModel.swift, Sources/Mimi/DictationController.swift, Sources/Mimi/SystemWakeMonitor.swift, Tests/MimiTests/AmbientCrashRegressionTests.swift, Tests/MimiTests/SystemWakeMonitorTests.swift.
 Pre-existing work to preserve: none; initial staged diff hash e69de29bb2d1d6434b8b29ae775ad8c2e48c5391.
 Review findings / decisions pending: exact smallest injectable seam for AppModel wake observation and audio priming.
