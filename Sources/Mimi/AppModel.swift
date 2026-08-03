@@ -40,7 +40,9 @@ final class AppModel: ObservableObject {
         }
     }
 
-    let history = HistoryStore()
+    let history: HistoryStore
+
+    var lastDictation: TranscriptEntry? { history.latest }
 
     private let audioCapture = AudioCapture()
     private let textInserter = TextInserter()
@@ -51,14 +53,18 @@ final class AppModel: ObservableObject {
     private var dictationController: DictationController!
     private var hotkeyMonitor: HotkeyMonitor!
     private var wakeCancellable: AnyCancellable?
+    private var terminationCancellable: AnyCancellable?
     private var inputDeviceTask: Task<Void, Never>?
     private var ambientModeUpdateTask: Task<Void, Never>?
     private var audioPreparationTask: Task<Void, Never>?
+    private var voiceprintTemporaryAudioURL: URL?
     private var lastDefaultInputDeviceID = AudioInputDevice.defaultInputDeviceUID()
     private var started = false
     private var shortcutRecording = false
 
     init() {
+        TemporaryAudioFiles.removeStaleFiles()
+        history = HistoryStore(audioStorageURL: HistoryStore.productionAudioStorageURL)
         let loadedInputDevices = AudioInputDevice.available()
         var loadedConfig = MimiConfig.load()
         let validInputDeviceID = AudioInputDevice.validSelection(loadedConfig.inputDeviceID, in: loadedInputDevices)
@@ -96,6 +102,13 @@ final class AppModel: ObservableObject {
             onAmbientToggle: { [weak self] in self?.toggleAmbientModeFromShortcut() },
             onCancel: { [weak self] in self?.dictationController.cancelRecording() }
         )
+        terminationCancellable = NotificationCenter.default
+            .publisher(for: NSApplication.willTerminateNotification)
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.cleanupForTermination()
+                }
+            }
 
         Task { await start() }
     }
@@ -248,6 +261,31 @@ final class AppModel: ObservableObject {
         dictationController.copyLastTranscript()
     }
 
+    func correctLastTranscript(id: UUID, text: String) -> Bool {
+        dictationController.correctLastTranscript(id: id, text: text)
+    }
+
+    func quit() {
+        cleanupForTermination()
+        NSApplication.shared.terminate(nil)
+    }
+
+    private func cleanupForTermination() {
+        inputDeviceTask?.cancel()
+        ambientModeUpdateTask?.cancel()
+        audioPreparationTask?.cancel()
+        hotkeyMonitor.stop()
+        dictationController.shutdown()
+        removeVoiceprintTemporaryAudio()
+        history.clear()
+    }
+
+    private func removeVoiceprintTemporaryAudio() {
+        guard let voiceprintTemporaryAudioURL else { return }
+        try? FileManager.default.removeItem(at: voiceprintTemporaryAudioURL)
+        self.voiceprintTemporaryAudioURL = nil
+    }
+
     func enrollVoiceprint() {
         Task { await runVoiceprintEnrollment() }
     }
@@ -281,6 +319,8 @@ final class AppModel: ObservableObject {
             applyStatus("Voice enroll — read prompt")
             overlay.show("Voice enroll", detail: "Read the My Voice phrase for 8 seconds")
             let audioURL = try await recordVoiceprintClip(seconds: 8)
+            voiceprintTemporaryAudioURL = audioURL
+            defer { removeVoiceprintTemporaryAudio() }
             applyStatus("Building voiceprint…")
             voiceprintStatus = "Building speaker embedding…"
             let profile = try await voiceprintService.makeProfile(audioURLs: [audioURL])
@@ -309,6 +349,8 @@ final class AppModel: ObservableObject {
             applyStatus("Voice verify — speak for 5s")
             overlay.show("Voice verify", detail: "Speak normally for 5 seconds")
             let audioURL = try await recordVoiceprintClip(seconds: 5)
+            voiceprintTemporaryAudioURL = audioURL
+            defer { removeVoiceprintTemporaryAudio() }
             applyStatus("Verifying voice…")
             voiceprintStatus = "Comparing speaker embedding…"
             let result = try await voiceprintService.verify(

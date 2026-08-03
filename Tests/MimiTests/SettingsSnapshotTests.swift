@@ -19,12 +19,19 @@ final class SettingsSnapshotTests: XCTestCase {
             voiceprintStatus: "Enrolled — 256D threshold 0.78",
             voiceprintProfileExists: true,
             voiceprintBusy: false,
-            lastTranscript: "This is a representative recent transcript long enough to wrap across several lines in the settings window and expose its maximum practical height.",
+            lastDictation: TranscriptEntry(
+                sourceText: "This is a representative recent transcript long enough to wrap across several lines in the settings window and expose its maximum practical height.",
+                text: "This is a representative recent transcript long enough to wrap across several lines in the settings window and expose its maximum practical height.",
+                backend: .appleSpeechTranscriber,
+                audioURL: nil,
+                createdAt: Date(timeIntervalSince1970: 0)
+            ),
             liveTranscript: "This is a representative live transcript long enough to wrap across several lines while recording remains active.",
             enrollVoiceprint: {},
             verifyVoiceprint: {},
             resetVoiceprint: {},
             copyLastTranscript: {},
+            correctLastTranscript: { _, _ in true },
             shortcutRecordingChanged: { _ in },
             refreshPermissions: {},
             refreshInputDevices: {}
@@ -34,6 +41,27 @@ final class SettingsSnapshotTests: XCTestCase {
         XCTAssertGreaterThan(size.height, 1_000)
         XCTAssertLessThanOrEqual(size.height, 1_200)
         print("SETTINGS_SNAPSHOT_SIZE=\(Int(size.width))x\(Int(size.height))")
+    }
+
+    func testRenderLastDictationCorrectionSnapshot() throws {
+        let entry = TranscriptEntry(
+            sourceText: "We use pie torch and whisper flow.",
+            text: "We use pie torch and whisper flow.",
+            backend: .appleSpeechTranscriber,
+            audioURL: URL(fileURLWithPath: "/tmp/latest.wav"),
+            createdAt: Date(timeIntervalSince1970: 0)
+        )
+        let size = try render(
+            LastDictationCorrectionView(
+                entry: entry,
+                vocabularyEntries: .constant([]),
+                save: { _, _ in true }
+            ),
+            to: "/tmp/mimi-last-dictation-correction-snapshot.png"
+        )
+        XCTAssertEqual(size.width, 560, accuracy: 0.5)
+        XCTAssertEqual(size.height, 420, accuracy: 0.5)
+        print("LAST_DICTATION_CORRECTION_SNAPSHOT_SIZE=\(Int(size.width))x\(Int(size.height))")
     }
 
     func testRenderEmptyVocabularySnapshot() throws {

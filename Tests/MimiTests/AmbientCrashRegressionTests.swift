@@ -6,6 +6,74 @@ import MimiSpeech
 
 @MainActor
 final class AmbientCrashRegressionTests: XCTestCase {
+    func testCorrectingLastDictationUpdatesStoreAndClipboardWithoutRepasting() throws {
+        let history = HistoryStore()
+        history.record(
+            sourceText: "pie torch",
+            text: "pie torch",
+            backend: .appleSpeechTranscriber,
+            audioURL: nil
+        )
+        let inserter = FakeTextInserter()
+        var transcripts: [String?] = []
+        let controller = makeController(
+            configProvider: { .defaults },
+            audio: FakeAudioCapture(),
+            asr: FakeASRService(),
+            textInserter: inserter,
+            history: history,
+            overlay: FakeOverlay(),
+            status: StatusSink(),
+            transcript: { transcripts.append($0) },
+            missingInputTimeout: 10
+        )
+
+        let entryID = try XCTUnwrap(history.latest?.id)
+        controller.correctLastTranscript(id: entryID, text: "PyTorch")
+
+        XCTAssertEqual(history.lastTranscript, "PyTorch")
+        XCTAssertEqual(inserter.copiedTexts, ["PyTorch"])
+        XCTAssertEqual(inserter.insertedTexts, [])
+        XCTAssertEqual(transcripts, ["PyTorch"])
+    }
+
+    func testStaleCorrectionCannotOverwriteNewerDictation() throws {
+        let history = HistoryStore()
+        history.record(
+            sourceText: "first",
+            text: "first",
+            backend: .appleSpeechTranscriber,
+            audioURL: nil
+        )
+        let staleID = try XCTUnwrap(history.latest?.id)
+        history.record(
+            sourceText: "second",
+            text: "second",
+            backend: .appleSpeechTranscriber,
+            audioURL: nil
+        )
+        let inserter = FakeTextInserter()
+        var transcripts: [String?] = []
+        let controller = makeController(
+            configProvider: { .defaults },
+            audio: FakeAudioCapture(),
+            asr: FakeASRService(),
+            textInserter: inserter,
+            history: history,
+            overlay: FakeOverlay(),
+            status: StatusSink(),
+            transcript: { transcripts.append($0) },
+            missingInputTimeout: 10
+        )
+
+        let saved = controller.correctLastTranscript(id: staleID, text: "stale correction")
+
+        XCTAssertFalse(saved)
+        XCTAssertEqual(history.lastTranscript, "second")
+        XCTAssertEqual(inserter.copiedTexts, [])
+        XCTAssertEqual(transcripts, [])
+    }
+
     func testPreparingAudioWaitsForFreshInputAndShowsReady() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
@@ -945,6 +1013,156 @@ final class AmbientCrashRegressionTests: XCTestCase {
         controller.cancelRecording()
     }
 
+    func testSuccessfulDictationRetainsFilteredAudioAndDeletesTemporaryFiles() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MimiTests-\(UUID().uuidString)", isDirectory: true)
+        let rawURL = directory.appendingPathComponent("raw.wav")
+        let filteredURL = directory.appendingPathComponent("filtered.wav")
+        let retainedURL = directory.appendingPathComponent("latest.wav")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("raw".utf8).write(to: rawURL)
+        try Data("filtered".utf8).write(to: filteredURL)
+
+        let audio = FakeAudioCapture()
+        audio.finishedAudioURL = rawURL
+        let asr = FakeASRService()
+        asr.batchFinalText = "pie torch"
+        let inserter = FakeTextInserter()
+        let history = HistoryStore(audioStorageURL: retainedURL)
+        let voiceprint = FakeVoiceprintVerifier(extraction: VoiceprintExtraction(
+            audioURL: filteredURL,
+            totalSegmentCount: 1,
+            keptSegmentCount: 1,
+            keptDurationSeconds: 1,
+            bestDistance: 0.1,
+            threshold: 0.3
+        ))
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = MimiConfig.defaults
+        config.preferredBackend = .mlxParakeetV2
+        config.silenceAutoStopEnabled = false
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            voiceprint: voiceprint,
+            textInserter: inserter,
+            history: history,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        let started = await waitUntil({ audio.startInputDeviceIDs == [nil] }, timeout: 1.0)
+        XCTAssertTrue(started)
+        try await Task.sleep(nanoseconds: 250_000_000)
+        controller.hotkeyUp()
+        let pasted = await waitUntil({ inserter.insertedTexts == ["pie torch"] }, timeout: 1.0)
+
+        XCTAssertTrue(pasted)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: rawURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: filteredURL.path))
+        XCTAssertEqual(try Data(contentsOf: retainedURL), Data("filtered".utf8))
+        XCTAssertEqual(history.latest?.sourceText, "pie torch")
+        XCTAssertEqual(history.latest?.text, "pie torch")
+        XCTAssertEqual(history.latest?.audioURL, retainedURL)
+    }
+
+    func testFailedDictationDeletesTemporaryAudio() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MimiTests-\(UUID().uuidString)", isDirectory: true)
+        let rawURL = directory.appendingPathComponent("raw.wav")
+        let retainedURL = directory.appendingPathComponent("latest.wav")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("raw".utf8).write(to: rawURL)
+
+        let audio = FakeAudioCapture()
+        audio.finishedAudioURL = rawURL
+        let asr = FakeASRService()
+        asr.batchFinalText = ""
+        let history = HistoryStore(audioStorageURL: retainedURL)
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = MimiConfig.defaults
+        config.preferredBackend = .mlxParakeetV2
+        config.silenceAutoStopEnabled = false
+        config.voiceprintEnabled = false
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            history: history,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        let started = await waitUntil({ audio.startInputDeviceIDs == [nil] }, timeout: 1.0)
+        XCTAssertTrue(started)
+        try await Task.sleep(nanoseconds: 250_000_000)
+        controller.hotkeyUp()
+        let failed = await waitUntil({ status.values.contains { $0.hasPrefix("Error:") } }, timeout: 1.0)
+
+        XCTAssertTrue(failed)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: rawURL.path))
+        XCTAssertNil(history.latest)
+    }
+
+    func testShutdownDeletesInFlightTemporaryAudio() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MimiTests-\(UUID().uuidString)", isDirectory: true)
+        let rawURL = directory.appendingPathComponent("raw.wav")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("raw".utf8).write(to: rawURL)
+
+        let audio = FakeAudioCapture()
+        audio.finishedAudioURL = rawURL
+        let asr = FakeASRService()
+        asr.batchFinalText = "should not paste"
+        asr.holdTranscriptions()
+        let inserter = FakeTextInserter()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = MimiConfig.defaults
+        config.preferredBackend = .mlxParakeetV2
+        config.silenceAutoStopEnabled = false
+        config.voiceprintEnabled = false
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            textInserter: inserter,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        let started = await waitUntil({ audio.startInputDeviceIDs == [nil] }, timeout: 1.0)
+        XCTAssertTrue(started)
+        try await Task.sleep(nanoseconds: 250_000_000)
+        controller.hotkeyUp()
+        let transcribing = await waitUntil({
+            asr.snapshotEvents().contains("transcribe.path=\(rawURL.path)")
+        }, timeout: 1.0)
+        XCTAssertTrue(transcribing)
+
+        controller.shutdown()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: rawURL.path))
+        asr.releaseTranscriptions()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(inserter.insertedTexts, [])
+    }
+
     func testVoiceprintDisabledTranscribesOriginalAudio() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
@@ -1241,6 +1459,7 @@ private final class FakeAudioCapture: AudioCapturing {
     var lastBufferAge: TimeInterval? = 0
     private(set) var firstStartFinished = false
     private(set) var finishCount = 0
+    var finishedAudioURL: URL?
     private var firstStartContinuation: CheckedContinuation<Void, Never>?
 
     var firstStartPending: Bool {
@@ -1275,7 +1494,8 @@ private final class FakeAudioCapture: AudioCapturing {
 
     func finishRecording() throws -> URL {
         finishCount += 1
-        return FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("wav")
+        return finishedAudioURL
+            ?? FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("wav")
     }
 
     func cancelRecording() {}
@@ -1302,17 +1522,35 @@ private final class FakeASRService: ASRServicing {
     private var events: [String] = []
     private var eventHandlers: [AppleSpeechTranscriberBackend.EventHandler] = []
     private var cancelsHeld = false
+    private var transcriptionsHeld = false
     private var nextStartError: Error?
     var startError: Error?
     var streamFinalText = ""
     var appleFinalText = ""
     var batchFinalText = ""
     private var pendingCancel: CheckedContinuation<Void, Never>?
+    private var pendingTranscription: CheckedContinuation<Void, Never>?
 
     func holdCancels() {
         lock.lock()
         cancelsHeld = true
         lock.unlock()
+    }
+
+    func holdTranscriptions() {
+        lock.lock()
+        transcriptionsHeld = true
+        lock.unlock()
+    }
+
+    func releaseTranscriptions() {
+        let continuation: CheckedContinuation<Void, Never>?
+        lock.lock()
+        transcriptionsHeld = false
+        continuation = pendingTranscription
+        pendingTranscription = nil
+        lock.unlock()
+        continuation?.resume()
     }
 
     func failNextStart(_ error: Error) {
@@ -1402,6 +1640,21 @@ private final class FakeASRService: ASRServicing {
     func transcribe(audioURL: URL) async throws -> String {
         record("transcribe")
         record("transcribe.path=\(audioURL.path)")
+        if shouldHoldTranscription() {
+            await withCheckedContinuation { continuation in
+                var resumeNow = false
+                lock.lock()
+                if transcriptionsHeld {
+                    pendingTranscription = continuation
+                } else {
+                    resumeNow = true
+                }
+                lock.unlock()
+                if resumeNow {
+                    continuation.resume()
+                }
+            }
+        }
         return batchFinalText
     }
 
@@ -1416,6 +1669,12 @@ private final class FakeASRService: ASRServicing {
         lock.lock()
         defer { lock.unlock() }
         return cancelsHeld
+    }
+
+    private func shouldHoldTranscription() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return transcriptionsHeld
     }
 
     private func record(_ event: String) {
@@ -1454,6 +1713,7 @@ private final class FakeVoiceprintVerifier: VoiceprintVerifying {
 @MainActor
 private final class FakeTextInserter: TextInserting {
     var insertedTexts: [String] = []
+    var copiedTexts: [String] = []
     var prePasteKeystrokes: [MimiShortcut?] = []
     var postPasteKeystrokes: [MimiShortcut?] = []
     var prePasteDelays: [Int] = []
@@ -1473,7 +1733,9 @@ private final class FakeTextInserter: TextInserting {
         postPasteDelays.append(postPasteDelayMilliseconds)
     }
 
-    func copyToClipboard(_ text: String) throws {}
+    func copyToClipboard(_ text: String) throws {
+        copiedTexts.append(text)
+    }
 }
 
 @MainActor

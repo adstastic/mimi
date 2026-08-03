@@ -221,9 +221,14 @@ final class AudioCapture {
             .appendingPathComponent("mimi-")
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension("wav")
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Self.writeWAV(samples: samples, sampleRate: rate, to: url)
-        return url
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Self.writeWAV(samples: samples, sampleRate: rate, to: url)
+            return url
+        } catch {
+            try? FileManager.default.removeItem(at: url)
+            throw error
+        }
     }
 
     func cancelRecording() {

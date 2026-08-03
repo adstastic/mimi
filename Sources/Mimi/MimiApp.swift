@@ -34,12 +34,13 @@ struct MimiApp: App {
                 voiceprintStatus: appModel.voiceprintStatus,
                 voiceprintProfileExists: appModel.voiceprintProfileExists,
                 voiceprintBusy: appModel.voiceprintBusy,
-                lastTranscript: appModel.lastTranscript,
+                lastDictation: appModel.lastDictation,
                 liveTranscript: appModel.liveTranscript,
                 enrollVoiceprint: { appModel.enrollVoiceprint() },
                 verifyVoiceprint: { appModel.verifyVoiceprint() },
                 resetVoiceprint: { appModel.resetVoiceprint() },
                 copyLastTranscript: { appModel.copyLastTranscript() },
+                correctLastTranscript: { appModel.correctLastTranscript(id: $0, text: $1) },
                 shortcutRecordingChanged: { appModel.setShortcutRecording($0) },
                 refreshPermissions: { appModel.refreshPermissions() },
                 refreshInputDevices: { appModel.refreshInputDevices() }
@@ -54,7 +55,7 @@ struct MimiApp: App {
         .commands {
             CommandGroup(replacing: .appTermination) {
                 Button("Quit \(AppBrand.name)") {
-                    NSApplication.shared.terminate(nil)
+                    appModel.quit()
                 }
                 .keyboardShortcut("q")
             }
@@ -94,7 +95,7 @@ private struct MimiMenu: View {
         Divider()
 
         Button("Quit \(AppBrand.name)") {
-            NSApplication.shared.terminate(nil)
+            appModel.quit()
         }
         .keyboardShortcut("q")
     }

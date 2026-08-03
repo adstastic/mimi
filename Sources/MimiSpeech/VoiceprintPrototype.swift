@@ -242,7 +242,12 @@ public actor VoiceprintEmbeddingService {
             .appendingPathComponent("mimi-owner-")
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension("wav")
-        try writeWAV(samples: ownerSamples, to: outputURL)
+        do {
+            try writeWAV(samples: ownerSamples, to: outputURL)
+        } catch {
+            try? FileManager.default.removeItem(at: outputURL)
+            throw error
+        }
         return VoiceprintExtraction(
             audioURL: outputURL,
             totalSegmentCount: scored.count,

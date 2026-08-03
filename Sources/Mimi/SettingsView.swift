@@ -19,18 +19,20 @@ struct SettingsView: View {
     @FocusState private var focusedField: SettingsField?
     @State private var pasteMode = PasteMode.shortcut
     @State private var showsVocabularyEditor = false
+    @State private var correctionEntry: TranscriptEntry?
     let statusText: String
     let permissionStatus: PermissionStatus
     let inputDevices: [AudioInputDevice]
     let voiceprintStatus: String
     let voiceprintProfileExists: Bool
     let voiceprintBusy: Bool
-    let lastTranscript: String?
+    let lastDictation: TranscriptEntry?
     let liveTranscript: String?
     let enrollVoiceprint: () -> Void
     let verifyVoiceprint: () -> Void
     let resetVoiceprint: () -> Void
     let copyLastTranscript: () -> Void
+    let correctLastTranscript: (UUID, String) -> Bool
     let shortcutRecordingChanged: (Bool) -> Void
     let refreshPermissions: () -> Void
     let refreshInputDevices: () -> Void
@@ -242,10 +244,14 @@ struct SettingsView: View {
                 TranscriptCard(title: "Live", systemImage: "text.bubble", text: liveTranscript)
             }
 
-            if let lastTranscript {
-                TranscriptCard(title: "Last", systemImage: "doc.on.clipboard", text: lastTranscript) {
-                    copyLastTranscript()
-                }
+            if let lastDictation {
+                TranscriptCard(
+                    title: "Last",
+                    systemImage: "doc.on.clipboard",
+                    text: lastDictation.text,
+                    action: copyLastTranscript,
+                    secondaryAction: { correctionEntry = lastDictation }
+                )
             }
         }
         .padding(10)
@@ -255,6 +261,18 @@ struct SettingsView: View {
         .onTapGesture { focusedField = nil }
         .sheet(isPresented: $showsVocabularyEditor) {
             VocabularySettingsView(entries: $config.vocabularyEntries)
+        }
+        .sheet(item: $correctionEntry) { entry in
+            LastDictationCorrectionView(
+                entry: entry,
+                vocabularyEntries: $config.vocabularyEntries,
+                save: correctLastTranscript
+            )
+        }
+        .onChange(of: lastDictation?.id) { _, latestID in
+            if let correctionEntry, correctionEntry.id != latestID {
+                self.correctionEntry = nil
+            }
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }
@@ -837,12 +855,20 @@ private struct TranscriptCard: View {
     let systemImage: String
     let text: String
     let action: (() -> Void)?
+    let secondaryAction: (() -> Void)?
 
-    init(title: String, systemImage: String, text: String, action: (() -> Void)? = nil) {
+    init(
+        title: String,
+        systemImage: String,
+        text: String,
+        action: (() -> Void)? = nil,
+        secondaryAction: (() -> Void)? = nil
+    ) {
         self.title = title
         self.systemImage = systemImage
         self.text = text
         self.action = action
+        self.secondaryAction = secondaryAction
     }
 
     var body: some View {
@@ -852,9 +878,19 @@ private struct TranscriptCard: View {
                     .lineLimit(4)
                     .textSelection(.enabled)
                 Spacer()
+                if let secondaryAction {
+                    Button(action: secondaryAction) {
+                        Image(systemName: "pencil")
+                    }
+                    .help("Correct last dictation")
+                    .controlSize(.small)
+                }
                 if let action {
-                    Button("Copy", action: action)
-                        .controlSize(.small)
+                    Button(action: action) {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    .help("Copy transcript")
+                    .controlSize(.small)
                 }
             }
         }
