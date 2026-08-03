@@ -7,6 +7,7 @@ struct MimiApp: App {
     private static let instanceGuard = SingleInstanceGuard()
 
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.openSettings) private var openSettings
     @StateObject private var appModel: AppModel
 
     init() {
@@ -36,6 +37,8 @@ struct MimiApp: App {
                 voiceprintBusy: appModel.voiceprintBusy,
                 lastDictation: appModel.lastDictation,
                 liveTranscript: appModel.liveTranscript,
+                correctionRequestID: appModel.correctionRequestID,
+                consumeCorrectionRequest: { appModel.consumeCorrectionRequest($0) },
                 enrollVoiceprint: { appModel.enrollVoiceprint() },
                 verifyVoiceprint: { appModel.verifyVoiceprint() },
                 resetVoiceprint: { appModel.resetVoiceprint() },
@@ -66,12 +69,18 @@ struct MimiApp: App {
 
     @ViewBuilder
     private var menuBarLabel: some View {
-        if let image = AppBrand.menuBarImage {
-            Image(nsImage: image)
-                .accessibilityLabel(AppBrand.name)
-        } else {
-            Image(systemName: "ear")
-                .accessibilityLabel(AppBrand.name)
+        Group {
+            if let image = AppBrand.menuBarImage {
+                Image(nsImage: image)
+                    .accessibilityLabel(AppBrand.name)
+            } else {
+                Image(systemName: "ear")
+                    .accessibilityLabel(AppBrand.name)
+            }
+        }
+        .onChange(of: appModel.correctionRequestID) { _, newValue in
+            guard newValue > 0 else { return }
+            openSettings()
         }
     }
 }
@@ -91,6 +100,12 @@ private struct MimiMenu: View {
         Toggle("Ambient Mode", isOn: $appModel.config.ambientModeEnabled)
 
         Divider()
+
+        Button("Correct Last Dictation…") {
+            appModel.requestLastTranscriptCorrection()
+            openSettings()
+        }
+        .disabled(appModel.lastDictation == nil)
 
         Button("Settings…") {
             NSApplication.shared.activate(ignoringOtherApps: true)

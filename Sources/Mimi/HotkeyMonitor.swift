@@ -16,40 +16,53 @@ final class HotkeyMonitor {
 
     private var dictationShortcut: MimiShortcut
     private var ambientToggleShortcut: MimiShortcut
+    private var correctionShortcut: MimiShortcut
     private let onDictationDown: @MainActor () -> Void
     private let onDictationUp: @MainActor () -> Void
     private let onAmbientToggle: @MainActor () -> Void
+    private let onCorrection: @MainActor () -> Void
     private let onCancel: @MainActor () -> Void
     private var eventTap: CFMachPort?
     private var eventTapSource: CFRunLoopSource?
     private var dictationPressed = false
     private var ambientPressed = false
+    private var correctionPressed = false
 
     init(
         dictationShortcut: MimiShortcut,
         ambientToggleShortcut: MimiShortcut,
+        correctionShortcut: MimiShortcut,
         onDictationDown: @escaping @MainActor () -> Void,
         onDictationUp: @escaping @MainActor () -> Void,
         onAmbientToggle: @escaping @MainActor () -> Void,
+        onCorrection: @escaping @MainActor () -> Void,
         onCancel: @escaping @MainActor () -> Void
     ) {
         self.dictationShortcut = dictationShortcut
         self.ambientToggleShortcut = ambientToggleShortcut
+        self.correctionShortcut = correctionShortcut
         self.onDictationDown = onDictationDown
         self.onDictationUp = onDictationUp
         self.onAmbientToggle = onAmbientToggle
+        self.onCorrection = onCorrection
         self.onCancel = onCancel
     }
 
     var statusText: String {
-        "Dictation: \(dictationShortcut.displayName); Ambient: \(ambientToggleShortcut.displayName)"
+        "Dictation: \(dictationShortcut.displayName); Ambient: \(ambientToggleShortcut.displayName); Correct: \(correctionShortcut.displayName)"
     }
 
-    func update(dictationShortcut: MimiShortcut, ambientToggleShortcut: MimiShortcut) {
+    func update(
+        dictationShortcut: MimiShortcut,
+        ambientToggleShortcut: MimiShortcut,
+        correctionShortcut: MimiShortcut
+    ) {
         self.dictationShortcut = dictationShortcut
         self.ambientToggleShortcut = ambientToggleShortcut
+        self.correctionShortcut = correctionShortcut
         dictationPressed = false
         ambientPressed = false
+        correctionPressed = false
     }
 
     func start() throws {
@@ -89,6 +102,7 @@ final class HotkeyMonitor {
         eventTapSource = nil
         dictationPressed = false
         ambientPressed = false
+        correctionPressed = false
     }
 
     private static let eventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
@@ -115,7 +129,21 @@ final class HotkeyMonitor {
         case .flagsChanged:
             handleModifierShortcut(event, shortcut: dictationShortcut, pressed: &dictationPressed, down: onDictationDown, up: onDictationUp)
             if ambientToggleShortcut != dictationShortcut {
-                handleModifierToggle(event, shortcut: ambientToggleShortcut)
+                handleModifierToggle(
+                    event,
+                    shortcut: ambientToggleShortcut,
+                    pressed: &ambientPressed,
+                    action: onAmbientToggle
+                )
+            }
+            if correctionShortcut != dictationShortcut,
+               correctionShortcut != ambientToggleShortcut {
+                handleModifierToggle(
+                    event,
+                    shortcut: correctionShortcut,
+                    pressed: &correctionPressed,
+                    action: onCorrection
+                )
             }
         case .keyDown:
             guard !event.isARepeat else { return }
@@ -134,6 +162,13 @@ final class HotkeyMonitor {
                !ambientToggleShortcut.isModifierOnly,
                matches(event, shortcut: ambientToggleShortcut) {
                 Task { @MainActor in onAmbientToggle() }
+                return
+            }
+            if correctionShortcut != dictationShortcut,
+               correctionShortcut != ambientToggleShortcut,
+               !correctionShortcut.isModifierOnly,
+               matches(event, shortcut: correctionShortcut) {
+                Task { @MainActor in onCorrection() }
             }
         case .keyUp:
             if !dictationShortcut.isModifierOnly,
@@ -169,18 +204,23 @@ final class HotkeyMonitor {
         }
     }
 
-    private func handleModifierToggle(_ event: NSEvent, shortcut: MimiShortcut) {
+    private func handleModifierToggle(
+        _ event: NSEvent,
+        shortcut: MimiShortcut,
+        pressed: inout Bool,
+        action: @escaping @MainActor () -> Void
+    ) {
         guard shortcut.isModifierOnly,
               Int(event.keyCode) == shortcut.keyCode,
               let flag = MimiShortcut.modifierFlag(forKeyCode: shortcut.keyCode)
         else { return }
 
         let isDown = event.modifierFlags.contains(flag)
-        if isDown, !ambientPressed {
-            ambientPressed = true
-            Task { @MainActor in onAmbientToggle() }
+        if isDown, !pressed {
+            pressed = true
+            Task { @MainActor in action() }
         } else if !isDown {
-            ambientPressed = false
+            pressed = false
         }
     }
 

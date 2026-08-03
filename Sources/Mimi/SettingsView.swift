@@ -27,6 +27,8 @@ struct SettingsView: View {
     let voiceprintBusy: Bool
     let lastDictation: TranscriptEntry?
     let liveTranscript: String?
+    let correctionRequestID: Int
+    let consumeCorrectionRequest: (Int) -> Void
     let enrollVoiceprint: () -> Void
     let verifyVoiceprint: () -> Void
     let resetVoiceprint: () -> Void
@@ -37,7 +39,7 @@ struct SettingsView: View {
     let refreshInputDevices: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             header
 
             SettingsCard("Dictation", systemImage: "waveform") {
@@ -113,8 +115,20 @@ struct SettingsView: View {
                         disabled: !backendCapabilities.supportsAmbient,
                         onRecordingChanged: shortcutRecordingChanged
                     )
+                    ShortcutRecorderRow(
+                        title: "Correct last",
+                        systemImage: "pencil.line",
+                        shortcut: $config.correctionShortcut,
+                        onRecordingChanged: shortcutRecordingChanged
+                    )
                     if config.dictationShortcut == config.ambientToggleShortcut {
                         Label("Ambient shortcut ignored because it matches dictation.", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                    if config.correctionShortcut == config.dictationShortcut
+                        || config.correctionShortcut == config.ambientToggleShortcut {
+                        Label("Correct last shortcut ignored because it matches another shortcut.", systemImage: "exclamationmark.triangle.fill")
                             .font(.caption)
                             .foregroundStyle(.orange)
                     }
@@ -253,7 +267,9 @@ struct SettingsView: View {
                 )
             }
         }
-        .padding(10)
+        .padding(.horizontal, 10)
+        .padding(.top, 10)
+        .padding(.bottom, 13)
         .frame(width: 430, alignment: .topLeading)
         .fixedSize(horizontal: true, vertical: true)
         .contentShape(Rectangle())
@@ -268,6 +284,11 @@ struct SettingsView: View {
             if let correctionEntry, correctionEntry.id != latestID {
                 self.correctionEntry = nil
             }
+        }
+        .task(id: correctionRequestID) {
+            guard correctionRequestID > 0, let lastDictation else { return }
+            correctionEntry = lastDictation
+            consumeCorrectionRequest(correctionRequestID)
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }

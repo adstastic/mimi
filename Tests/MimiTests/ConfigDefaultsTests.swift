@@ -19,6 +19,7 @@ final class ConfigDefaultsTests: XCTestCase {
         XCTAssertEqual(config.hotkeyKeyCode, 54)
         XCTAssertEqual(config.dictationShortcut, .rightCommand)
         XCTAssertEqual(config.ambientToggleShortcut, .ambientToggleDefault)
+        XCTAssertEqual(config.correctionShortcut, .correctionDefault)
         XCTAssertNil(config.inputDeviceID)
         XCTAssertEqual(config.silenceDetectionMode, .audioLevel)
 
@@ -118,6 +119,7 @@ final class ConfigDefaultsTests: XCTestCase {
 
         XCTAssertEqual(config.dictationShortcut, .rightCommand)
         XCTAssertEqual(config.ambientToggleShortcut, .ambientToggleDefault)
+        XCTAssertEqual(config.correctionShortcut, .correctionDefault)
         XCTAssertEqual(config.dictationPasteSettings, .defaults)
         XCTAssertEqual(config.ambientPasteSettings, .defaults)
         XCTAssertNil(config.inputDeviceID)
@@ -213,9 +215,12 @@ final class ConfigDefaultsTests: XCTestCase {
             VocabularyEntry(from: ["whisper flow"], to: "Wispr Flow"),
             VocabularyEntry(from: ["pie torch"], to: "PyTorch")
         ]
+        config.correctionShortcut = MimiShortcut(keyCode: 15, modifierFlagsRaw: 0)
         config.save(userDefaults: userDefaults)
 
-        XCTAssertEqual(MimiConfig.load(userDefaults: userDefaults).vocabulary, config.vocabulary)
+        let loaded = MimiConfig.load(userDefaults: userDefaults)
+        XCTAssertEqual(loaded.vocabulary, config.vocabulary)
+        XCTAssertEqual(loaded.correctionShortcut, config.correctionShortcut)
     }
 
     func testFillerCleanupSettingPersists() {

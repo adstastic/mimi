@@ -10,11 +10,12 @@ struct LastDictationCorrectionView: View {
 
     init(
         entry: TranscriptEntry,
+        initialCorrectedText: String? = nil,
         save: @escaping (UUID, String, [VocabularyCorrectionSuggestion]) -> Result<Void, Error>
     ) {
         self.entry = entry
         self.save = save
-        _correctedText = State(initialValue: entry.text)
+        _correctedText = State(initialValue: initialCorrectedText ?? entry.text)
     }
 
     private var corrections: [VocabularyCorrectionSuggestion] {
@@ -27,12 +28,11 @@ struct LastDictationCorrectionView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             CorrectionHeader(entry: entry)
             OriginalTranscript(text: entry.text)
             CorrectedTranscriptEditor(text: $correctedText)
-            CorrectionLearningSummary(count: corrections.count)
-            Spacer()
+            CorrectionLearningPreview(corrections: corrections)
             CorrectionFooter(
                 errorMessage: errorMessage,
                 canSave: !correctedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -110,28 +110,49 @@ private struct CorrectedTranscriptEditor: View {
                     RoundedRectangle(cornerRadius: 6)
                         .stroke(Color.primary.opacity(0.1), lineWidth: 1)
                 )
-                .frame(height: 140)
+                .frame(height: 90)
                 .accessibilityLabel("Corrected transcript")
         }
     }
 }
 
-private struct CorrectionLearningSummary: View {
-    let count: Int
+private struct CorrectionLearningPreview: View {
+    let corrections: [VocabularyCorrectionSuggestion]
 
     var body: some View {
-        Label(message, systemImage: "arrow.triangle.branch")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-    }
-
-    private var message: String {
-        if count == 0 {
-            "No word replacements detected; only corrected text will be saved."
-        } else if count == 1 {
-            "1 word-level replacement will be written to config.json."
-        } else {
-            "\(count) word-level replacements will be written to config.json."
+        VStack(alignment: .leading, spacing: 5) {
+            Text("Vocabulary preview")
+                .font(.headline)
+            if corrections.isEmpty {
+                Label(
+                    "No word replacements detected; only corrected text will be saved.",
+                    systemImage: "arrow.triangle.branch"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 5) {
+                        ForEach(corrections, id: \.self) { correction in
+                            HStack(spacing: 6) {
+                                Text(verbatim: correction.heard)
+                                    .foregroundStyle(.secondary)
+                                Image(systemName: "arrow.right")
+                                    .foregroundStyle(.tertiary)
+                                Text(verbatim: correction.written)
+                                    .fontWeight(.semibold)
+                            }
+                            .textSelection(.enabled)
+                            .accessibilityElement(children: .combine)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(height: 45)
+                Text("These word-level replacements will be written to config.json.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }

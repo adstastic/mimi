@@ -22,6 +22,11 @@ public struct MimiShortcut: Codable, Equatable, Sendable {
         modifierFlagsRaw: NSEvent.ModifierFlags([.control, .option]).rawValue
     )
 
+    public static let correctionDefault = MimiShortcut(
+        keyCode: 8, // C
+        modifierFlagsRaw: NSEvent.ModifierFlags([.control, .option]).rawValue
+    )
+
     static func legacySingleKey(keyCode: Int) -> MimiShortcut {
         MimiShortcut(
             keyCode: keyCode,
@@ -206,6 +211,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         case inputDeviceID
         case ambientModeEnabled
         case ambientToggleShortcut
+        case correctionShortcut
         case dictationPasteSettings
         case ambientPasteSettings
         case ambientPrePasteKeystroke
@@ -240,6 +246,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
     public var inputDeviceID: String?
     public var ambientModeEnabled: Bool
     public var ambientToggleShortcut: MimiShortcut
+    public var correctionShortcut: MimiShortcut
     public var dictationPasteSettings: PasteSettings
     public var ambientPasteSettings: PasteSettings
     public var showLiveTranscript: Bool
@@ -264,6 +271,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         inputDeviceID: nil,
         ambientModeEnabled: false,
         ambientToggleShortcut: .ambientToggleDefault,
+        correctionShortcut: .correctionDefault,
         dictationPasteSettings: .defaults,
         ambientPasteSettings: .defaults,
         showLiveTranscript: true,
@@ -288,6 +296,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         inputDeviceID: String? = nil,
         ambientModeEnabled: Bool,
         ambientToggleShortcut: MimiShortcut = .ambientToggleDefault,
+        correctionShortcut: MimiShortcut = .correctionDefault,
         dictationPasteSettings: PasteSettings = .defaults,
         ambientPasteSettings: PasteSettings = .defaults,
         showLiveTranscript: Bool = true,
@@ -310,6 +319,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         self.inputDeviceID = inputDeviceID
         self.ambientModeEnabled = ambientModeEnabled
         self.ambientToggleShortcut = ambientToggleShortcut
+        self.correctionShortcut = correctionShortcut
         self.dictationPasteSettings = dictationPasteSettings
         self.ambientPasteSettings = ambientPasteSettings
         self.showLiveTranscript = showLiveTranscript
@@ -336,6 +346,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         inputDeviceID = try container.decodeIfPresent(String.self, forKey: .inputDeviceID)
         ambientModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .ambientModeEnabled) ?? Self.defaults.ambientModeEnabled
         ambientToggleShortcut = try container.decodeIfPresent(MimiShortcut.self, forKey: .ambientToggleShortcut) ?? Self.defaults.ambientToggleShortcut
+        correctionShortcut = try container.decodeIfPresent(MimiShortcut.self, forKey: .correctionShortcut) ?? Self.defaults.correctionShortcut
 
         let legacyPrePasteDelay = try container.decodeIfPresent(Int.self, forKey: .prePasteKeystrokeDelayMilliseconds)
             ?? PasteSettings.defaults.prePasteDelayMilliseconds
@@ -412,6 +423,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         try container.encodeIfPresent(inputDeviceID, forKey: .inputDeviceID)
         try container.encode(ambientModeEnabled, forKey: .ambientModeEnabled)
         try container.encode(ambientToggleShortcut, forKey: .ambientToggleShortcut)
+        try container.encode(correctionShortcut, forKey: .correctionShortcut)
         try container.encode(dictationPasteSettings, forKey: .dictationPasteSettings)
         try container.encode(ambientPasteSettings, forKey: .ambientPasteSettings)
         try container.encode(ambientPasteSettings.prePasteKeystroke, forKey: .ambientPrePasteKeystroke)

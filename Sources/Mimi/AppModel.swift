@@ -14,6 +14,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var voiceprintProfileExists = false
     @Published private(set) var voiceprintBusy = false
     @Published private(set) var configErrorText: String?
+    @Published private(set) var correctionRequestID = 0
     @Published var config: MimiConfig {
         didSet {
             let normalized = config.normalizedForBackend()
@@ -43,7 +44,8 @@ final class AppModel: ObservableObject {
             }
             if !shortcutRecording,
                oldValue.dictationShortcut != config.dictationShortcut
-                || oldValue.ambientToggleShortcut != config.ambientToggleShortcut {
+                || oldValue.ambientToggleShortcut != config.ambientToggleShortcut
+                || oldValue.correctionShortcut != config.correctionShortcut {
                 restartHotkeyMonitor()
             }
         }
@@ -111,9 +113,11 @@ final class AppModel: ObservableObject {
         hotkeyMonitor = HotkeyMonitor(
             dictationShortcut: config.dictationShortcut,
             ambientToggleShortcut: config.ambientToggleShortcut,
+            correctionShortcut: config.correctionShortcut,
             onDictationDown: { [weak self] in self?.dictationController.hotkeyDown() },
             onDictationUp: { [weak self] in self?.dictationController.hotkeyUp() },
             onAmbientToggle: { [weak self] in self?.toggleAmbientModeFromShortcut() },
+            onCorrection: { [weak self] in self?.requestLastTranscriptCorrection() },
             onCancel: { [weak self] in self?.dictationController.cancelRecording() }
         )
         terminationCancellable = NotificationCenter.default
@@ -238,7 +242,8 @@ final class AppModel: ObservableObject {
     private func restartHotkeyMonitor() {
         hotkeyMonitor.update(
             dictationShortcut: config.dictationShortcut,
-            ambientToggleShortcut: config.ambientToggleShortcut
+            ambientToggleShortcut: config.ambientToggleShortcut,
+            correctionShortcut: config.correctionShortcut
         )
         guard started else { return }
         hotkeyMonitor.stop()
@@ -273,6 +278,22 @@ final class AppModel: ObservableObject {
 
     func copyLastTranscript() {
         dictationController.copyLastTranscript()
+    }
+
+    func requestLastTranscriptCorrection() {
+        guard history.latest != nil else {
+            overlay.show("Nothing to correct", detail: "Dictate something first.")
+            overlay.hide(after: 1_200)
+            return
+        }
+        correctionRequestID &+= 1
+        NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+
+    func consumeCorrectionRequest(_ requestID: Int) {
+        if correctionRequestID == requestID {
+            correctionRequestID = 0
+        }
     }
 
     func correctLastTranscript(

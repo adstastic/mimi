@@ -13,9 +13,11 @@ final class HotkeyMonitorTests: XCTestCase {
         let monitor = HotkeyMonitor(
             dictationShortcut: .rightCommand,
             ambientToggleShortcut: .ambientToggleDefault,
+            correctionShortcut: .correctionDefault,
             onDictationDown: {},
             onDictationUp: {},
             onAmbientToggle: {},
+            onCorrection: {},
             onCancel: { cancelled.fulfill() }
         )
         try monitor.start()

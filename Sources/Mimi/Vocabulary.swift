@@ -56,7 +56,7 @@ enum VocabularyValidator {
     }
 }
 
-struct VocabularyCorrectionSuggestion: Equatable {
+struct VocabularyCorrectionSuggestion: Hashable {
     let heard: String
     let written: String
 

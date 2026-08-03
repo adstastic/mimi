@@ -33,6 +33,7 @@ final class ConfigFileStoreTests: XCTestCase {
         XCTAssertNil(object["vocabularyEntries"])
         XCTAssertNil(object["hotkeyKeyCode"])
         XCTAssertNil(object["ambientStartKeystroke"])
+        XCTAssertNotNil(object["correctionShortcut"])
         let text = try String(contentsOf: fixture.configURL, encoding: .utf8)
         XCTAssertTrue(text.contains(#"    { "from" : ["nema", "neema"], "to" : "nima" }"#))
         let permissions = try FileManager.default.attributesOfItem(atPath: fixture.configURL.path)[.posixPermissions] as? NSNumber
@@ -108,6 +109,8 @@ final class ConfigFileStoreTests: XCTestCase {
             #"{"silenceDurationMilliseconds":"fast"}"#,
             #"{"silenceDetectionMode":"mystery"}"#,
             #"{"dictationShortcut":{"keyCode":-1,"modifierFlagsRaw":0}}"#,
+            #"{"correctionShortcut":{"keyCode":128,"modifierFlagsRaw":0}}"#,
+            #"{"correctionShortcut":{"keyCode":8,"modifierFlagsRaw":1}}"#,
             #"{"voiceprintThreshold":9}"#,
             #"{"vocabulary":[],"typoSetting":true}"#,
             #"{"vocabulary":[{"from":"Jason","to":"JSON"}]}"#,

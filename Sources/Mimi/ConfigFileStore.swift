@@ -1,3 +1,4 @@
+import AppKit
 import Darwin
 import Foundation
 
@@ -240,6 +241,11 @@ final class MimiConfigFileStore {
             allowed: ["keyCode", "modifierFlagsRaw"],
             path: "ambientToggleShortcut"
         )
+        try rejectUnknownKeys(
+            in: object["correctionShortcut"],
+            allowed: ["keyCode", "modifierFlagsRaw"],
+            path: "correctionShortcut"
+        )
         let pasteKeys: Set<String> = [
             "prePasteKeystroke", "postPasteKeystroke",
             "prePasteDelayMilliseconds", "postPasteDelayMilliseconds"
@@ -300,6 +306,7 @@ final class MimiConfigFileStore {
     private func validate(_ config: MimiConfig) throws {
         try validateShortcut(config.dictationShortcut, name: "dictationShortcut")
         try validateShortcut(config.ambientToggleShortcut, name: "ambientToggleShortcut")
+        try validateShortcut(config.correctionShortcut, name: "correctionShortcut")
         try validateShortcut(config.dictationPasteSettings.prePasteKeystroke, name: "dictationPasteSettings.prePasteKeystroke")
         try validateShortcut(config.dictationPasteSettings.postPasteKeystroke, name: "dictationPasteSettings.postPasteKeystroke")
         try validateShortcut(config.ambientPasteSettings.prePasteKeystroke, name: "ambientPasteSettings.prePasteKeystroke")
@@ -330,6 +337,10 @@ final class MimiConfigFileStore {
     private func validateShortcut(_ shortcut: MimiShortcut?, name: String) throws {
         guard let shortcut else { return }
         try require((0 ... 127).contains(shortcut.keyCode), "\(name).keyCode must be between 0 and 127.")
+        try require(
+            shortcut.modifierFlags.rawValue == shortcut.modifierFlagsRaw,
+            "\(name).modifierFlagsRaw contains unsupported flags."
+        )
     }
 
     private func require(_ condition: Bool, _ message: String) throws {
@@ -376,6 +387,7 @@ private struct CanonicalMimiConfig: Encodable {
         case inputDeviceID
         case ambientModeEnabled
         case ambientToggleShortcut
+        case correctionShortcut
         case dictationPasteSettings
         case ambientPasteSettings
         case showLiveTranscript
@@ -400,6 +412,7 @@ private struct CanonicalMimiConfig: Encodable {
         try container.encodeIfPresent(config.inputDeviceID, forKey: .inputDeviceID)
         try container.encode(config.ambientModeEnabled, forKey: .ambientModeEnabled)
         try container.encode(config.ambientToggleShortcut, forKey: .ambientToggleShortcut)
+        try container.encode(config.correctionShortcut, forKey: .correctionShortcut)
         try container.encode(config.dictationPasteSettings, forKey: .dictationPasteSettings)
         try container.encode(config.ambientPasteSettings, forKey: .ambientPasteSettings)
         try container.encode(config.showLiveTranscript, forKey: .showLiveTranscript)

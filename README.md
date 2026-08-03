@@ -16,7 +16,7 @@ Current usable path:
 - menu bar app with a full settings window available on demand
 - bottom recording overlay with live partials for Apple SpeechTranscriber
 - transcript stays copied to clipboard after dictation
-- latest-transcript correction that learns separate word-level vocabulary replacements
+- latest-transcript correction from menu bar or configurable global shortcut (default Control-Option-C), with vocabulary-rule preview
 - canonical user-editable config at `~/.config/mimi/config.json`
 - no telemetry, no cloud app service
 
