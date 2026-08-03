@@ -4,9 +4,9 @@ import XCTest
 final class VocabularyCorrectorTests: XCTestCase {
     func testCorrectsAliasesAndCanonicalCasing() {
         let entries = [
-            VocabularyEntry(writtenForm: "Wispr Flow", spokenAliases: ["whisper flow"]),
-            VocabularyEntry(writtenForm: "PyTorch", spokenAliases: ["pie torch"]),
-            VocabularyEntry(writtenForm: "API")
+            VocabularyEntry(from: ["whisper flow"], to: "Wispr Flow"),
+            VocabularyEntry(from: ["pie torch"], to: "PyTorch"),
+            VocabularyEntry(from: [], to: "API")
         ]
 
         let corrected = VocabularyCorrector.correct(
@@ -19,10 +19,10 @@ final class VocabularyCorrectorTests: XCTestCase {
 
     func testUsesLeftmostLongestNonOverlappingMatch() {
         let entries = [
-            VocabularyEntry(writtenForm: "Flow", spokenAliases: ["whisper"]),
-            VocabularyEntry(writtenForm: "Wispr Flow", spokenAliases: ["whisper flow"]),
-            VocabularyEntry(writtenForm: "New York", spokenAliases: ["new york"]),
-            VocabularyEntry(writtenForm: "York City", spokenAliases: ["york city"])
+            VocabularyEntry(from: ["whisper"], to: "Flow"),
+            VocabularyEntry(from: ["whisper flow"], to: "Wispr Flow"),
+            VocabularyEntry(from: ["new york"], to: "New York"),
+            VocabularyEntry(from: ["york city"], to: "York City")
         ]
 
         XCTAssertEqual(
@@ -36,7 +36,7 @@ final class VocabularyCorrectorTests: XCTestCase {
     }
 
     func testRequiresUnicodeWholeBoundaries() {
-        let entries = [VocabularyEntry(writtenForm: "API")]
+        let entries = [VocabularyEntry(from: [], to: "API")]
 
         let corrected = VocabularyCorrector.correct(
             "api myapi2 _api api_client api's api.",
@@ -48,8 +48,8 @@ final class VocabularyCorrectorTests: XCTestCase {
 
     func testMatchesUnicodeNormalizationAndCaseFolding() {
         let entries = [
-            VocabularyEntry(writtenForm: "CaféKit", spokenAliases: ["café kit"]),
-            VocabularyEntry(writtenForm: "Straße")
+            VocabularyEntry(from: ["café kit"], to: "CaféKit"),
+            VocabularyEntry(from: [], to: "Straße")
         ]
 
         let corrected = VocabularyCorrector.correct(
@@ -62,9 +62,9 @@ final class VocabularyCorrectorTests: XCTestCase {
 
     func testSupportsTechnicalPunctuation() {
         let entries = [
-            VocabularyEntry(writtenForm: "C++", spokenAliases: ["c plus plus"]),
-            VocabularyEntry(writtenForm: ".NET", spokenAliases: ["dot net"]),
-            VocabularyEntry(writtenForm: "Node.js", spokenAliases: ["node dot js"])
+            VocabularyEntry(from: ["c plus plus"], to: "C++"),
+            VocabularyEntry(from: ["dot net"], to: ".NET"),
+            VocabularyEntry(from: ["node dot js"], to: "Node.js")
         ]
 
         let corrected = VocabularyCorrector.correct(
@@ -77,10 +77,10 @@ final class VocabularyCorrectorTests: XCTestCase {
 
     func testRunsOnePassAndSkipsConflictingKeys() {
         let entries = [
-            VocabularyEntry(writtenForm: "Beta", spokenAliases: ["alpha"]),
-            VocabularyEntry(writtenForm: "Gamma", spokenAliases: ["beta"]),
-            VocabularyEntry(writtenForm: "First", spokenAliases: ["shared"]),
-            VocabularyEntry(writtenForm: "Second", spokenAliases: ["shared"])
+            VocabularyEntry(from: ["alpha"], to: "Beta"),
+            VocabularyEntry(from: ["beta"], to: "Gamma"),
+            VocabularyEntry(from: ["shared"], to: "First"),
+            VocabularyEntry(from: ["shared"], to: "Second")
         ]
 
         XCTAssertEqual(
@@ -89,43 +89,46 @@ final class VocabularyCorrectorTests: XCTestCase {
         )
     }
 
-    func testIgnoresDisabledAndEmptyEntries() {
+    func testIgnoresEmptyTargetsAndSourcesDefensively() {
         let entries = [
-            VocabularyEntry(writtenForm: "PyTorch", spokenAliases: ["pie torch"], isEnabled: false),
-            VocabularyEntry(writtenForm: "  ", spokenAliases: ["ignored"]),
-            VocabularyEntry(writtenForm: "Kubernetes", spokenAliases: ["", "kube er net ease"])
+            VocabularyEntry(from: ["ignored"], to: "  "),
+            VocabularyEntry(from: ["", "kube er net ease"], to: "Kubernetes")
         ]
 
         XCTAssertEqual(
-            VocabularyCorrector.correct("pie torch ignored kube er net ease", entries: entries),
-            "pie torch ignored Kubernetes"
+            VocabularyCorrector.correct("ignored kube er net ease", entries: entries),
+            "ignored Kubernetes"
         )
     }
 
     func testValidationRejectsEmptyAndConflictingEntries() {
         XCTAssertEqual(
-            VocabularyValidator.validate([VocabularyEntry(writtenForm: "  ")]),
-            .emptyWrittenForm
+            VocabularyValidator.validate([VocabularyEntry(from: [], to: "  ")]),
+            .emptyTarget
+        )
+        XCTAssertEqual(
+            VocabularyValidator.validate([VocabularyEntry(from: [""], to: "PyTorch")]),
+            .emptySource
         )
 
         let conflict = VocabularyValidator.validate([
-            VocabularyEntry(writtenForm: "CaféKit", spokenAliases: ["café kit"]),
-            VocabularyEntry(writtenForm: "Other", spokenAliases: ["CAFE\u{301} KIT"])
+            VocabularyEntry(from: ["café kit"], to: "CaféKit"),
+            VocabularyEntry(from: ["CAFE\u{301} KIT"], to: "Other")
         ])
         XCTAssertEqual(
             conflict,
-            .conflictingPhrase("CAFE\u{301} KIT", firstWrittenForm: "CaféKit", secondWrittenForm: "Other")
+            .conflictingPhrase("CAFE\u{301} KIT", firstTarget: "CaféKit", secondTarget: "Other")
         )
     }
 
     func testValidationAllowsDuplicateKeysWithinOneEntry() {
         XCTAssertNil(VocabularyValidator.validate([
-            VocabularyEntry(writtenForm: "PyTorch", spokenAliases: ["pytorch", "PYTORCH", "pie torch"])
+            VocabularyEntry(from: ["pytorch", "PYTORCH", "pie torch"], to: "PyTorch")
         ]))
     }
 
     func testPreservesUntouchedTextExactly() {
-        let entries = [VocabularyEntry(writtenForm: "PyTorch", spokenAliases: ["pie torch"])]
+        let entries = [VocabularyEntry(from: ["pie torch"], to: "PyTorch")]
         let source = "  First:\tpie torch!\nThen pie torch?  "
 
         XCTAssertEqual(

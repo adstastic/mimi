@@ -6,12 +6,8 @@ final class ConfigFileStoreTests: XCTestCase {
     func testMissingFileMigratesLegacyConfigAndVocabulary() throws {
         let fixture = try Fixture()
         defer { fixture.cleanup() }
-        var legacy = MimiConfig.defaults
-        legacy.vocabularyEntries = [
-            VocabularyEntry(writtenForm: "JSON", spokenAliases: ["Jason"]),
-            VocabularyEntry(writtenForm: "config", spokenAliases: ["convict"])
-        ]
-        legacy.save(userDefaults: fixture.defaults)
+        let legacyData = Data(#"{"vocabularyEntries":[{"id":"00000000-0000-0000-0000-000000000001","writtenForm":"nima","spokenAliases":["nema","neema"],"isEnabled":true},{"id":"00000000-0000-0000-0000-000000000002","writtenForm":"ignored","spokenAliases":["disabled"],"isEnabled":false}]}"#.utf8)
+        fixture.defaults.set(legacyData, forKey: "MimiConfig.v1")
 
         let store = MimiConfigFileStore(
             fileURL: fixture.configURL,
@@ -19,13 +15,22 @@ final class ConfigFileStoreTests: XCTestCase {
         )
         let loaded = store.loadInitial()
 
-        XCTAssertEqual(loaded.vocabularyEntries, legacy.vocabularyEntries)
+        XCTAssertEqual(
+            loaded.vocabulary,
+            [VocabularyEntry(from: ["nema", "neema"], to: "nima")]
+        )
         XCTAssertTrue(store.isWritable)
         XCTAssertNil(store.errorDescription)
         let object = try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(contentsOf: fixture.configURL)) as? [String: Any]
         )
-        XCTAssertEqual((object["vocabularyEntries"] as? [[String: Any]])?.count, 2)
+        let vocabulary = try XCTUnwrap(object["vocabulary"] as? [[String: Any]])
+        XCTAssertEqual(vocabulary.count, 1)
+        XCTAssertEqual(vocabulary[0]["from"] as? [String], ["nema", "neema"])
+        XCTAssertEqual(vocabulary[0]["to"] as? String, "nima")
+        XCTAssertNil(vocabulary[0]["id"])
+        XCTAssertNil(vocabulary[0]["isEnabled"])
+        XCTAssertNil(object["vocabularyEntries"])
         XCTAssertNil(object["hotkeyKeyCode"])
         XCTAssertNil(object["ambientStartKeystroke"])
         let permissions = try FileManager.default.attributesOfItem(atPath: fixture.configURL.path)[.posixPermissions] as? NSNumber
@@ -40,7 +45,7 @@ final class ConfigFileStoreTests: XCTestCase {
             legacyDefaults: fixture.defaults
         )
         _ = store.loadInitial()
-        let manualData = Data(#"{"vocabularyEntries":[]}"#.utf8)
+        let manualData = Data(#"{"vocabulary":[]}"#.utf8)
         try manualData.write(to: fixture.configURL, options: .atomic)
 
         XCTAssertThrowsError(try store.save(.defaults))
@@ -56,7 +61,7 @@ final class ConfigFileStoreTests: XCTestCase {
         let fixture = try Fixture()
         defer { fixture.cleanup() }
         var lastGood = MimiConfig.defaults
-        lastGood.vocabularyEntries = [VocabularyEntry(writtenForm: "mimi", spokenAliases: ["Shimi"])]
+        lastGood.vocabulary = [VocabularyEntry(from: ["Shimi"], to: "mimi")]
         lastGood.save(userDefaults: fixture.defaults)
         let invalidData = Data(#"{"preferredBackend": "broken"}"#.utf8)
         try invalidData.write(to: fixture.configURL)
@@ -67,7 +72,7 @@ final class ConfigFileStoreTests: XCTestCase {
         )
         let loaded = store.loadInitial()
 
-        XCTAssertEqual(loaded.vocabularyEntries, lastGood.vocabularyEntries)
+        XCTAssertEqual(loaded.vocabulary, lastGood.vocabulary)
         XCTAssertFalse(store.isWritable)
         XCTAssertNotNil(store.errorDescription)
         XCTAssertThrowsError(try store.save(.defaults))
@@ -79,8 +84,13 @@ final class ConfigFileStoreTests: XCTestCase {
 
         XCTAssertTrue(store.isWritable)
         XCTAssertNil(store.errorDescription)
-        XCTAssertEqual(reloaded.vocabularyEntries.map(\.writtenForm), ["PyTorch"])
+        XCTAssertEqual(reloaded.vocabulary, [VocabularyEntry(from: ["pie torch"], to: "PyTorch")])
         XCTAssertEqual(reloaded.preferredBackend, MimiConfig.defaults.preferredBackend)
+        let migratedObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: fixture.configURL)) as? [String: Any]
+        )
+        XCTAssertNotNil(migratedObject["vocabulary"])
+        XCTAssertNil(migratedObject["vocabularyEntries"])
     }
 
     func testWrongTypesRangesAndUnknownKeysAreRejectedWithoutOverwrite() throws {
@@ -97,7 +107,11 @@ final class ConfigFileStoreTests: XCTestCase {
             #"{"silenceDetectionMode":"mystery"}"#,
             #"{"dictationShortcut":{"keyCode":-1,"modifierFlagsRaw":0}}"#,
             #"{"voiceprintThreshold":9}"#,
-            #"{"vocabularyEntries":[],"typoSetting":true}"#,
+            #"{"vocabulary":[],"typoSetting":true}"#,
+            #"{"vocabulary":[{"from":"Jason","to":"JSON"}]}"#,
+            #"{"vocabulary":[{"from":["Jason"],"to":"JSON","id":"legacy"}]}"#,
+            #"{"vocabulary":[{"from":[""],"to":"JSON"}]}"#,
+            #"{"vocabulary":[],"vocabularyEntries":[]}"#,
             #"{"dictationPasteSettings":{"unexpected":true}}"#,
             #"{"dictationPasteSettings":{"prePasteKeystroke":{"keyCode":36,"modifierFlagsRaw":0,"unexpected":true}}}"#
         ] {

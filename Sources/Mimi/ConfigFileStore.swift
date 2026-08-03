@@ -34,9 +34,12 @@ final class MimiConfigFileStore {
         }
 
         do {
-            let (config, data) = try read()
+            let (config, data, needsVocabularyMigration) = try read()
             lastKnownData = data
             config.save(userDefaults: legacyDefaults)
+            if needsVocabularyMigration {
+                try write(config)
+            }
             isWritable = true
             errorDescription = nil
             return config
@@ -48,9 +51,12 @@ final class MimiConfigFileStore {
 
     func reload() throws -> MimiConfig {
         do {
-            let (config, data) = try read()
+            let (config, data, needsVocabularyMigration) = try read()
             lastKnownData = data
             config.save(userDefaults: legacyDefaults)
+            if needsVocabularyMigration {
+                try write(config)
+            }
             isWritable = true
             errorDescription = nil
             return config
@@ -73,16 +79,16 @@ final class MimiConfigFileStore {
         }
     }
 
-    private func read() throws -> (MimiConfig, Data) {
+    private func read() throws -> (MimiConfig, Data, Bool) {
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             throw MimiConfigFileError.invalid("Config file is missing: \(fileURL.path)")
         }
         let data = try Data(contentsOf: fileURL)
-        try rejectUnknownKeys(in: data)
+        let needsVocabularyMigration = try rejectUnknownKeys(in: data)
         do {
             let config = try JSONDecoder().decode(MimiConfig.self, from: data)
             try validate(config)
-            return (config, data)
+            return (config, data, needsVocabularyMigration)
         } catch let error as MimiConfigFileError {
             throw error
         } catch {
@@ -186,11 +192,20 @@ final class MimiConfigFileStore {
         errorDescription = error.localizedDescription
     }
 
-    private func rejectUnknownKeys(in data: Data) throws {
+    private func rejectUnknownKeys(in data: Data) throws -> Bool {
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw MimiConfigFileError.invalid("Config root must be a JSON object.")
         }
-        try rejectUnknownKeys(in: object, allowed: CanonicalMimiConfig.keys, path: "config")
+        let hasVocabulary = object["vocabulary"] != nil
+        let hasLegacyVocabulary = object["vocabularyEntries"] != nil
+        guard !hasVocabulary || !hasLegacyVocabulary else {
+            throw MimiConfigFileError.invalid("Use vocabulary, not both vocabulary and vocabularyEntries.")
+        }
+        try rejectUnknownKeys(
+            in: object,
+            allowed: CanonicalMimiConfig.keys.union(["vocabularyEntries"]),
+            path: "config"
+        )
         try rejectUnknownKeys(
             in: object["dictationShortcut"],
             allowed: ["keyCode", "modifierFlagsRaw"],
@@ -207,6 +222,15 @@ final class MimiConfigFileStore {
         ]
         try rejectUnknownPasteKeys(in: object["dictationPasteSettings"], allowed: pasteKeys, path: "dictationPasteSettings")
         try rejectUnknownPasteKeys(in: object["ambientPasteSettings"], allowed: pasteKeys, path: "ambientPasteSettings")
+        if let entries = object["vocabulary"] as? [Any] {
+            for (index, entry) in entries.enumerated() {
+                try rejectUnknownKeys(
+                    in: entry,
+                    allowed: ["from", "to"],
+                    path: "vocabulary[\(index)]"
+                )
+            }
+        }
         if let entries = object["vocabularyEntries"] as? [Any] {
             for (index, entry) in entries.enumerated() {
                 try rejectUnknownKeys(
@@ -220,6 +244,7 @@ final class MimiConfigFileStore {
            SilenceDetectionMode(rawValue: rawMode) == nil {
             throw MimiConfigFileError.invalid("Invalid silenceDetectionMode: \(rawMode)")
         }
+        return hasLegacyVocabulary
     }
 
     private func rejectUnknownPasteKeys(in value: Any?, allowed: Set<String>, path: String) throws {
@@ -273,7 +298,7 @@ final class MimiConfigFileStore {
             !config.ambientModeEnabled || config.preferredBackend.capabilities.supportsAmbient,
             "ambientModeEnabled is unsupported by preferredBackend."
         )
-        if let error = VocabularyValidator.validate(config.vocabularyEntries) {
+        if let error = VocabularyValidator.validate(config.vocabulary) {
             throw MimiConfigFileError.invalid(error.localizedDescription)
         }
     }
@@ -331,7 +356,7 @@ private struct CanonicalMimiConfig: Encodable {
         case ambientPasteSettings
         case showLiveTranscript
         case fillerCleanupEnabled
-        case vocabularyEntries
+        case vocabulary
         case voiceprintEnabled
         case voiceprintThreshold
         case modelDownloadEnabled
@@ -355,7 +380,7 @@ private struct CanonicalMimiConfig: Encodable {
         try container.encode(config.ambientPasteSettings, forKey: .ambientPasteSettings)
         try container.encode(config.showLiveTranscript, forKey: .showLiveTranscript)
         try container.encode(config.fillerCleanupEnabled, forKey: .fillerCleanupEnabled)
-        try container.encode(config.vocabularyEntries, forKey: .vocabularyEntries)
+        try container.encode(config.vocabulary, forKey: .vocabulary)
         try container.encode(config.voiceprintEnabled, forKey: .voiceprintEnabled)
         try container.encode(config.voiceprintThreshold, forKey: .voiceprintThreshold)
         try container.encode(config.modelDownloadEnabled, forKey: .modelDownloadEnabled)

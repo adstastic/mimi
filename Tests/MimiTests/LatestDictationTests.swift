@@ -142,8 +142,8 @@ final class LatestDictationTests: XCTestCase {
         XCTAssertFalse(VocabularyCorrector.contains(phrase: "mimi", in: "Shimi uses pie torch"))
     }
 
-    func testAddingCorrectionMergesAliasIntoExistingWrittenForm() throws {
-        let original = [VocabularyEntry(writtenForm: "PyTorch", spokenAliases: ["pi torch"])]
+    func testAddingCorrectionMergesSourceIntoExistingTarget() throws {
+        let original = [VocabularyEntry(from: ["pi torch"], to: "PyTorch")]
         let updated = try VocabularyEntryUpdater.addingCorrection(
             heard: "pie torch",
             written: "PyTorch",
@@ -151,7 +151,7 @@ final class LatestDictationTests: XCTestCase {
         )
 
         XCTAssertEqual(updated.count, 1)
-        XCTAssertEqual(updated[0].spokenAliases, ["pi torch", "pie torch"])
+        XCTAssertEqual(updated[0].from, ["pi torch", "pie torch"])
     }
 
     func testAddingMultipleCorrectionsCreatesSeparateRules() throws {
@@ -162,12 +162,12 @@ final class LatestDictationTests: XCTestCase {
 
         let updated = try VocabularyEntryUpdater.addingCorrections(corrections, to: [])
 
-        XCTAssertEqual(updated.map(\.writtenForm), ["PyTorch", "Wispr Flow"])
-        XCTAssertEqual(updated.map(\.spokenAliases), [["pie torch"], ["whisper flow"]])
+        XCTAssertEqual(updated.map(\.to), ["PyTorch", "Wispr Flow"])
+        XCTAssertEqual(updated.map(\.from), [["pie torch"], ["whisper flow"]])
     }
 
     func testAddingCorrectionRejectsConflictingAlias() {
-        let original = [VocabularyEntry(writtenForm: "Pie Torch", spokenAliases: ["pie torch"])]
+        let original = [VocabularyEntry(from: ["pie torch"], to: "Pie Torch")]
 
         XCTAssertThrowsError(try VocabularyEntryUpdater.addingCorrection(
             heard: "pie torch",

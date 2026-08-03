@@ -794,9 +794,9 @@ final class AmbientCrashRegressionTests: XCTestCase {
             config.silenceAutoStopEnabled = false
             config.voiceprintEnabled = false
             config.dictationPasteSettings.postPasteKeystroke = nil
-            config.vocabularyEntries = [
-                VocabularyEntry(writtenForm: "Wispr Flow", spokenAliases: ["whisper flow"]),
-                VocabularyEntry(writtenForm: "PyTorch", spokenAliases: ["pie torch"])
+            config.vocabulary = [
+                VocabularyEntry(from: ["whisper flow"], to: "Wispr Flow"),
+                VocabularyEntry(from: ["pie torch"], to: "PyTorch")
             ]
             asr.appleFinalText = "Um, whisper flow uses pie torch."
             asr.batchFinalText = "Um, whisper flow uses pie torch."

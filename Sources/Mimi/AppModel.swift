@@ -287,9 +287,9 @@ final class AppModel: ObservableObject {
         do {
             if !corrections.isEmpty {
                 var updatedConfig = config
-                updatedConfig.vocabularyEntries = try VocabularyEntryUpdater.addingCorrections(
+                updatedConfig.vocabulary = try VocabularyEntryUpdater.addingCorrections(
                     corrections,
-                    to: config.vocabularyEntries
+                    to: config.vocabulary
                 )
                 try configStore.save(updatedConfig)
                 isApplyingConfigReload = true

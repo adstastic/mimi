@@ -518,7 +518,7 @@ final class DictationController {
             )
             guard recordingGeneration == generation else { return }
             let cleanedText = transcriptText(rawText, config: plan.config)
-            let text = VocabularyCorrector.correct(cleanedText, entries: plan.config.vocabularyEntries)
+            let text = VocabularyCorrector.correct(cleanedText, entries: plan.config.vocabulary)
             guard !text.isEmpty else {
                 throw NSError(domain: AppBrand.noSpeechErrorDomain, code: 1, userInfo: [NSLocalizedDescriptionKey: "No speech detected."])
             }

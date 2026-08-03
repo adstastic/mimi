@@ -28,20 +28,24 @@ Mimi reads and atomically writes `~/.config/mimi/config.json`. On first launch i
 
 Missing keys use defaults. Unknown keys, wrong types, invalid ranges, and conflicting vocabulary aliases reject reload; Mimi keeps its last-good configuration and does not overwrite the invalid file.
 
-Vocabulary entries use exact written output plus observed aliases:
+Vocabulary pairs group observed forms under exact output:
 
 ```json
 {
-  "vocabularyEntries": [
+  "vocabulary": [
     {
-      "id": "00000000-0000-0000-0000-000000000001",
-      "writtenForm": "JSON",
-      "spokenAliases": ["Jason"],
-      "isEnabled": true
+      "from": ["Jason"],
+      "to": "JSON"
+    },
+    {
+      "from": ["nema", "neema"],
+      "to": "nima"
     }
   ]
 }
 ```
+
+`to` also acts as a case-insensitive self-alias, preserving canonical casing. Delete a pairing to disable it.
 
 Correcting the latest transcript learns each separate replacement across multiple sentences. Insertions, deletions, and punctuation-only edits do not create vocabulary rules.
 

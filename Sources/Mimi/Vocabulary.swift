@@ -1,61 +1,55 @@
 import Foundation
 
-public struct VocabularyEntry: Codable, Equatable, Identifiable, Sendable {
-    public var id: UUID
-    public var writtenForm: String
-    public var spokenAliases: [String]
-    public var isEnabled: Bool
+public struct VocabularyEntry: Codable, Equatable, Sendable {
+    public var from: [String]
+    public var to: String
 
-    public init(
-        id: UUID = UUID(),
-        writtenForm: String,
-        spokenAliases: [String] = [],
-        isEnabled: Bool = true
-    ) {
-        self.id = id
-        self.writtenForm = writtenForm
-        self.spokenAliases = spokenAliases
-        self.isEnabled = isEnabled
+    public init(from: [String], to: String) {
+        self.from = from
+        self.to = to
     }
 }
 
 enum VocabularyValidationError: LocalizedError, Equatable {
-    case emptyWrittenForm
-    case conflictingPhrase(String, firstWrittenForm: String, secondWrittenForm: String)
+    case emptySource
+    case emptyTarget
+    case conflictingPhrase(String, firstTarget: String, secondTarget: String)
 
     var errorDescription: String? {
         switch self {
-        case .emptyWrittenForm:
-            "Both vocabulary forms are required."
+        case .emptySource:
+            "Vocabulary source phrases cannot be empty."
+        case .emptyTarget:
+            "Vocabulary target cannot be empty."
         case .conflictingPhrase(let phrase, let first, let second):
-            "“\(phrase)” is already used by “\(first)” and “\(second)”."
+            "“\(phrase)” is already mapped to both “\(first)” and “\(second)”."
         }
     }
 }
 
 enum VocabularyValidator {
     static func validate(_ entries: [VocabularyEntry]) -> VocabularyValidationError? {
-        var owners: [String: (entryIndex: Int, writtenForm: String)] = [:]
+        var owners: [String: (entryIndex: Int, target: String)] = [:]
 
         for (entryIndex, entry) in entries.enumerated() {
-            let writtenForm = entry.writtenForm.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !writtenForm.isEmpty else { return .emptyWrittenForm }
+            let target = entry.to.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !target.isEmpty else { return .emptyTarget }
             var ownKeys: Set<String> = []
 
-            for source in [writtenForm] + entry.spokenAliases {
+            for source in [target] + entry.from {
                 let phrase = source.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !phrase.isEmpty else { continue }
+                guard !phrase.isEmpty else { return .emptySource }
                 let key = VocabularyComparison.key(phrase)
                 guard !key.isEmpty, ownKeys.insert(key).inserted else { continue }
 
                 if let owner = owners[key], owner.entryIndex != entryIndex {
                     return .conflictingPhrase(
                         phrase,
-                        firstWrittenForm: owner.writtenForm,
-                        secondWrittenForm: writtenForm
+                        firstTarget: owner.target,
+                        secondTarget: target
                     )
                 }
-                owners[key] = (entryIndex, writtenForm)
+                owners[key] = (entryIndex, target)
             }
         }
         return nil
@@ -301,24 +295,20 @@ enum VocabularyEntryUpdater {
     ) throws -> [VocabularyEntry] {
         let heard = heard.trimmingCharacters(in: .whitespacesAndNewlines)
         let written = written.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !heard.isEmpty, !written.isEmpty else {
-            throw VocabularyValidationError.emptyWrittenForm
-        }
+        guard !heard.isEmpty else { throw VocabularyValidationError.emptySource }
+        guard !written.isEmpty else { throw VocabularyValidationError.emptyTarget }
 
         var updated = entries
         let writtenKey = VocabularyComparison.key(written)
         if let index = updated.firstIndex(where: {
-            VocabularyComparison.key($0.writtenForm.trimmingCharacters(in: .whitespacesAndNewlines)) == writtenKey
+            VocabularyComparison.key($0.to.trimmingCharacters(in: .whitespacesAndNewlines)) == writtenKey
         }) {
-            updated[index].isEnabled = true
-            let existingKeys = Set(
-                ([updated[index].writtenForm] + updated[index].spokenAliases).map(VocabularyComparison.key)
-            )
+            let existingKeys = Set(([updated[index].to] + updated[index].from).map(VocabularyComparison.key))
             if !existingKeys.contains(VocabularyComparison.key(heard)) {
-                updated[index].spokenAliases.append(heard)
+                updated[index].from.append(heard)
             }
         } else {
-            updated.append(VocabularyEntry(writtenForm: written, spokenAliases: [heard]))
+            updated.append(VocabularyEntry(from: [heard], to: written))
         }
 
         if let error = VocabularyValidator.validate(updated) {
@@ -387,11 +377,11 @@ enum VocabularyCorrector {
         var owners: [String: (entryIndex: Int, replacement: String)] = [:]
         var conflicts: Set<String> = []
 
-        for (entryIndex, entry) in entries.enumerated() where entry.isEnabled {
-            let replacement = entry.writtenForm.trimmingCharacters(in: .whitespacesAndNewlines)
+        for (entryIndex, entry) in entries.enumerated() {
+            let replacement = entry.to.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !replacement.isEmpty else { continue }
 
-            for source in [replacement] + entry.spokenAliases {
+            for source in [replacement] + entry.from {
                 let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { continue }
                 let key = VocabularyComparison.key(trimmed)
