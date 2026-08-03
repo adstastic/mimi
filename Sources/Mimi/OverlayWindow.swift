@@ -169,9 +169,13 @@ private struct LevelMeter: View {
             shouldDrawSilencePadding: true
         )
         .onChange(of: level, initial: true) { _, level in
-            let normalizedLevel = min(1, max(0, (level + 60) / 42))
-            let sample = 1 - Float(normalizedLevel * normalizedLevel)
+            let sample = 1 - waveformAmplitude(for: level)
             samples.append(contentsOf: repeatElement(sample, count: 12))
         }
     }
+}
+
+func waveformAmplitude(for level: Double) -> Float {
+    let normalizedLevel = min(1, max(0, (level + 60) / 42))
+    return 0.08 + Float(normalizedLevel) * 0.92
 }

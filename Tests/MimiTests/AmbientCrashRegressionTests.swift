@@ -908,6 +908,16 @@ final class AmbientCrashRegressionTests: XCTestCase {
         controller.cancelRecording()
     }
 
+    func testWaveformAdvancesAtItsFloorWithoutFlatteningSpeechContrast() {
+        let floor = waveformAmplitude(for: -120)
+        let background = waveformAmplitude(for: -58)
+        let speech = waveformAmplitude(for: -27)
+
+        XCTAssertGreaterThanOrEqual(floor, 0.08, "The waveform floor should remain visibly populated.")
+        XCTAssertGreaterThan(background, floor, "Background variation should remain visible above the floor.")
+        XCTAssertGreaterThan(speech - background, 0.5, "Speech should remain visually distinct from background.")
+    }
+
     func testLiveTranscriptUsesSameFillerCleanupAsFinalText() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
