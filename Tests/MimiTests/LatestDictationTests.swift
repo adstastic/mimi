@@ -166,13 +166,21 @@ final class LatestDictationTests: XCTestCase {
         XCTAssertEqual(updated.map(\.from), [["pie torch"], ["whisper flow"]])
     }
 
-    func testAddingCorrectionRejectsConflictingAlias() {
-        let original = [VocabularyEntry(from: ["pie torch"], to: "Pie Torch")]
+    func testAddingMultipleCorrectionsReplaceConflictingExistingRules() throws {
+        let original = [
+            VocabularyEntry(from: ["get hub"], to: "Git Hub"),
+            VocabularyEntry(from: ["herder"], to: "Herder")
+        ]
+        let corrections = [
+            VocabularyCorrectionSuggestion(heard: "Git Hub", written: "GitHub"),
+            VocabularyCorrectionSuggestion(heard: "Herder", written: "Herdr")
+        ]
 
-        XCTAssertThrowsError(try VocabularyEntryUpdater.addingCorrection(
-            heard: "pie torch",
-            written: "PyTorch",
-            to: original
-        ))
+        let updated = try VocabularyEntryUpdater.addingCorrections(corrections, to: original)
+
+        XCTAssertEqual(updated, [
+            VocabularyEntry(from: ["get hub", "Git Hub"], to: "GitHub"),
+            VocabularyEntry(from: ["herder"], to: "Herdr")
+        ])
     }
 }

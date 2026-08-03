@@ -298,23 +298,75 @@ enum VocabularyEntryUpdater {
         guard !heard.isEmpty else { throw VocabularyValidationError.emptySource }
         guard !written.isEmpty else { throw VocabularyValidationError.emptyTarget }
 
-        var updated = entries
+        let heardKey = VocabularyComparison.key(heard)
         let writtenKey = VocabularyComparison.key(written)
-        if let index = updated.firstIndex(where: {
-            VocabularyComparison.key($0.to.trimmingCharacters(in: .whitespacesAndNewlines)) == writtenKey
-        }) {
-            let existingKeys = Set(([updated[index].to] + updated[index].from).map(VocabularyComparison.key))
-            if !existingKeys.contains(VocabularyComparison.key(heard)) {
-                updated[index].from.append(heard)
+        var updated = entries
+        let ownerIndex: (String) -> Int? = { key in
+            updated.firstIndex { entry in
+                ([entry.to] + entry.from).contains {
+                    VocabularyComparison.key($0.trimmingCharacters(in: .whitespacesAndNewlines)) == key
+                }
             }
-        } else {
+        }
+        let sourceIndex = ownerIndex(heardKey)
+        let sourceIsTarget = sourceIndex.map {
+            VocabularyComparison.key(updated[$0].to.trimmingCharacters(in: .whitespacesAndNewlines)) == heardKey
+        } ?? false
+        var destinationIndex = ownerIndex(writtenKey)
+
+        if let index = destinationIndex {
+            let oldTarget = updated[index].to
+            updated[index].to = written
+            updated[index].from = uniqueAliases(
+                updated[index].from + [oldTarget],
+                excluding: writtenKey
+            )
+        }
+
+        if let sourceIndex, sourceIndex != destinationIndex {
+            if sourceIsTarget, let destinationIndex {
+                let source = updated.remove(at: sourceIndex)
+                let adjustedDestination = sourceIndex < destinationIndex ? destinationIndex - 1 : destinationIndex
+                updated[adjustedDestination].from = uniqueAliases(
+                    updated[adjustedDestination].from + [source.to] + source.from,
+                    excluding: writtenKey
+                )
+            } else if sourceIsTarget {
+                let oldTarget = updated[sourceIndex].to
+                updated[sourceIndex].to = written
+                updated[sourceIndex].from = uniqueAliases(
+                    updated[sourceIndex].from + [oldTarget],
+                    excluding: writtenKey
+                )
+                destinationIndex = sourceIndex
+            } else {
+                updated[sourceIndex].from.removeAll {
+                    VocabularyComparison.key($0.trimmingCharacters(in: .whitespacesAndNewlines)) == heardKey
+                }
+            }
+        }
+
+        if destinationIndex == nil {
             updated.append(VocabularyEntry(from: [heard], to: written))
+        } else if !sourceIsTarget, let destinationIndex {
+            updated[destinationIndex].from = uniqueAliases(
+                updated[destinationIndex].from + [heard],
+                excluding: writtenKey
+            )
         }
 
         if let error = VocabularyValidator.validate(updated) {
             throw error
         }
         return updated
+    }
+
+    private static func uniqueAliases(_ phrases: [String], excluding targetKey: String) -> [String] {
+        var seen = Set([targetKey])
+        return phrases.filter {
+            let key = VocabularyComparison.key($0.trimmingCharacters(in: .whitespacesAndNewlines))
+            return !key.isEmpty && seen.insert(key).inserted
+        }
     }
 }
 
