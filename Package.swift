@@ -11,7 +11,8 @@ let package = Package(
         .executable(name: "MimiSmoke", targets: ["MimiSmoke"])
     ],
     dependencies: [
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.4")
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.4"),
+        .package(url: "https://github.com/dmrschmidt/DSWaveformImage.git", exact: "14.5.0")
     ],
     targets: [
         .target(
@@ -25,7 +26,12 @@ let package = Package(
         ),
         .executableTarget(
             name: "Mimi",
-            dependencies: ["MimiSpeech", "MimiAEC"],
+            dependencies: [
+                "MimiSpeech",
+                "MimiAEC",
+                .product(name: "DSWaveformImage", package: "DSWaveformImage"),
+                .product(name: "DSWaveformImageViews", package: "DSWaveformImage")
+            ],
             path: "Sources/Mimi",
             linkerSettings: [
                 .linkedLibrary("c++"),

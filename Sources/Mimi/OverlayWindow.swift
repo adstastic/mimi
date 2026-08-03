@@ -1,4 +1,6 @@
 import AppKit
+import DSWaveformImage
+import DSWaveformImageViews
 import SwiftUI
 
 @MainActor
@@ -154,19 +156,22 @@ private struct OverlayPillView: View {
 
 private struct LevelMeter: View {
     let level: Double
-    @State private var amplitudes = [Double](repeating: 0, count: 16)
+    @State private var samples: [Float] = []
 
     var body: some View {
-        HStack(spacing: 2) {
-            ForEach(0..<amplitudes.count, id: \.self) { index in
-                Capsule().fill(Color.red.opacity(0.85))
-                    .scaleEffect(y: amplitudes[index], anchor: .center)
-                    .animation(.smooth(duration: 0.14), value: amplitudes[index])
-            }
-        }
+        WaveformLiveCanvas(
+            samples: samples,
+            configuration: .init(
+                style: .striped(.init(color: .systemRed, width: 3, spacing: 3)),
+                verticalScalingFactor: 0.48,
+                shouldAntialias: true
+            ),
+            shouldDrawSilencePadding: true
+        )
         .onChange(of: level, initial: true) { _, level in
-            amplitudes.removeFirst()
-            amplitudes.append(min(1, max(0, (level + 60) / 42)))
+            let normalizedLevel = min(1, max(0, (level + 60) / 42))
+            let sample = 1 - Float(normalizedLevel * normalizedLevel)
+            samples.append(contentsOf: repeatElement(sample, count: 12))
         }
     }
 }
