@@ -6,6 +6,107 @@ import MimiSpeech
 
 @MainActor
 final class AmbientCrashRegressionTests: XCTestCase {
+    func testPreparingAudioWaitsForFreshInputAndShowsReady() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = MimiConfig.defaults
+        config.inputDeviceID = "wake-mic"
+        config.ambientModeEnabled = false
+        audio.lastBufferAge = 30
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        let preparation = Task { await controller.prepareAudio() }
+        let started = await waitUntil({ audio.startInputDeviceIDs == ["wake-mic"] }, timeout: 1.0)
+        XCTAssertTrue(started)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(audio.stopCount, 0)
+        XCTAssertFalse(overlay.messages.contains { $0.message == "Mimi ready" })
+
+        audio.lastBufferAge = 0
+        let prepared = await preparation.value
+
+        XCTAssertTrue(prepared)
+        XCTAssertEqual(audio.stopCount, 1)
+        XCTAssertTrue(overlay.messages.contains { $0.message == "Mimi ready" })
+        XCTAssertEqual(overlay.hiddenAfter.last, 900)
+    }
+
+    func testDictationPreemptsAudioPreparationWithoutStoppingCapture() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = MimiConfig.defaults
+        config.ambientModeEnabled = false
+        audio.lastBufferAge = nil
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        let preparation = Task { await controller.prepareAudio() }
+        let primeStarted = await waitUntil({ audio.startInputDeviceIDs.count == 1 }, timeout: 1.0)
+        XCTAssertTrue(primeStarted)
+
+        controller.hotkeyDown()
+        let recordingStarted = await waitUntil({
+            audio.startInputDeviceIDs.count == 2 && status.values.contains("Recording…")
+        }, timeout: 1.0)
+        XCTAssertTrue(recordingStarted)
+
+        let prepared = await preparation.value
+        XCTAssertFalse(prepared)
+        XCTAssertEqual(audio.stopCount, 0)
+
+        controller.cancelRecording()
+        XCTAssertEqual(audio.stopCount, 1)
+    }
+
+    func testPreparingAudioTimesOutWithoutShowingReady() async {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = MimiConfig.defaults
+        config.ambientModeEnabled = false
+        audio.lastBufferAge = nil
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        let prepared = await controller.prepareAudio()
+
+        XCTAssertFalse(prepared)
+        XCTAssertEqual(audio.stopCount, 1)
+        XCTAssertFalse(overlay.messages.contains { $0.message == "Mimi ready" })
+
+        controller.hotkeyDown()
+        let recordingStarted = await waitUntil({ audio.startInputDeviceIDs.count == 2 }, timeout: 1.0)
+        XCTAssertTrue(recordingStarted)
+        controller.cancelRecording()
+    }
+
     func testAmbientMissingInputStopsInsteadOfRestartingMic() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
@@ -1108,7 +1209,7 @@ final class AmbientCrashRegressionTests: XCTestCase {
             audioCapture: audio,
             asrService: asr,
             voiceprintVerifier: voiceprint,
-            textInserter: textInserter ?? TextInserter(),
+            textInserter: textInserter ?? FakeTextInserter(),
             history: history ?? HistoryStore(),
             overlay: overlay,
             onStatus: { status.append($0) },

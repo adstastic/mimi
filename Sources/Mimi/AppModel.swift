@@ -50,8 +50,10 @@ final class AppModel: ObservableObject {
     private var asrService: ASRService!
     private var dictationController: DictationController!
     private var hotkeyMonitor: HotkeyMonitor!
+    private var wakeCancellable: AnyCancellable?
     private var inputDeviceTask: Task<Void, Never>?
     private var ambientModeUpdateTask: Task<Void, Never>?
+    private var audioPreparationTask: Task<Void, Never>?
     private var lastDefaultInputDeviceID = AudioInputDevice.defaultInputDeviceUID()
     private var started = false
     private var shortcutRecording = false
@@ -118,8 +120,16 @@ final class AppModel: ObservableObject {
         }
 
         dictationController.prepareASR()
+        wakeCancellable = NSWorkspace.shared.notificationCenter
+            .publisher(for: NSWorkspace.didWakeNotification)
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.handleSystemWake()
+                }
+            }
         dictationController.updateAmbientMode()
         startInputDeviceWatcher()
+        scheduleAudioPreparation()
     }
 
     func refreshInputDevices() {
@@ -128,6 +138,26 @@ final class AppModel: ObservableObject {
         let resetMissingDevice = resetMissingSelectedInputDevice()
         if config.ambientModeEnabled, !resetMissingDevice {
             scheduleAmbientModeUpdate()
+        }
+    }
+
+    private func handleSystemWake() {
+        if config.ambientModeEnabled {
+            dictationController.updateAmbientMode()
+        } else {
+            scheduleAudioPreparation()
+        }
+    }
+
+    private func scheduleAudioPreparation() {
+        guard permissionStatus.microphone,
+              audioPreparationTask == nil,
+              !voiceprintBusy,
+              !config.ambientModeEnabled else { return }
+        audioPreparationTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            _ = await self.dictationController.prepareAudio()
+            self.audioPreparationTask = nil
         }
     }
 
@@ -300,7 +330,7 @@ final class AppModel: ObservableObject {
     }
 
     private func beginVoiceprintAction() async -> Bool {
-        guard !voiceprintBusy else { return false }
+        guard !voiceprintBusy, audioPreparationTask == nil else { return false }
         guard !config.ambientModeEnabled else {
             voiceprintStatus = "Turn off ambient mode before voiceprint recording."
             overlay.show("Turn off ambient mode", detail: "Then enroll or verify voiceprint")

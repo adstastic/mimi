@@ -134,6 +134,7 @@ final class DictationController {
 
     private enum State {
         case idle
+        case preparingAudio
         case recording(RecordingMode, RecordingPlan)
         case processing
     }
@@ -211,6 +212,42 @@ final class DictationController {
         self.missingInputTimeout = missingInputTimeout
     }
 
+    func prepareAudio() async -> Bool {
+        guard case .idle = state else { return false }
+        let config = configProvider().normalizedForBackend()
+        guard !config.ambientModeEnabled else { return false }
+        let generation = recordingGeneration
+        state = .preparingAudio
+        defer {
+            if case .preparingAudio = state {
+                audioCapture.stop()
+                state = .idle
+            }
+        }
+
+        do {
+            let startedAt = Date()
+            try await audioCapture.start(
+                preRollMilliseconds: config.preRollMilliseconds,
+                inputDeviceID: config.inputDeviceID
+            )
+            let ready = await waitForFirstAudioBuffer(
+                recordingGeneration: generation,
+                receivedAfter: startedAt
+            )
+            guard ready, recordingGeneration == generation, case .preparingAudio = state else { return false }
+            audioCapture.stop()
+            state = .idle
+            overlay.show("Mimi ready")
+            overlay.hide(after: 900)
+            return true
+        } catch {
+            let nsError = error as NSError
+            DebugLog.write("audio preparation error domain=\(nsError.domain) code=\(nsError.code) detail=\(nsError.localizedDescription)")
+            return false
+        }
+    }
+
     func prepareASR() {
         Task {
             do {
@@ -237,6 +274,9 @@ final class DictationController {
             case .pressing:
                 break
             }
+        case .preparingAudio:
+            state = .idle
+            startRecording(mode: .pressing(startedAt: Date()))
         case .processing:
             break
         }
@@ -489,8 +529,17 @@ final class DictationController {
         }
     }
 
-    private func waitForFirstAudioBuffer(recordingGeneration generation: Int) async -> Bool {
-        guard audioCapture.secondsSinceLastBuffer() == nil else { return true }
+    private func waitForFirstAudioBuffer(
+        recordingGeneration generation: Int,
+        receivedAfter start: Date? = nil
+    ) async -> Bool {
+        func hasReadyBuffer() -> Bool {
+            guard let age = audioCapture.secondsSinceLastBuffer() else { return false }
+            guard let start else { return true }
+            return age <= Date().timeIntervalSince(start)
+        }
+
+        guard !hasReadyBuffer() else { return true }
 
         // AVAudioEngine.start() can return before a cold USB input delivers its
         // first tap buffer. Give queued key-up handling time to receive one.
@@ -501,7 +550,7 @@ final class DictationController {
             } catch {
                 return false
             }
-            if audioCapture.secondsSinceLastBuffer() != nil { return true }
+            if hasReadyBuffer() { return true }
         }
         return false
     }
@@ -671,7 +720,7 @@ final class DictationController {
                     speechDetectedByDetector = true
                     lastSpeechDetectedAt = Date()
                 }
-            case .recording, .processing:
+            case .preparingAudio, .recording, .processing:
                 break
             }
         }
