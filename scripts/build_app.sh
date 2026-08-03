@@ -26,6 +26,7 @@ cp -R "$ROOT_DIR/Sidecars" "$RESOURCES_DIR/Sidecars"
 cp "$ROOT_DIR/Assets/AppLogo.png" "$RESOURCES_DIR/AppLogo.png"
 cp "$ROOT_DIR/Assets/MenuBarIcon.png" "$RESOURCES_DIR/MenuBarIcon.png"
 cp "$ROOT_DIR/Assets/AppIcon.png" "$RESOURCES_DIR/AppIcon.png"
+cp "$ROOT_DIR/Vendor/MimiAEC/THIRD_PARTY_NOTICES.txt" "$RESOURCES_DIR/THIRD_PARTY_NOTICES.txt"
 
 ICONSET_DIR="$CONTENTS_DIR/AppIcon.iconset"
 mkdir -p "$ICONSET_DIR"
@@ -75,6 +76,8 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
     <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>$APP_NAME uses the microphone for local dictation.</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>$APP_NAME uses speaker audio only as a reference for echo cancellation.</string>
     <key>NSInputMonitoringUsageDescription</key>
     <string>$APP_NAME uses global keyboard shortcuts for dictation.</string>
     <key>NSSpeechRecognitionUsageDescription</key>

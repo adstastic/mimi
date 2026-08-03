@@ -290,7 +290,11 @@ final class DictationController {
         if elapsedMs < plan.config.tapThresholdMilliseconds {
             state = .recording(.toggle, plan)
             onStatus("Recording — tap Right Command again to stop")
-            overlay.show("Recording", detail: "Tap Right Command again or pause", level: audioCapture.currentDBFS())
+            overlay.show(
+                "Recording",
+                detail: "Tap Right Command again or pause",
+                level: meterLevel(audioCapture.currentDBFS(), threshold: plan.config.silenceThresholdDBFS)
+            )
         } else {
             Task { await stopAndTranscribe(reason: .released) }
         }
@@ -371,7 +375,11 @@ final class DictationController {
         silenceBeganAt = nil
         state = .recording(mode, plan)
         onStatus(plan.isAmbient ? "Ambient recording…" : "Starting mic…")
-        overlay.show(plan.isAmbient ? "Ambient recording" : "Starting mic", detail: "Speak now", level: audioCapture.currentDBFS())
+        overlay.show(
+            plan.isAmbient ? "Ambient recording" : "Starting mic",
+            detail: "Speak now",
+            level: meterLevel(audioCapture.currentDBFS(), threshold: plan.config.silenceThresholdDBFS)
+        )
 
         engineStartTask?.cancel()
         engineStartTask = Task { [weak self] in
@@ -416,7 +424,14 @@ final class DictationController {
                     replayPreRollToHandler: !plan.isAmbient
                 )
                 self.onStatus("Recording…")
-                self.overlay.show("Recording", detail: "Speak now", level: self.audioCapture.currentDBFS())
+                self.overlay.show(
+                    "Recording",
+                    detail: "Speak now",
+                    level: self.meterLevel(
+                        self.audioCapture.currentDBFS(),
+                        threshold: plan.config.silenceThresholdDBFS
+                    )
+                )
                 self.startSilenceLoop()
             } catch {
                 guard self.recordingGeneration == generation else { return }
@@ -876,7 +891,7 @@ final class DictationController {
         guard case .recording(_, let plan) = state else { return }
 
         let level = audioCapture.currentDBFS()
-        overlay.updateLevel(level)
+        overlay.updateLevel(meterLevel(level, threshold: plan.config.silenceThresholdDBFS))
 
         let now = Date()
         guard plan.config.silenceAutoStopEnabled || plan.isAmbient else { return }
@@ -918,6 +933,10 @@ final class DictationController {
 
     private func isAboveNoiseFloor(_ config: MimiConfig) -> Bool {
         audioCapture.peakDBFS(within: 1.5) >= config.normalizedForBackend().silenceThresholdDBFS
+    }
+
+    private func meterLevel(_ level: Double, threshold: Double) -> Double {
+        level >= threshold ? level : -120
     }
 
     private func recentlyDetectedSpeech(within seconds: TimeInterval) -> Bool {

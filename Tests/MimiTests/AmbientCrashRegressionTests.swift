@@ -792,6 +792,35 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertTrue(speechStarted)
     }
 
+    func testRecordingMeterUsesSilenceThresholdAsVisualNoiseGate() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = MimiConfig.defaults
+        config.silenceAutoStopEnabled = false
+        config.silenceThresholdDBFS = -50
+        audio.dbfs = -55
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        let hiddenResidual = await waitUntil({ overlay.updatedLevels.contains(-120) }, timeout: 1.0)
+        XCTAssertTrue(hiddenResidual)
+
+        audio.dbfs = -20
+        let visibleSpeech = await waitUntil({ overlay.updatedLevels.contains(-20) }, timeout: 1.0)
+        XCTAssertTrue(visibleSpeech)
+        controller.cancelRecording()
+    }
+
     func testLiveTranscriptUsesSameFillerCleanupAsFinalText() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
@@ -1479,13 +1508,16 @@ private final class FakeTextInserter: TextInserting {
 @MainActor
 private final class FakeOverlay: OverlayShowing {
     var messages: [(message: String, detail: String?, level: Double?)] = []
+    var updatedLevels: [Double] = []
     var hiddenAfter: [Int] = []
 
     func show(_ message: String, detail: String?, level: Double?) {
         messages.append((message, detail, level))
     }
 
-    func updateLevel(_ level: Double) {}
+    func updateLevel(_ level: Double) {
+        updatedLevels.append(level)
+    }
 
     func updateDetail(_ detail: String?) {}
 
