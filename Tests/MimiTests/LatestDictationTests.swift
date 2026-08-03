@@ -86,10 +86,60 @@ final class LatestDictationTests: XCTestCase {
             VocabularyCorrectionSuggestion(heard: "pie torch", written: "PyTorch")
         )
         XCTAssertNil(VocabularyCorrectionSuggestion.infer(source: "No change", corrected: "No change"))
-        XCTAssertNil(VocabularyCorrectionSuggestion.infer(
-            source: "We use pie torch and whisper flow.",
-            corrected: "We use PyTorch and Wispr Flow."
-        ))
+        XCTAssertEqual(
+            VocabularyCorrectionSuggestion.inferAll(
+                source: "We use pie torch. Then whisper flow handles notes.",
+                corrected: "We use PyTorch. Then Wispr Flow handles notes."
+            ),
+            [
+                VocabularyCorrectionSuggestion(heard: "pie torch", written: "PyTorch"),
+                VocabularyCorrectionSuggestion(heard: "whisper flow", written: "Wispr Flow")
+            ]
+        )
+        XCTAssertEqual(
+            VocabularyCorrectionSuggestion.inferAll(
+                source: "Use PyTorch today.",
+                corrected: "Use PyTorch today please!"
+            ),
+            []
+        )
+    }
+
+    func testCorrectionSuggestionKeepsReplacementWhenPunctuationAlsoChanges() {
+        XCTAssertEqual(
+            VocabularyCorrectionSuggestion.inferAll(
+                source: "pie torch works.",
+                corrected: "PyTorch works!"
+            ),
+            [VocabularyCorrectionSuggestion(heard: "pie torch", written: "PyTorch")]
+        )
+        XCTAssertEqual(
+            VocabularyCorrectionSuggestion.inferAll(
+                source: "node dot js",
+                corrected: "Node.js"
+            ),
+            [VocabularyCorrectionSuggestion(heard: "node dot js", written: "Node.js")]
+        )
+    }
+
+    func testCorrectionSuggestionRejectsWholeSentenceReplacement() {
+        XCTAssertTrue(
+            VocabularyCorrectionSuggestion.inferAll(
+                source: "Go home.",
+                corrected: "Leave now."
+            ).isEmpty
+        )
+        XCTAssertTrue(
+            VocabularyCorrectionSuggestion.inferAll(
+                source: "Okay. Go home. Then wait.",
+                corrected: "Okay. Leave now. Then wait."
+            ).isEmpty
+        )
+    }
+
+    func testCorrectionSuggestionMustOccurInRawASRSource() {
+        XCTAssertTrue(VocabularyCorrector.contains(phrase: "pie torch", in: "Shimi uses pie torch"))
+        XCTAssertFalse(VocabularyCorrector.contains(phrase: "mimi", in: "Shimi uses pie torch"))
     }
 
     func testAddingCorrectionMergesAliasIntoExistingWrittenForm() throws {
@@ -102,6 +152,18 @@ final class LatestDictationTests: XCTestCase {
 
         XCTAssertEqual(updated.count, 1)
         XCTAssertEqual(updated[0].spokenAliases, ["pi torch", "pie torch"])
+    }
+
+    func testAddingMultipleCorrectionsCreatesSeparateRules() throws {
+        let corrections = VocabularyCorrectionSuggestion.inferAll(
+            source: "We use pie torch. Then whisper flow handles notes.",
+            corrected: "We use PyTorch. Then Wispr Flow handles notes."
+        )
+
+        let updated = try VocabularyEntryUpdater.addingCorrections(corrections, to: [])
+
+        XCTAssertEqual(updated.map(\.writtenForm), ["PyTorch", "Wispr Flow"])
+        XCTAssertEqual(updated.map(\.spokenAliases), [["pie torch"], ["whisper flow"]])
     }
 
     func testAddingCorrectionRejectsConflictingAlias() {

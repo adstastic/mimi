@@ -13,13 +13,22 @@ final class AppModel: ObservableObject {
     @Published private(set) var voiceprintStatus = "No voice enrolled"
     @Published private(set) var voiceprintProfileExists = false
     @Published private(set) var voiceprintBusy = false
+    @Published private(set) var configErrorText: String?
     @Published var config: MimiConfig {
         didSet {
             let normalized = config.normalizedForBackend()
             if normalized != config {
                 config = normalized
             }
-            config.save()
+            if !isApplyingConfigReload {
+                do {
+                    try configStore.save(config)
+                    configErrorText = nil
+                } catch {
+                    configErrorText = error.localizedDescription
+                    applyStatus("Config error: \(error.localizedDescription)")
+                }
+            }
             if oldValue.preferredBackend != config.preferredBackend {
                 dictationController.prepareASR()
                 if config.ambientModeEnabled {
@@ -44,6 +53,7 @@ final class AppModel: ObservableObject {
 
     var lastDictation: TranscriptEntry? { history.latest }
 
+    private let configStore: MimiConfigFileStore
     private let audioCapture = AudioCapture()
     private let textInserter = TextInserter()
     private let voiceprintService = VoiceprintEmbeddingService()
@@ -61,18 +71,22 @@ final class AppModel: ObservableObject {
     private var lastDefaultInputDeviceID = AudioInputDevice.defaultInputDeviceUID()
     private var started = false
     private var shortcutRecording = false
+    private var isApplyingConfigReload = false
 
     init() {
         TemporaryAudioFiles.removeStaleFiles()
+        let configStore = MimiConfigFileStore()
+        self.configStore = configStore
         history = HistoryStore(audioStorageURL: HistoryStore.productionAudioStorageURL)
         let loadedInputDevices = AudioInputDevice.available()
-        var loadedConfig = MimiConfig.load()
+        var loadedConfig = configStore.loadInitial()
         let validInputDeviceID = AudioInputDevice.validSelection(loadedConfig.inputDeviceID, in: loadedInputDevices)
         if validInputDeviceID != loadedConfig.inputDeviceID {
             loadedConfig.inputDeviceID = validInputDeviceID
-            loadedConfig.save()
+            try? configStore.save(loadedConfig)
         }
         config = loadedConfig
+        configErrorText = configStore.errorDescription
         inputDevices = loadedInputDevices
         refreshVoiceprintState()
 
@@ -261,8 +275,60 @@ final class AppModel: ObservableObject {
         dictationController.copyLastTranscript()
     }
 
-    func correctLastTranscript(id: UUID, text: String) -> Bool {
-        dictationController.correctLastTranscript(id: id, text: text)
+    func correctLastTranscript(
+        id: UUID,
+        text: String,
+        corrections: [VocabularyCorrectionSuggestion]
+    ) -> Result<Void, Error> {
+        guard history.latest?.id == id else {
+            return .failure(MimiConfigFileError.invalid("Last dictation changed. Open Correct again."))
+        }
+
+        do {
+            if !corrections.isEmpty {
+                var updatedConfig = config
+                updatedConfig.vocabularyEntries = try VocabularyEntryUpdater.addingCorrections(
+                    corrections,
+                    to: config.vocabularyEntries
+                )
+                try configStore.save(updatedConfig)
+                isApplyingConfigReload = true
+                config = updatedConfig
+                isApplyingConfigReload = false
+                configErrorText = nil
+            }
+            guard dictationController.correctLastTranscript(id: id, text: text) else {
+                return .failure(MimiConfigFileError.invalid("Last dictation changed. Open Correct again."))
+            }
+            return .success(())
+        } catch {
+            isApplyingConfigReload = false
+            configErrorText = error.localizedDescription
+            applyStatus("Config error: \(error.localizedDescription)")
+            return .failure(error)
+        }
+    }
+
+    func openConfigFile() {
+        NSWorkspace.shared.open(configStore.fileURL)
+    }
+
+    func reloadConfig() {
+        do {
+            let loaded = try configStore.reload()
+            isApplyingConfigReload = true
+            config = loaded
+            isApplyingConfigReload = false
+            configErrorText = nil
+            applyStatus("Config reloaded")
+            overlay.show("Config reloaded", detail: configStore.fileURL.path)
+            overlay.hide(after: 1_200)
+        } catch {
+            isApplyingConfigReload = false
+            configErrorText = error.localizedDescription
+            applyStatus("Config error: \(error.localizedDescription)")
+            overlay.show("Config error", detail: error.localizedDescription)
+        }
     }
 
     func quit() {

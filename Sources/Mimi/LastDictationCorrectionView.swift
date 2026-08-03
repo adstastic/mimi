@@ -2,24 +2,28 @@ import SwiftUI
 
 struct LastDictationCorrectionView: View {
     let entry: TranscriptEntry
-    @Binding private var vocabularyEntries: [VocabularyEntry]
-    let save: (UUID, String) -> Bool
+    let save: (UUID, String, [VocabularyCorrectionSuggestion]) -> Result<Void, Error>
 
     @State private var correctedText: String
-    @State private var heard = ""
-    @State private var written = ""
-    @State private var validationMessage: String?
+    @State private var errorMessage: String?
     @Environment(\.dismiss) private var dismiss
 
     init(
         entry: TranscriptEntry,
-        vocabularyEntries: Binding<[VocabularyEntry]>,
-        save: @escaping (UUID, String) -> Bool
+        save: @escaping (UUID, String, [VocabularyCorrectionSuggestion]) -> Result<Void, Error>
     ) {
         self.entry = entry
-        _vocabularyEntries = vocabularyEntries
         self.save = save
         _correctedText = State(initialValue: entry.text)
+    }
+
+    private var corrections: [VocabularyCorrectionSuggestion] {
+        VocabularyCorrectionSuggestion.inferAll(
+            source: entry.text,
+            corrected: correctedText
+        ).filter {
+            VocabularyCorrector.contains(phrase: $0.heard, in: entry.sourceText)
+        }
     }
 
     var body: some View {
@@ -27,66 +31,27 @@ struct LastDictationCorrectionView: View {
             CorrectionHeader(entry: entry)
             OriginalTranscript(text: entry.text)
             CorrectedTranscriptEditor(text: $correctedText)
-            VocabularyRuleEditor(heard: $heard, written: $written)
+            CorrectionLearningSummary(count: corrections.count)
+            Spacer()
             CorrectionFooter(
-                message: validationMessage,
+                errorMessage: errorMessage,
                 canSave: !correctedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                canLearn: canLearn,
                 cancel: { dismiss() },
-                save: saveCorrection,
-                saveAndLearn: saveCorrectionAndLearn
+                save: saveCorrection
             )
         }
         .padding(16)
         .frame(width: 560, height: 420)
         .background(Color(nsColor: .windowBackgroundColor))
-        .onChange(of: correctedText, updateSuggestion)
-    }
-
-    private var canLearn: Bool {
-        !heard.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !written.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private func updateSuggestion(oldValue: String, newValue: String) {
-        guard let suggestion = VocabularyCorrectionSuggestion.infer(
-            source: entry.text,
-            corrected: newValue
-        ) else {
-            heard = ""
-            written = ""
-            return
-        }
-        heard = suggestion.heard
-        written = suggestion.written
-        validationMessage = nil
+        .onChange(of: correctedText) { _, _ in errorMessage = nil }
     }
 
     private func saveCorrection() {
-        guard save(entry.id, correctedText) else {
-            validationMessage = "A newer dictation replaced this one. Open Correct again."
-            return
-        }
-        dismiss()
-    }
-
-    private func saveCorrectionAndLearn() {
-        do {
-            let updatedEntries = try VocabularyEntryUpdater.addingCorrection(
-                heard: heard,
-                written: written,
-                to: vocabularyEntries
-            )
-            guard save(entry.id, correctedText) else {
-                validationMessage = "A newer dictation replaced this one. Open Correct again."
-                return
-            }
-            vocabularyEntries = updatedEntries
+        switch save(entry.id, correctedText, corrections) {
+        case .success:
             dismiss()
-        } catch let error as VocabularyValidationError {
-            validationMessage = error.message
-        } catch {
-            validationMessage = error.localizedDescription
+        case .failure(let error):
+            errorMessage = error.localizedDescription
         }
     }
 }
@@ -122,7 +87,7 @@ private struct OriginalTranscript: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Text(text)
-                .lineLimit(2)
+                .lineLimit(3)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -145,48 +110,41 @@ private struct CorrectedTranscriptEditor: View {
                     RoundedRectangle(cornerRadius: 6)
                         .stroke(Color.primary.opacity(0.1), lineWidth: 1)
                 )
-                .frame(height: 90)
+                .frame(height: 140)
                 .accessibilityLabel("Corrected transcript")
         }
     }
 }
 
-private struct VocabularyRuleEditor: View {
-    @Binding var heard: String
-    @Binding var written: String
+private struct CorrectionLearningSummary: View {
+    let count: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Vocabulary rule")
-                .font(.headline)
-            HStack(spacing: 8) {
-                LabeledContent("Mimi heard") {
-                    TextField("pie torch", text: $heard)
-                        .accessibilityLabel("Mimi heard")
-                }
-                LabeledContent("Write") {
-                    TextField("PyTorch", text: $written)
-                        .accessibilityLabel("Write instead")
-                }
-            }
-            Text("Review this suggestion before adding it. Mimi never learns corrections automatically.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        Label(message, systemImage: "arrow.triangle.branch")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+
+    private var message: String {
+        if count == 0 {
+            "No word replacements detected; only corrected text will be saved."
+        } else if count == 1 {
+            "1 word-level replacement will be written to config.json."
+        } else {
+            "\(count) word-level replacements will be written to config.json."
         }
     }
 }
 
 private struct CorrectionFooter: View {
-    let message: String?
+    let errorMessage: String?
     let canSave: Bool
-    let canLearn: Bool
     let cancel: () -> Void
     let save: () -> Void
-    let saveAndLearn: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(message ?? " ")
+            Text(errorMessage ?? " ")
                 .font(.caption)
                 .foregroundStyle(.red)
                 .lineLimit(1)
@@ -194,23 +152,10 @@ private struct CorrectionFooter: View {
                 Spacer()
                 Button("Cancel", action: cancel)
                     .keyboardShortcut(.cancelAction)
-                Button("Save", action: save)
-                    .disabled(!canSave)
-                Button("Save + Add Vocabulary", action: saveAndLearn)
+                Button("Save Correction", action: save)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(!canSave || !canLearn)
+                    .disabled(!canSave)
             }
-        }
-    }
-}
-
-private extension VocabularyValidationError {
-    var message: String {
-        switch self {
-        case .emptyWrittenForm:
-            "Both vocabulary fields are required."
-        case .conflictingPhrase(let phrase, let first, let second):
-            "“\(phrase)” is already used by “\(first)” and “\(second)”."
         }
     }
 }

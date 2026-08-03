@@ -19,9 +19,18 @@ public struct VocabularyEntry: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
-enum VocabularyValidationError: Error, Equatable {
+enum VocabularyValidationError: LocalizedError, Equatable {
     case emptyWrittenForm
     case conflictingPhrase(String, firstWrittenForm: String, secondWrittenForm: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .emptyWrittenForm:
+            "Both vocabulary forms are required."
+        case .conflictingPhrase(let phrase, let first, let second):
+            "“\(phrase)” is already used by “\(first)” and “\(second)”."
+        }
+    }
 }
 
 enum VocabularyValidator {
@@ -100,30 +109,191 @@ struct VocabularyCorrectionSuggestion: Equatable {
         return VocabularyCorrectionSuggestion(heard: heard, written: written)
     }
 
-    private static func isCompactSingleEdit(heard: String, written: String) -> Bool {
-        // ponytail: one compact rule only; add a real multi-edit diff if batch learning becomes necessary.
-        guard heard.count <= 60, written.count <= 60,
-              !heard.contains("\n"), !written.contains("\n") else { return false }
-        return words(in: heard).isDisjoint(with: words(in: written))
-    }
+    static func inferAll(source: String, corrected: String) -> [VocabularyCorrectionSuggestion] {
+        guard source != corrected else { return [] }
+        let sourceTokens = wordTokens(in: source)
+        let correctedTokens = wordTokens(in: corrected)
+        let anchors = commonAnchors(sourceTokens, correctedTokens)
 
-    private static func words(in text: String) -> Set<String> {
-        var words: Set<String> = []
-        var current = ""
-        for character in text {
-            if VocabularyComparison.isWordCharacter(character) {
-                current.append(character)
-            } else if !current.isEmpty {
-                words.insert(current)
-                current = ""
+        var sourceStart = source.startIndex
+        var correctedStart = corrected.startIndex
+        var suggestions: [VocabularyCorrectionSuggestion] = []
+        var seen: Set<String> = []
+
+        func appendSuggestion(sourceEnd: String.Index, correctedEnd: String.Index) {
+            let sourceSegment = String(source[sourceStart ..< sourceEnd])
+            guard let suggestion = infer(
+                source: sourceSegment,
+                corrected: String(corrected[correctedStart ..< correctedEnd])
+            ), !spansWholeSentence(
+                sourceSegment,
+                startsAtTextStart: sourceStart == source.startIndex,
+                endsAtTextEnd: sourceEnd == source.endIndex
+            ) else { return }
+            let key = VocabularyComparison.key(suggestion.heard)
+                + "\u{0}"
+                + VocabularyComparison.key(suggestion.written)
+            if seen.insert(key).inserted {
+                suggestions.append(suggestion)
             }
         }
-        if !current.isEmpty { words.insert(current) }
-        return words
+
+        for anchor in anchors {
+            let sourceToken = sourceTokens[anchor.source]
+            let correctedToken = correctedTokens[anchor.corrected]
+            appendSuggestion(
+                sourceEnd: sourceToken.range.lowerBound,
+                correctedEnd: correctedToken.range.lowerBound
+            )
+            sourceStart = sourceToken.range.upperBound
+            correctedStart = correctedToken.range.upperBound
+        }
+        appendSuggestion(sourceEnd: source.endIndex, correctedEnd: corrected.endIndex)
+        return suggestions
+    }
+
+    private struct WordToken {
+        let text: String
+        let range: Range<String.Index>
+        let leadingSeparator: String
+    }
+
+    private struct Anchor {
+        let source: Int
+        let corrected: Int
+    }
+
+    private static func wordTokens(in text: String) -> [WordToken] {
+        var ranges: [Range<String.Index>] = []
+        var index = text.startIndex
+        while index < text.endIndex {
+            while index < text.endIndex,
+                  !VocabularyComparison.isWordCharacter(text[index]) {
+                index = text.index(after: index)
+            }
+            guard index < text.endIndex else { break }
+            let start = index
+            while index < text.endIndex,
+                  VocabularyComparison.isWordCharacter(text[index]) {
+                index = text.index(after: index)
+            }
+            ranges.append(start ..< index)
+        }
+
+        return ranges.indices.map { index in
+            let range = ranges[index]
+            let previousEnd = index == ranges.startIndex ? text.startIndex : ranges[index - 1].upperBound
+            return WordToken(
+                text: String(text[range]),
+                range: range,
+                leadingSeparator: String(text[previousEnd ..< range.lowerBound])
+            )
+        }
+    }
+
+    private static func commonAnchors(
+        _ source: [WordToken],
+        _ corrected: [WordToken]
+    ) -> [Anchor] {
+        guard !source.isEmpty, !corrected.isEmpty else { return [] }
+        var lengths = Array(
+            repeating: Array(repeating: 0, count: corrected.count + 1),
+            count: source.count + 1
+        )
+
+        for sourceIndex in source.indices.reversed() {
+            for correctedIndex in corrected.indices.reversed() {
+                if tokensMatch(source[sourceIndex], corrected[correctedIndex]) {
+                    lengths[sourceIndex][correctedIndex] = lengths[sourceIndex + 1][correctedIndex + 1] + 1
+                } else {
+                    lengths[sourceIndex][correctedIndex] = max(
+                        lengths[sourceIndex + 1][correctedIndex],
+                        lengths[sourceIndex][correctedIndex + 1]
+                    )
+                }
+            }
+        }
+
+        var anchors: [Anchor] = []
+        var sourceIndex = 0
+        var correctedIndex = 0
+        while sourceIndex < source.count, correctedIndex < corrected.count {
+            if tokensMatch(source[sourceIndex], corrected[correctedIndex]) {
+                anchors.append(Anchor(source: sourceIndex, corrected: correctedIndex))
+                sourceIndex += 1
+                correctedIndex += 1
+            } else if lengths[sourceIndex + 1][correctedIndex] >= lengths[sourceIndex][correctedIndex + 1] {
+                sourceIndex += 1
+            } else {
+                correctedIndex += 1
+            }
+        }
+        return anchors
+    }
+
+    private static func tokensMatch(_ lhs: WordToken, _ rhs: WordToken) -> Bool {
+        lhs.text == rhs.text
+            && containsWhitespace(lhs.leadingSeparator) == containsWhitespace(rhs.leadingSeparator)
+    }
+
+    private static func containsWhitespace(_ text: String) -> Bool {
+        text.contains(where: \.isWhitespace)
+    }
+
+    private static func spansWholeSentence(
+        _ segment: String,
+        startsAtTextStart: Bool,
+        endsAtTextEnd: Bool
+    ) -> Bool {
+        let terminators: Set<Character> = [".", "?", "!"]
+        let tokens = wordTokens(in: segment)
+        guard segment.contains(where: terminators.contains),
+              let first = tokens.first,
+              let last = tokens.last else { return false }
+        let leading = segment[segment.startIndex ..< first.range.lowerBound]
+        let trailing = segment[last.range.upperBound ..< segment.endIndex]
+        let startsAtSentenceBoundary = startsAtTextStart || leading.contains(where: terminators.contains)
+        let endsAtSentenceBoundary = endsAtTextEnd || trailing.contains(where: terminators.contains)
+        return startsAtSentenceBoundary && endsAtSentenceBoundary
+    }
+
+    private static func isCompactSingleEdit(heard: String, written: String) -> Bool {
+        guard heard.count <= 60, written.count <= 60,
+              !heard.contains("\n"), !written.contains("\n") else { return false }
+        let heardWordCount = wordCount(in: heard)
+        let writtenWordCount = wordCount(in: written)
+        return (1 ... 3).contains(heardWordCount) && (1 ... 3).contains(writtenWordCount)
+    }
+
+    private static func wordCount(in text: String) -> Int {
+        var count = 0
+        var insideWord = false
+        for character in text {
+            if VocabularyComparison.isWordCharacter(character) {
+                if !insideWord { count += 1 }
+                insideWord = true
+            } else {
+                insideWord = false
+            }
+        }
+        return count
     }
 }
 
 enum VocabularyEntryUpdater {
+    static func addingCorrections(
+        _ corrections: [VocabularyCorrectionSuggestion],
+        to entries: [VocabularyEntry]
+    ) throws -> [VocabularyEntry] {
+        try corrections.reduce(entries) { entries, correction in
+            try addingCorrection(
+                heard: correction.heard,
+                written: correction.written,
+                to: entries
+            )
+        }
+    }
+
     static func addingCorrection(
         heard: String,
         written: String,
@@ -168,6 +338,12 @@ enum VocabularyCorrector {
         let range: Range<String.Index>
         let replacement: String
         let length: Int
+    }
+
+    static func contains(phrase: String, in text: String) -> Bool {
+        let key = VocabularyComparison.key(phrase.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard !key.isEmpty else { return false }
+        return !matches(for: Phrase(key: key, replacement: ""), in: text).isEmpty
     }
 
     static func correct(_ text: String, entries: [VocabularyEntry]) -> String {

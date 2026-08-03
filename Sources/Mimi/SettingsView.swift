@@ -18,7 +18,6 @@ struct SettingsView: View {
     @Binding var config: MimiConfig
     @FocusState private var focusedField: SettingsField?
     @State private var pasteMode = PasteMode.shortcut
-    @State private var showsVocabularyEditor = false
     @State private var correctionEntry: TranscriptEntry?
     let statusText: String
     let permissionStatus: PermissionStatus
@@ -32,7 +31,7 @@ struct SettingsView: View {
     let verifyVoiceprint: () -> Void
     let resetVoiceprint: () -> Void
     let copyLastTranscript: () -> Void
-    let correctLastTranscript: (UUID, String) -> Bool
+    let correctLastTranscript: (UUID, String, [VocabularyCorrectionSuggestion]) -> Result<Void, Error>
     let shortcutRecordingChanged: (Bool) -> Void
     let refreshPermissions: () -> Void
     let refreshInputDevices: () -> Void
@@ -259,13 +258,9 @@ struct SettingsView: View {
         .fixedSize(horizontal: true, vertical: true)
         .contentShape(Rectangle())
         .onTapGesture { focusedField = nil }
-        .sheet(isPresented: $showsVocabularyEditor) {
-            VocabularySettingsView(entries: $config.vocabularyEntries)
-        }
         .sheet(item: $correctionEntry) { entry in
             LastDictationCorrectionView(
                 entry: entry,
-                vocabularyEntries: $config.vocabularyEntries,
                 save: correctLastTranscript
             )
         }
@@ -309,13 +304,6 @@ struct SettingsView: View {
             StatusDot(color: statusColor, title: statusText)
 
             Spacer()
-
-            Button {
-                showsVocabularyEditor = true
-            } label: {
-                Label("Vocabulary…", systemImage: "text.book.closed")
-            }
-            .controlSize(.small)
         }
     }
 

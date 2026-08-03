@@ -31,7 +31,7 @@ final class SettingsSnapshotTests: XCTestCase {
             verifyVoiceprint: {},
             resetVoiceprint: {},
             copyLastTranscript: {},
-            correctLastTranscript: { _, _ in true },
+            correctLastTranscript: { _, _, _ in .success(()) },
             shortcutRecordingChanged: { _ in },
             refreshPermissions: {},
             refreshInputDevices: {}
@@ -54,52 +54,13 @@ final class SettingsSnapshotTests: XCTestCase {
         let size = try render(
             LastDictationCorrectionView(
                 entry: entry,
-                vocabularyEntries: .constant([]),
-                save: { _, _ in true }
+                save: { _, _, _ in .success(()) }
             ),
             to: "/tmp/mimi-last-dictation-correction-snapshot.png"
         )
         XCTAssertEqual(size.width, 560, accuracy: 0.5)
         XCTAssertEqual(size.height, 420, accuracy: 0.5)
         print("LAST_DICTATION_CORRECTION_SNAPSHOT_SIZE=\(Int(size.width))x\(Int(size.height))")
-    }
-
-    func testRenderEmptyVocabularySnapshot() throws {
-        let size = try render(
-            VocabularySettingsView(entries: .constant([])),
-            to: "/tmp/mimi-vocabulary-empty-snapshot.png"
-        )
-        XCTAssertEqual(size.width, 540, accuracy: 0.5)
-        XCTAssertEqual(size.height, 420, accuracy: 0.5)
-    }
-
-    func testRenderInvalidVocabularySnapshot() throws {
-        let entries = [
-            VocabularyEntry(writtenForm: "Wispr Flow", spokenAliases: ["shared alias"]),
-            VocabularyEntry(writtenForm: "PyTorch", spokenAliases: ["shared alias"])
-        ]
-        let size = try render(
-            VocabularySettingsView(entries: .constant(entries)),
-            to: "/tmp/mimi-vocabulary-invalid-snapshot.png"
-        )
-        XCTAssertEqual(size.width, 540, accuracy: 0.5)
-        XCTAssertEqual(size.height, 420, accuracy: 0.5)
-    }
-
-    func testRenderVocabularySnapshot() throws {
-        let entries = [
-            VocabularyEntry(writtenForm: "Wispr Flow", spokenAliases: ["whisper flow"]),
-            VocabularyEntry(writtenForm: "PyTorch", spokenAliases: ["pie torch", "pie talk"]),
-            VocabularyEntry(writtenForm: "Kubernetes", spokenAliases: ["kube er net ease"], isEnabled: false)
-        ]
-
-        let size = try render(
-            VocabularySettingsView(entries: .constant(entries)),
-            to: "/tmp/mimi-vocabulary-snapshot.png"
-        )
-        XCTAssertEqual(size.width, 540, accuracy: 0.5)
-        XCTAssertEqual(size.height, 420, accuracy: 0.5)
-        print("VOCABULARY_SNAPSHOT_SIZE=\(Int(size.width))x\(Int(size.height))")
     }
 
     private func render<Content: View>(_ view: Content, to path: String) throws -> CGSize {

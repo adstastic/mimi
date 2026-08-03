@@ -40,7 +40,9 @@ struct MimiApp: App {
                 verifyVoiceprint: { appModel.verifyVoiceprint() },
                 resetVoiceprint: { appModel.resetVoiceprint() },
                 copyLastTranscript: { appModel.copyLastTranscript() },
-                correctLastTranscript: { appModel.correctLastTranscript(id: $0, text: $1) },
+                correctLastTranscript: {
+                    appModel.correctLastTranscript(id: $0, text: $1, corrections: $2)
+                },
                 shortcutRecordingChanged: { appModel.setShortcutRecording($0) },
                 refreshPermissions: { appModel.refreshPermissions() },
                 refreshInputDevices: { appModel.refreshInputDevices() }
@@ -81,6 +83,10 @@ private struct MimiMenu: View {
     var body: some View {
         Text(appModel.statusText)
             .disabled(true)
+        if let configErrorText = appModel.configErrorText {
+            Text(configErrorText)
+                .disabled(true)
+        }
 
         Toggle("Ambient Mode", isOn: $appModel.config.ambientModeEnabled)
 
@@ -91,6 +97,14 @@ private struct MimiMenu: View {
             openSettings()
         }
         .keyboardShortcut(",")
+
+        Button("Open Config File") {
+            appModel.openConfigFile()
+        }
+
+        Button("Reload Config") {
+            appModel.reloadConfig()
+        }
 
         Divider()
 
