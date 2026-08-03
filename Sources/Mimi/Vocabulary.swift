@@ -95,8 +95,31 @@ struct VocabularyCorrectionSuggestion: Equatable {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let written = String(correctedCharacters[prefixCount ..< correctedCharacters.count - suffixCount])
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !heard.isEmpty, !written.isEmpty else { return nil }
+        guard !heard.isEmpty, !written.isEmpty,
+              isCompactSingleEdit(heard: heard, written: written) else { return nil }
         return VocabularyCorrectionSuggestion(heard: heard, written: written)
+    }
+
+    private static func isCompactSingleEdit(heard: String, written: String) -> Bool {
+        // ponytail: one compact rule only; add a real multi-edit diff if batch learning becomes necessary.
+        guard heard.count <= 60, written.count <= 60,
+              !heard.contains("\n"), !written.contains("\n") else { return false }
+        return words(in: heard).isDisjoint(with: words(in: written))
+    }
+
+    private static func words(in text: String) -> Set<String> {
+        var words: Set<String> = []
+        var current = ""
+        for character in text {
+            if VocabularyComparison.isWordCharacter(character) {
+                current.append(character)
+            } else if !current.isEmpty {
+                words.insert(current)
+                current = ""
+            }
+        }
+        if !current.isEmpty { words.insert(current) }
+        return words
     }
 }
 

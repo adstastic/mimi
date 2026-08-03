@@ -86,6 +86,10 @@ final class LatestDictationTests: XCTestCase {
             VocabularyCorrectionSuggestion(heard: "pie torch", written: "PyTorch")
         )
         XCTAssertNil(VocabularyCorrectionSuggestion.infer(source: "No change", corrected: "No change"))
+        XCTAssertNil(VocabularyCorrectionSuggestion.infer(
+            source: "We use pie torch and whisper flow.",
+            corrected: "We use PyTorch and Wispr Flow."
+        ))
     }
 
     func testAddingCorrectionMergesAliasIntoExistingWrittenForm() throws {
