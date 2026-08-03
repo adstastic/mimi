@@ -4,10 +4,12 @@ import SwiftUI
 
 @main
 struct MimiApp: App {
+    static let correctionWindowID = "last-dictation-correction"
     private static let instanceGuard = SingleInstanceGuard()
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
     @StateObject private var appModel: AppModel
 
     init() {
@@ -26,6 +28,12 @@ struct MimiApp: App {
         }
         .menuBarExtraStyle(.menu)
 
+        Window("Correct Last Dictation", id: Self.correctionWindowID) {
+            CorrectionWindow(appModel: appModel)
+        }
+        .defaultLaunchBehavior(.suppressed)
+        .windowResizability(.contentSize)
+
         Settings {
             SettingsView(
                 config: $appModel.config,
@@ -37,15 +45,11 @@ struct MimiApp: App {
                 voiceprintBusy: appModel.voiceprintBusy,
                 lastDictation: appModel.lastDictation,
                 liveTranscript: appModel.liveTranscript,
-                correctionRequestID: appModel.correctionRequestID,
-                consumeCorrectionRequest: { appModel.consumeCorrectionRequest($0) },
                 enrollVoiceprint: { appModel.enrollVoiceprint() },
                 verifyVoiceprint: { appModel.verifyVoiceprint() },
                 resetVoiceprint: { appModel.resetVoiceprint() },
                 copyLastTranscript: { appModel.copyLastTranscript() },
-                correctLastTranscript: {
-                    appModel.correctLastTranscript(id: $0, text: $1, corrections: $2)
-                },
+                requestLastTranscriptCorrection: { appModel.requestLastTranscriptCorrection() },
                 shortcutRecordingChanged: { appModel.setShortcutRecording($0) },
                 refreshPermissions: { appModel.refreshPermissions() },
                 refreshInputDevices: { appModel.refreshInputDevices() }
@@ -80,7 +84,27 @@ struct MimiApp: App {
         }
         .onChange(of: appModel.correctionRequestID) { _, newValue in
             guard newValue > 0 else { return }
-            openSettings()
+            openWindow(id: Self.correctionWindowID)
+        }
+    }
+}
+
+private struct CorrectionWindow: View {
+    @ObservedObject var appModel: AppModel
+
+    var body: some View {
+        Group {
+            if let entry = appModel.lastDictation {
+                LastDictationCorrectionView(
+                    entry: entry,
+                    save: { appModel.correctLastTranscript(id: $0, text: $1, corrections: $2) }
+                )
+                .id(entry.id)
+            }
+        }
+        .task(id: appModel.correctionRequestID) {
+            guard appModel.correctionRequestID > 0 else { return }
+            appModel.consumeCorrectionRequest(appModel.correctionRequestID)
         }
     }
 }
@@ -103,7 +127,6 @@ private struct MimiMenu: View {
 
         Button("Correct Last Dictation…") {
             appModel.requestLastTranscriptCorrection()
-            openSettings()
         }
         .disabled(appModel.lastDictation == nil)
 

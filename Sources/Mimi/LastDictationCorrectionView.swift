@@ -6,7 +6,7 @@ struct LastDictationCorrectionView: View {
 
     @State private var correctedText: String
     @State private var errorMessage: String?
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dismissWindow) private var dismissWindow
 
     init(
         entry: TranscriptEntry,
@@ -36,7 +36,7 @@ struct LastDictationCorrectionView: View {
             CorrectionFooter(
                 errorMessage: errorMessage,
                 canSave: !correctedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                cancel: { dismiss() },
+                cancel: close,
                 save: saveCorrection
             )
         }
@@ -49,10 +49,14 @@ struct LastDictationCorrectionView: View {
     private func saveCorrection() {
         switch save(entry.id, correctedText, corrections) {
         case .success:
-            dismiss()
+            close()
         case .failure(let error):
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func close() {
+        dismissWindow(id: MimiApp.correctionWindowID)
     }
 }
 

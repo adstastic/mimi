@@ -18,7 +18,6 @@ struct SettingsView: View {
     @Binding var config: MimiConfig
     @FocusState private var focusedField: SettingsField?
     @State private var pasteMode = PasteMode.shortcut
-    @State private var correctionEntry: TranscriptEntry?
     let statusText: String
     let permissionStatus: PermissionStatus
     let inputDevices: [AudioInputDevice]
@@ -27,13 +26,11 @@ struct SettingsView: View {
     let voiceprintBusy: Bool
     let lastDictation: TranscriptEntry?
     let liveTranscript: String?
-    let correctionRequestID: Int
-    let consumeCorrectionRequest: (Int) -> Void
     let enrollVoiceprint: () -> Void
     let verifyVoiceprint: () -> Void
     let resetVoiceprint: () -> Void
     let copyLastTranscript: () -> Void
-    let correctLastTranscript: (UUID, String, [VocabularyCorrectionSuggestion]) -> Result<Void, Error>
+    let requestLastTranscriptCorrection: () -> Void
     let shortcutRecordingChanged: (Bool) -> Void
     let refreshPermissions: () -> Void
     let refreshInputDevices: () -> Void
@@ -263,7 +260,7 @@ struct SettingsView: View {
                     systemImage: "doc.on.clipboard",
                     text: lastDictation.text,
                     action: copyLastTranscript,
-                    secondaryAction: { correctionEntry = lastDictation }
+                    secondaryAction: requestLastTranscriptCorrection
                 )
             }
         }
@@ -274,22 +271,6 @@ struct SettingsView: View {
         .fixedSize(horizontal: true, vertical: true)
         .contentShape(Rectangle())
         .onTapGesture { focusedField = nil }
-        .sheet(item: $correctionEntry) { entry in
-            LastDictationCorrectionView(
-                entry: entry,
-                save: correctLastTranscript
-            )
-        }
-        .onChange(of: lastDictation?.id) { _, latestID in
-            if let correctionEntry, correctionEntry.id != latestID {
-                self.correctionEntry = nil
-            }
-        }
-        .task(id: correctionRequestID) {
-            guard correctionRequestID > 0, let lastDictation else { return }
-            correctionEntry = lastDictation
-            consumeCorrectionRequest(correctionRequestID)
-        }
         .background(Color(nsColor: .windowBackgroundColor))
     }
 

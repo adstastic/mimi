@@ -27,13 +27,11 @@ final class SettingsSnapshotTests: XCTestCase {
                 createdAt: Date(timeIntervalSince1970: 0)
             ),
             liveTranscript: "This is a representative live transcript long enough to wrap across several lines while recording remains active.",
-            correctionRequestID: 0,
-            consumeCorrectionRequest: { _ in },
             enrollVoiceprint: {},
             verifyVoiceprint: {},
             resetVoiceprint: {},
             copyLastTranscript: {},
-            correctLastTranscript: { _, _, _ in .success(()) },
+            requestLastTranscriptCorrection: {},
             shortcutRecordingChanged: { _ in },
             refreshPermissions: {},
             refreshInputDevices: {}
