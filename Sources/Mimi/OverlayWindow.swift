@@ -154,15 +154,19 @@ private struct OverlayPillView: View {
 
 private struct LevelMeter: View {
     let level: Double
+    @State private var amplitudes = [Double](repeating: 0, count: 16)
 
     var body: some View {
-        GeometryReader { proxy in
-            let normalized = min(1, max(0, (level + 60) / 60))
-            ZStack(alignment: .leading) {
-                Capsule().fill(Color.white.opacity(0.15))
+        HStack(spacing: 2) {
+            ForEach(0..<amplitudes.count, id: \.self) { index in
                 Capsule().fill(Color.red.opacity(0.85))
-                    .frame(width: proxy.size.width * normalized)
+                    .scaleEffect(y: amplitudes[index], anchor: .center)
+                    .animation(.smooth(duration: 0.14), value: amplitudes[index])
             }
+        }
+        .onChange(of: level, initial: true) { _, level in
+            amplitudes.removeFirst()
+            amplitudes.append(min(1, max(0, (level + 60) / 60)))
         }
     }
 }
