@@ -860,7 +860,7 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertTrue(speechStarted)
     }
 
-    func testRecordingMeterUsesSilenceThresholdAsVisualNoiseGate() async throws {
+    func testRecordingMeterIgnoresResidualChatterAndBridgesBriefSpeechDips() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
         let overlay = FakeOverlay()
@@ -868,7 +868,7 @@ final class AmbientCrashRegressionTests: XCTestCase {
         var config = MimiConfig.defaults
         config.silenceAutoStopEnabled = false
         config.silenceThresholdDBFS = -50
-        audio.dbfs = -55
+        audio.dbfs = -46
 
         let controller = makeController(
             configProvider: { config },
@@ -880,12 +880,21 @@ final class AmbientCrashRegressionTests: XCTestCase {
         )
 
         controller.hotkeyDown()
-        let hiddenResidual = await waitUntil({ overlay.updatedLevels.contains(-120) }, timeout: 1.0)
-        XCTAssertTrue(hiddenResidual)
+        let sampledResidual = await waitUntil({ overlay.updatedLevels.count >= 2 }, timeout: 1.0)
+        XCTAssertTrue(sampledResidual)
+        XCTAssertTrue(overlay.updatedLevels.allSatisfy { $0 == -120 })
 
         audio.dbfs = -20
         let visibleSpeech = await waitUntil({ overlay.updatedLevels.contains(-20) }, timeout: 1.0)
         XCTAssertTrue(visibleSpeech)
+
+        let updateCount = overlay.updatedLevels.count
+        audio.dbfs = -55
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertTrue(overlay.updatedLevels.dropFirst(updateCount).allSatisfy { $0 > -120 })
+
+        let hiddenAfterHold = await waitUntil({ overlay.updatedLevels.last == -120 }, timeout: 1.0)
+        XCTAssertTrue(hiddenAfterHold)
         controller.cancelRecording()
     }
 

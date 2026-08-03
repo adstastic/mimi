@@ -181,6 +181,8 @@ final class DictationController {
     private var ambientReconcilePending = false
     private var ambientUpdateGeneration = 0
     private var lastAmbientDecisionLogAt = Date.distantPast
+    private var meterOpen = false
+    private var meterReleaseDeadline = Date.distantPast
     private var temporaryAudioURLs: Set<URL> = []
 
     private var isAmbientRecording: Bool {
@@ -408,6 +410,8 @@ final class DictationController {
         onPartialTranscript(nil)
         sawSpeech = speechAlreadyDetected
         silenceBeganAt = nil
+        meterOpen = false
+        meterReleaseDeadline = .distantPast
         state = .recording(mode, plan)
         onStatus(plan.isAmbient ? "Ambient recording…" : "Starting mic…")
         overlay.show(
@@ -991,7 +995,22 @@ final class DictationController {
     }
 
     private func meterLevel(_ level: Double, threshold: Double) -> Double {
-        level >= threshold ? level : -120
+        let now = Date()
+        if meterOpen {
+            if level >= threshold {
+                meterReleaseDeadline = now.addingTimeInterval(0.35)
+                return level
+            }
+            if now < meterReleaseDeadline { return threshold }
+            meterOpen = false
+            return -120
+        }
+
+        // ponytail: fixed visual deadband; add a setting only if real-world tuning needs one.
+        guard level >= threshold + 6 else { return -120 }
+        meterOpen = true
+        meterReleaseDeadline = now.addingTimeInterval(0.35)
+        return level
     }
 
     private func recentlyDetectedSpeech(within seconds: TimeInterval) -> Bool {
