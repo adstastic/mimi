@@ -999,9 +999,9 @@ final class DictationController {
         if meterOpen {
             if level >= threshold {
                 meterReleaseDeadline = now.addingTimeInterval(0.35)
-                return level
+                return visualMeterLevel(level, threshold: threshold)
             }
-            if now < meterReleaseDeadline { return threshold }
+            if now < meterReleaseDeadline { return -60 }
             meterOpen = false
             return -120
         }
@@ -1010,7 +1010,12 @@ final class DictationController {
         guard level >= threshold + 6 else { return -120 }
         meterOpen = true
         meterReleaseDeadline = now.addingTimeInterval(0.35)
-        return level
+        return visualMeterLevel(level, threshold: threshold)
+    }
+
+    private func visualMeterLevel(_ level: Double, threshold: Double) -> Double {
+        let normalizedLevel = min(1, max(0, (level - threshold - 6) / 18))
+        return -60 + normalizedLevel * 42
     }
 
     private func recentlyDetectedSpeech(within seconds: TimeInterval) -> Bool {

@@ -860,15 +860,15 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertTrue(speechStarted)
     }
 
-    func testRecordingMeterIgnoresResidualChatterAndBridgesBriefSpeechDips() async throws {
+    func testRecordingMeterSeparatesBackgroundFromSpeechAndBridgesBriefSpeechDips() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
         let overlay = FakeOverlay()
         let status = StatusSink()
         var config = MimiConfig.defaults
         config.silenceAutoStopEnabled = false
-        config.silenceThresholdDBFS = -50
-        audio.dbfs = -46
+        config.silenceThresholdDBFS = -40
+        audio.dbfs = -35
 
         let controller = makeController(
             configProvider: { config },
@@ -884,13 +884,23 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertTrue(sampledResidual)
         XCTAssertTrue(overlay.updatedLevels.allSatisfy { $0 == -120 })
 
+        let backgroundStart = overlay.updatedLevels.count
+        audio.dbfs = -33
+        let visibleBackground = await waitUntil({ overlay.updatedLevels.count > backgroundStart }, timeout: 1.0)
+        XCTAssertTrue(visibleBackground)
+        let backgroundLevel = try XCTUnwrap(overlay.updatedLevels.last)
+        XCTAssertGreaterThan(backgroundLevel, -120)
+
+        let speechStart = overlay.updatedLevels.count
         audio.dbfs = -20
-        let visibleSpeech = await waitUntil({ overlay.updatedLevels.contains(-20) }, timeout: 1.0)
+        let visibleSpeech = await waitUntil({ overlay.updatedLevels.count > speechStart }, timeout: 1.0)
         XCTAssertTrue(visibleSpeech)
+        let speechLevel = try XCTUnwrap(overlay.updatedLevels.last)
+        XCTAssertGreaterThan(speechLevel - backgroundLevel, 20, "Speech should be visually distinct from background near the meter gate.")
 
         let updateCount = overlay.updatedLevels.count
-        audio.dbfs = -55
-        try await Task.sleep(nanoseconds: 200_000_000)
+        audio.dbfs = -45
+        try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertTrue(overlay.updatedLevels.dropFirst(updateCount).allSatisfy { $0 > -120 })
 
         let hiddenAfterHold = await waitUntil({ overlay.updatedLevels.last == -120 }, timeout: 1.0)
