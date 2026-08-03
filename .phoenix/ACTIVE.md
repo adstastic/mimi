@@ -11,7 +11,7 @@ Must remain true / non-goals:
 - No continuously armed microphone.
 - No config-system or broader review-finding work in this slice.
 - Existing dictation, ambient mode, route switching, and cancellation behavior remain unchanged.
-Current phase: review fixes applied; verifying
+Current phase: ready for signed manual QA
 Completed evidence:
 - 2026-08-03 live log: CoreAudio ID 132→358; fresh engine startup consumed 368 ms of a 411 ms hold; only ~32 ms audio preceded SFSpeechErrorDomain code 1 RecogRejected; retry reused warm engine and worked.
 - User approved brief microphone/privacy-indicator activation after launch and wake.
@@ -22,9 +22,10 @@ Completed evidence:
 - CHECKS: `swift test` passed 71 tests; `swift test --sanitize=thread` passed 71 tests; `git diff --check` passed.
 - REVIEW: all reviewers found prime ownership races: stale prime can stop newer dictation/voiceprint/ambient capture; wake hotkey stop/restart can lose held-key state or override shortcut recording; launch permission prompt is not bounded. Structure reviewer recommends moving first-buffer readiness into AudioCapture and keeping lifecycle ownership centralized.
 - TEST ISOLATION INCIDENT: test helper defaulted to production TextInserter; cold-start bounded test could paste `bounded` into user focus during full suites. Replaced fallback with FakeTextInserter and confirmed no production TextInserter construction remains under Tests. User approved resuming isolated tests only.
-- REVIEW FIXES: controller now reserves `.preparingAudio` ownership; hotkeys remain installed; voiceprint cannot begin during prime; launch no longer awaits permission/prime; native Combine wake subscription replaces thin wrapper; ambient wake requests reconciliation. Focused ownership, timeout, and ready-overlay tests pass.
+- REVIEW FIXES: controller reserves `.preparingAudio` ownership; dictation preempts prime without a stale stop; hotkeys remain installed; prime only runs with existing microphone authorization; voiceprint cannot begin during prime; launch does not await prime; native Combine wake subscription replaces thin wrapper; ambient wake reconciles; ready requires a post-prime buffer.
+- FINAL CHECKS: isolated `swift test` and `swift test --sanitize=thread` each passed 72 tests; `git diff --check` passed. Final independent correctness review reports no current-slice blockers; temp-WAV cleanup and general voiceprint/dictation ownership remain pre-existing blocker work.
 Current hypothesis: Priming the fresh route through its first buffer before user input removes wake-only startup latency and rejection.
-Next action: Run isolated full suite/TSan, inspect final diff, rerun affected review axes, then signed manual-QA build with explicit user boundary.
+Next action: Build signed candidate, request explicit install/launch permission, then human restart and real sleep/wake QA.
 Owned files: .phoenix/ACTIVE.md, Sources/Mimi/AppModel.swift, Sources/Mimi/DictationController.swift, Sources/Mimi/SystemWakeMonitor.swift, Tests/MimiTests/AmbientCrashRegressionTests.swift, Tests/MimiTests/SystemWakeMonitorTests.swift.
 Pre-existing work to preserve: none; initial staged diff hash e69de29bb2d1d6434b8b29ae775ad8c2e48c5391.
 Review findings / decisions pending: exact smallest injectable seam for AppModel wake observation and audio priming.
