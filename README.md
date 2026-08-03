@@ -47,6 +47,7 @@ Grant:
 
 - Microphone permission
 - Accessibility permission
+- Input Monitoring permission
 
 Then focus a text field and use the dictation shortcut.
 
