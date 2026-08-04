@@ -168,7 +168,7 @@ final class HotkeyMonitor {
                correctionShortcut != ambientToggleShortcut,
                !correctionShortcut.isModifierOnly,
                matches(event, shortcut: correctionShortcut) {
-                Task { @MainActor in onCorrection() }
+                correctionPressed = true
             }
         case .keyUp:
             if !dictationShortcut.isModifierOnly,
@@ -176,6 +176,12 @@ final class HotkeyMonitor {
                dictationPressed {
                 dictationPressed = false
                 Task { @MainActor in onDictationUp() }
+            }
+            if !correctionShortcut.isModifierOnly,
+               Int(event.keyCode) == correctionShortcut.keyCode,
+               correctionPressed {
+                correctionPressed = false
+                Task { @MainActor in onCorrection() }
             }
         default:
             break
