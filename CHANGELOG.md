@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-08-04
+
+### Changed
+
+- Correct Last Dictation now opens in its own window from the menu, global shortcut, or Settings without opening the full Settings window.
+
+### Fixed
+
+- Multiple corrections can now update existing vocabulary entries without failing on conflicts.
+- The correction shortcut now keeps the correction window open instead of immediately dismissing it.
+
 ## [0.1.6] - 2026-08-03
 
 ### Fixed
@@ -77,7 +88,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configurable microphone, silence detection, shortcuts, and Return after paste.
 - Local-only operation with no account or telemetry.
 
-[Unreleased]: https://github.com/adstastic/mimi/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/adstastic/mimi/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/adstastic/mimi/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/adstastic/mimi/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/adstastic/mimi/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/adstastic/mimi/compare/v0.1.3...v0.1.4
