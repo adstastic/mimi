@@ -310,6 +310,11 @@ final class DictationController {
         }
     }
 
+    var isRecording: Bool {
+        if case .recording = state { return true }
+        return false
+    }
+
     func copyLastTranscript() {
         guard let transcript = history.lastTranscript else { return }
         do {

@@ -118,7 +118,8 @@ final class AppModel: ObservableObject {
             onDictationUp: { [weak self] in self?.dictationController.hotkeyUp() },
             onAmbientToggle: { [weak self] in self?.toggleAmbientModeFromShortcut() },
             onCorrection: { [weak self] in self?.requestLastTranscriptCorrection() },
-            onCancel: { [weak self] in self?.dictationController.cancelRecording() }
+            onCancel: { [weak self] in self?.dictationController.cancelRecording() },
+            recordingIsActive: { [weak self] in self?.dictationController.isRecording ?? false }
         )
         terminationCancellable = NotificationCenter.default
             .publisher(for: NSApplication.willTerminateNotification)

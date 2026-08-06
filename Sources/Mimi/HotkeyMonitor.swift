@@ -24,10 +24,10 @@ final class HotkeyMonitor {
     private let onCancel: @MainActor () -> Void
     private var eventTap: CFMachPort?
     private var eventTapSource: CFRunLoopSource?
-    private(set) var usesActiveEventTap = false
     private var dictationPressed = false
     private var ambientPressed = false
     private var correctionPressed = false
+    private var recordingIsActive: @MainActor () -> Bool = { false }
 
     init(
         dictationShortcut: MimiShortcut,
@@ -37,7 +37,8 @@ final class HotkeyMonitor {
         onDictationUp: @escaping @MainActor () -> Void,
         onAmbientToggle: @escaping @MainActor () -> Void,
         onCorrection: @escaping @MainActor () -> Void,
-        onCancel: @escaping @MainActor () -> Void
+        onCancel: @escaping @MainActor () -> Void,
+        recordingIsActive: @escaping @MainActor () -> Bool = { false }
     ) {
         self.dictationShortcut = dictationShortcut
         self.ambientToggleShortcut = ambientToggleShortcut
@@ -47,6 +48,7 @@ final class HotkeyMonitor {
         self.onAmbientToggle = onAmbientToggle
         self.onCorrection = onCorrection
         self.onCancel = onCancel
+        self.recordingIsActive = recordingIsActive
     }
 
     var statusText: String {
@@ -74,10 +76,11 @@ final class HotkeyMonitor {
         let mask = (1 << CGEventType.flagsChanged.rawValue)
             | (1 << CGEventType.keyDown.rawValue)
             | (1 << CGEventType.keyUp.rawValue)
+        let options = CGEventTapOptions.defaultTap
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
-            options: .defaultTap,
+            options: options,
             eventsOfInterest: CGEventMask(mask),
             callback: Self.eventTapCallback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
@@ -89,7 +92,6 @@ final class HotkeyMonitor {
         CGEvent.tapEnable(tap: tap, enable: true)
         eventTap = tap
         eventTapSource = source
-        usesActiveEventTap = true
     }
 
     func stop() {
@@ -102,7 +104,6 @@ final class HotkeyMonitor {
         }
         eventTap = nil
         eventTapSource = nil
-        usesActiveEventTap = false
         dictationPressed = false
         ambientPressed = false
         correctionPressed = false
@@ -121,16 +122,18 @@ final class HotkeyMonitor {
             }
             return Unmanaged.passUnretained(event)
         }
-        guard type != .keyDown,
-              let nsEvent = NSEvent(cgEvent: event),
-              nsEvent.keyCode != 53 else {
-            if let nsEvent = NSEvent(cgEvent: event) {
-                handle(nsEvent)
+        if let nsEvent = NSEvent(cgEvent: event) {
+            if type == .keyDown, nsEvent.keyCode == 53, shouldConsumeEscape() {
+                Task { @MainActor in onCancel() }
+                return nil
             }
-            return nil
+            handle(nsEvent)
         }
-        handle(nsEvent)
         return Unmanaged.passUnretained(event)
+    }
+
+    private func shouldConsumeEscape() -> Bool {
+        MainActor.assumeIsolated { recordingIsActive() }
     }
 
     private func handle(_ event: NSEvent) {
@@ -157,7 +160,9 @@ final class HotkeyMonitor {
         case .keyDown:
             guard !event.isARepeat else { return }
             if event.keyCode == 53 { // Escape.
-                Task { @MainActor in onCancel() }
+                if shouldConsumeEscape() {
+                    Task { @MainActor in onCancel() }
+                }
                 return
             }
             if !dictationShortcut.isModifierOnly,
