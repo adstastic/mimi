@@ -24,6 +24,7 @@ final class HotkeyMonitor {
     private let onCancel: @MainActor () -> Void
     private var eventTap: CFMachPort?
     private var eventTapSource: CFRunLoopSource?
+    private(set) var usesActiveEventTap = false
     private var dictationPressed = false
     private var ambientPressed = false
     private var correctionPressed = false
@@ -76,7 +77,7 @@ final class HotkeyMonitor {
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
-            options: .listenOnly,
+            options: .defaultTap,
             eventsOfInterest: CGEventMask(mask),
             callback: Self.eventTapCallback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
@@ -88,6 +89,7 @@ final class HotkeyMonitor {
         CGEvent.tapEnable(tap: tap, enable: true)
         eventTap = tap
         eventTapSource = source
+        usesActiveEventTap = true
     }
 
     func stop() {
@@ -100,6 +102,7 @@ final class HotkeyMonitor {
         }
         eventTap = nil
         eventTapSource = nil
+        usesActiveEventTap = false
         dictationPressed = false
         ambientPressed = false
         correctionPressed = false
@@ -118,9 +121,15 @@ final class HotkeyMonitor {
             }
             return Unmanaged.passUnretained(event)
         }
-        if let event = NSEvent(cgEvent: event) {
-            handle(event)
+        guard type != .keyDown,
+              let nsEvent = NSEvent(cgEvent: event),
+              nsEvent.keyCode != 53 else {
+            if let nsEvent = NSEvent(cgEvent: event) {
+                handle(nsEvent)
+            }
+            return nil
         }
+        handle(nsEvent)
         return Unmanaged.passUnretained(event)
     }
 

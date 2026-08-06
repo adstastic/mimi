@@ -322,6 +322,52 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertEqual(audio.stopCount, 1)
     }
 
+    func testTapStopStreamFailureStillCancelsStreamBeforeNextRecording() async {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = MimiConfig.defaults
+        config.preferredBackend = .appleSpeechTranscriber
+        config.silenceDetectionMode = .speechActivity
+        config.silenceAutoStopEnabled = false
+        config.voiceprintEnabled = false
+        asr.failNextFinish(NSError(
+            domain: "SFSpeechErrorDomain",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "RecogRejected"]
+        ))
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        let firstStarted = await waitUntil({
+            asr.snapshotEvents().filter { $0 == "stream.start" }.count == 1
+        }, timeout: 1.0)
+        XCTAssertTrue(firstStarted)
+        controller.hotkeyUp()
+        controller.hotkeyDown()
+        let finishFailed = await waitUntil({
+            status.values.contains { $0.hasPrefix("Error:") }
+        }, timeout: 1.0)
+        XCTAssertTrue(finishFailed)
+        XCTAssertTrue(asr.snapshotEvents().contains("stream.cancel.end"))
+
+        controller.hotkeyDown()
+        let replacementStarted = await waitUntil({
+            asr.snapshotEvents().filter { $0 == "stream.start" }.count == 2
+        }, timeout: 1.0)
+        XCTAssertTrue(replacementStarted)
+        controller.cancelRecording()
+    }
+
     func testReplacementRecordingWaitsForCanceledStreamCleanup() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
@@ -1557,6 +1603,7 @@ private final class FakeASRService: ASRServicing {
     private var cancelsHeld = false
     private var transcriptionsHeld = false
     private var nextStartError: Error?
+    private var nextFinishError: Error?
     var startError: Error?
     var streamFinalText = ""
     var appleFinalText = ""
@@ -1589,6 +1636,12 @@ private final class FakeASRService: ASRServicing {
     func failNextStart(_ error: Error) {
         lock.lock()
         nextStartError = error
+        lock.unlock()
+    }
+
+    func failNextFinish(_ error: Error) {
+        lock.lock()
+        nextFinishError = error
         lock.unlock()
     }
 
@@ -1647,6 +1700,12 @@ private final class FakeASRService: ASRServicing {
 
     func finishAppleStream() async throws -> String {
         record("stream.finish")
+        let oneShotError = lock.withLock {
+            let error = nextFinishError
+            nextFinishError = nil
+            return error
+        }
+        if let oneShotError { throw oneShotError }
         return streamFinalText
     }
 

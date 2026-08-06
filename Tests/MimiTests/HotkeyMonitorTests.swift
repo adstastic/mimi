@@ -60,6 +60,7 @@ final class HotkeyMonitorTests: XCTestCase {
         )
         try monitor.start()
         defer { monitor.stop() }
+        XCTAssertTrue(monitor.usesActiveEventTap)
 
         let source = CGEventSource(stateID: .hidSystemState)
         let keyDown = try XCTUnwrap(CGEvent(keyboardEventSource: source, virtualKey: 53, keyDown: true))
