@@ -39,7 +39,7 @@ final class SettingsSnapshotTests: XCTestCase {
         let size = try render(view, to: "/tmp/mimi-settings-snapshot.png")
         XCTAssertEqual(size.width, 430, accuracy: 0.5)
         XCTAssertGreaterThan(size.height, 1_000)
-        XCTAssertLessThanOrEqual(size.height, 1_200)
+        XCTAssertLessThanOrEqual(size.height, 1_300)
         print("SETTINGS_SNAPSHOT_SIZE=\(Int(size.width))x\(Int(size.height))")
     }
 

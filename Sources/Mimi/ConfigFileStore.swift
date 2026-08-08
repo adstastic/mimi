@@ -252,6 +252,22 @@ final class MimiConfigFileStore {
         ]
         try rejectUnknownPasteKeys(in: object["dictationPasteSettings"], allowed: pasteKeys, path: "dictationPasteSettings")
         try rejectUnknownPasteKeys(in: object["ambientPasteSettings"], allowed: pasteKeys, path: "ambientPasteSettings")
+        try rejectUnknownKeys(
+            in: object["pastePresetShortcut"],
+            allowed: ["keyCode", "modifierFlagsRaw"],
+            path: "pastePresetShortcut"
+        )
+        if let presets = object["pastePresets"] as? [Any] {
+            for (index, preset) in presets.enumerated() {
+                let path = "pastePresets[\(index)]"
+                try rejectUnknownKeys(in: preset, allowed: ["name", "paste"], path: path)
+                try rejectUnknownPasteKeys(
+                    in: (preset as? [String: Any])?["paste"],
+                    allowed: pasteKeys,
+                    path: "\(path).paste"
+                )
+            }
+        }
         if let entries = object["vocabulary"] as? [Any] {
             for (index, entry) in entries.enumerated() {
                 try rejectUnknownKeys(
@@ -320,6 +336,21 @@ final class MimiConfigFileStore {
         try require((0 ... 5_000).contains(config.dictationPasteSettings.postPasteDelayMilliseconds), "Dictation post-paste delay must be between 0 and 5000.")
         try require((0 ... 5_000).contains(config.ambientPasteSettings.prePasteDelayMilliseconds), "Ambient pre-paste delay must be between 0 and 5000.")
         try require((0 ... 5_000).contains(config.ambientPasteSettings.postPasteDelayMilliseconds), "Ambient post-paste delay must be between 0 and 5000.")
+        try validateShortcut(config.pastePresetShortcut, name: "pastePresetShortcut")
+        var presetNames = Set<String>()
+        for preset in config.pastePresets {
+            let name = preset.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            try require(!name.isEmpty, "pastePresets names must not be empty.")
+            try require(name != PastePreset.manualName, "pastePresets cannot use the reserved name \(PastePreset.manualName).")
+            try require(presetNames.insert(name).inserted, "pastePresets names must be unique: \(name)")
+            try validateShortcut(preset.paste.prePasteKeystroke, name: "pastePresets[\(name)].prePasteKeystroke")
+            try validateShortcut(preset.paste.postPasteKeystroke, name: "pastePresets[\(name)].postPasteKeystroke")
+            try require((0 ... 5_000).contains(preset.paste.prePasteDelayMilliseconds), "Preset \(name) pre-paste delay must be between 0 and 5000.")
+            try require((0 ... 5_000).contains(preset.paste.postPasteDelayMilliseconds), "Preset \(name) post-paste delay must be between 0 and 5000.")
+        }
+        if let activeName = config.activePastePresetName {
+            try require(presetNames.contains(activeName), "activePastePresetName has no matching preset: \(activeName)")
+        }
         try require((0.45 ... 0.95).contains(config.voiceprintThreshold), "voiceprintThreshold must be between 0.45 and 0.95.")
         try require(
             config.preferredBackend.capabilities.supportsSilenceDetectionMode(config.silenceDetectionMode),
@@ -390,6 +421,9 @@ private struct CanonicalMimiConfig: Encodable {
         case correctionShortcut
         case dictationPasteSettings
         case ambientPasteSettings
+        case pastePresets
+        case activePastePresetName
+        case pastePresetShortcut
         case showLiveTranscript
         case fillerCleanupEnabled
         case vocabulary
@@ -415,6 +449,9 @@ private struct CanonicalMimiConfig: Encodable {
         try container.encode(config.correctionShortcut, forKey: .correctionShortcut)
         try container.encode(config.dictationPasteSettings, forKey: .dictationPasteSettings)
         try container.encode(config.ambientPasteSettings, forKey: .ambientPasteSettings)
+        try container.encode(config.pastePresets, forKey: .pastePresets)
+        try container.encodeIfPresent(config.activePastePresetName, forKey: .activePastePresetName)
+        try container.encode(config.pastePresetShortcut, forKey: .pastePresetShortcut)
         try container.encode(config.showLiveTranscript, forKey: .showLiveTranscript)
         try container.encode(config.fillerCleanupEnabled, forKey: .fillerCleanupEnabled)
         try container.encode(config.vocabulary, forKey: .vocabulary)

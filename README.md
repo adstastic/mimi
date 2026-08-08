@@ -13,6 +13,7 @@ Current usable path:
 - silence auto-stop
 - optional ambient VAD mode that keeps mic armed and uses Apple SpeechDetector to start/stop on speech
 - independently configurable silence auto-stop, stop detection mode, microphone input, and pre/post-paste keystrokes and delays for shortcut and ambient dictation
+- paste presets: named pre/post-paste keystroke sets per target app, switched in Settings or cycled with a global shortcut (default Control-Option-P) with an overlay showing the active preset
 - menu bar app with a full settings window available on demand
 - bottom recording overlay with live partials for Apple SpeechTranscriber
 - transcript stays copied to clipboard after dictation
@@ -46,6 +47,29 @@ Vocabulary pairs group observed forms under exact output:
 ```
 
 `to` also acts as a case-insensitive self-alias, preserving canonical casing. Delete a pairing to disable it.
+
+### Paste presets
+
+`pastePresets` holds named pre/post-paste keystroke sets. `activePastePresetName` selects one; omit it (or pick **Manual** in Settings) to use `dictationPasteSettings` / `ambientPasteSettings` instead. An active preset overrides both. Names must be unique, non-empty, and not `Manual`.
+
+```json
+{
+  "activePastePresetName": "TUICR",
+  "pastePresets": [
+    {
+      "name": "TUICR",
+      "paste": {
+        "prePasteKeystroke": { "keyCode": 8, "modifierFlagsRaw": 0 },
+        "postPasteKeystroke": { "keyCode": 36, "modifierFlagsRaw": 0 },
+        "prePasteDelayMilliseconds": 150,
+        "postPasteDelayMilliseconds": 150
+      }
+    }
+  ]
+}
+```
+
+Defaults ship **Terminal agent** (paste → Return), **RevDiff** (Return → paste → Return), and **TUICR** (C → paste → Return). `pastePresetShortcut` cycles Manual → each preset → Manual.
 
 Correcting the latest transcript learns each separate replacement across multiple sentences. Insertions, deletions, and punctuation-only edits do not create vocabulary rules.
 

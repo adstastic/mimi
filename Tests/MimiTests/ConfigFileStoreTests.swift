@@ -118,7 +118,14 @@ final class ConfigFileStoreTests: XCTestCase {
             #"{"vocabulary":[{"from":[""],"to":"JSON"}]}"#,
             #"{"vocabulary":[],"vocabularyEntries":[]}"#,
             #"{"dictationPasteSettings":{"unexpected":true}}"#,
-            #"{"dictationPasteSettings":{"prePasteKeystroke":{"keyCode":36,"modifierFlagsRaw":0,"unexpected":true}}}"#
+            #"{"dictationPasteSettings":{"prePasteKeystroke":{"keyCode":36,"modifierFlagsRaw":0,"unexpected":true}}}"#,
+            #"{"pastePresets":[{"name":"A","paste":{},"unexpected":true}]}"#,
+            #"{"pastePresets":[{"name":"A","paste":{"unexpected":true}}]}"#,
+            #"{"pastePresets":[{"name":" ","paste":{}}]}"#,
+            #"{"pastePresets":[{"name":"Manual","paste":{}}]}"#,
+            #"{"pastePresets":[{"name":"A","paste":{}},{"name":"A","paste":{}}]}"#,
+            #"{"pastePresets":[{"name":"A","paste":{"postPasteDelayMilliseconds":9000}}]}"#,
+            #"{"activePastePresetName":"Missing","pastePresets":[]}"#
         ] {
             let data = Data(invalid.utf8)
             try data.write(to: fixture.configURL, options: .atomic)

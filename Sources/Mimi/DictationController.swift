@@ -125,9 +125,7 @@ final class DictationController {
                 silenceDetectionMode: normalizedConfig.silenceDetectionMode
             )
             usesSpeechActivityStop = capabilities.usesSpeechActivityStop(normalizedConfig.silenceDetectionMode)
-            pasteSettings = isAmbient
-                ? normalizedConfig.ambientPasteSettings
-                : normalizedConfig.dictationPasteSettings
+            pasteSettings = normalizedConfig.pasteSettings(isAmbient: isAmbient)
             self.ambientUpdateGeneration = ambientUpdateGeneration
         }
     }

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Paste presets: named pre/post-paste keystroke sets (Terminal agent, RevDiff, TUICR by default) selectable in Settings or cycled with a global shortcut (default Control-Option-P) that shows the active preset in the overlay.
+
+### Fixed
+
+- Mimi no longer reads its own pasted keystrokes back as global shortcuts, so pre/post-paste keys such as C no longer trigger Correct Last Dictation while modifiers are held.
+
 ## [0.1.8] - 2026-08-06
 
 ### Fixed

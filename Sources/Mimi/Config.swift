@@ -27,6 +27,11 @@ public struct MimiShortcut: Codable, Equatable, Sendable {
         modifierFlagsRaw: NSEvent.ModifierFlags([.control, .option]).rawValue
     )
 
+    public static let pastePresetDefault = MimiShortcut(
+        keyCode: 35, // P
+        modifierFlagsRaw: NSEvent.ModifierFlags([.control, .option]).rawValue
+    )
+
     static func legacySingleKey(keyCode: Int) -> MimiShortcut {
         MimiShortcut(
             keyCode: keyCode,
@@ -70,12 +75,53 @@ public struct PasteSettings: Codable, Equatable, Sendable {
         self.postPasteDelayMilliseconds = postPasteDelayMilliseconds
     }
 
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        prePasteKeystroke = try container.decodeIfPresent(MimiShortcut.self, forKey: .prePasteKeystroke)
+        postPasteKeystroke = try container.decodeIfPresent(MimiShortcut.self, forKey: .postPasteKeystroke)
+        prePasteDelayMilliseconds = try container.decodeIfPresent(Int.self, forKey: .prePasteDelayMilliseconds) ?? 150
+        postPasteDelayMilliseconds = try container.decodeIfPresent(Int.self, forKey: .postPasteDelayMilliseconds) ?? 150
+    }
+
     public static let defaults = PasteSettings(
         prePasteKeystroke: nil,
         postPasteKeystroke: .returnKey,
         prePasteDelayMilliseconds: 150,
         postPasteDelayMilliseconds: 150
     )
+
+    static func preset(pre: MimiShortcut?, post: MimiShortcut?) -> PasteSettings {
+        PasteSettings(
+            prePasteKeystroke: pre,
+            postPasteKeystroke: post,
+            prePasteDelayMilliseconds: defaults.prePasteDelayMilliseconds,
+            postPasteDelayMilliseconds: defaults.postPasteDelayMilliseconds
+        )
+    }
+}
+
+/// Named pre/post-paste keystroke set for one target app, selected by shortcut or in Settings.
+public struct PastePreset: Codable, Equatable, Sendable, Identifiable {
+    public var name: String
+    public var paste: PasteSettings
+
+    public var id: String { name }
+
+    public init(name: String, paste: PasteSettings) {
+        self.name = name
+        self.paste = paste
+    }
+
+    public static let manualName = "Manual"
+
+    public static let defaults: [PastePreset] = [
+        PastePreset(name: "Terminal agent", paste: .preset(pre: nil, post: .returnKey)),
+        PastePreset(name: "RevDiff", paste: .preset(pre: .returnKey, post: .returnKey)),
+        PastePreset(
+            name: "TUICR",
+            paste: .preset(pre: MimiShortcut(keyCode: 8, modifierFlagsRaw: 0), post: .returnKey)
+        )
+    ]
 }
 
 private struct LegacyVocabularyEntry: Decodable {
@@ -214,6 +260,9 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         case correctionShortcut
         case dictationPasteSettings
         case ambientPasteSettings
+        case pastePresets
+        case activePastePresetName
+        case pastePresetShortcut
         case ambientPrePasteKeystroke
         case ambientPostPasteKeystroke
         case ambientStartKeystroke
@@ -249,6 +298,9 @@ public struct MimiConfig: Codable, Equatable, Sendable {
     public var correctionShortcut: MimiShortcut
     public var dictationPasteSettings: PasteSettings
     public var ambientPasteSettings: PasteSettings
+    public var pastePresets: [PastePreset]
+    public var activePastePresetName: String?
+    public var pastePresetShortcut: MimiShortcut
     public var showLiveTranscript: Bool
     public var fillerCleanupEnabled: Bool
     public var vocabulary: [VocabularyEntry]
@@ -274,6 +326,9 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         correctionShortcut: .correctionDefault,
         dictationPasteSettings: .defaults,
         ambientPasteSettings: .defaults,
+        pastePresets: PastePreset.defaults,
+        activePastePresetName: nil,
+        pastePresetShortcut: .pastePresetDefault,
         showLiveTranscript: true,
         fillerCleanupEnabled: true,
         vocabulary: [],
@@ -299,6 +354,9 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         correctionShortcut: MimiShortcut = .correctionDefault,
         dictationPasteSettings: PasteSettings = .defaults,
         ambientPasteSettings: PasteSettings = .defaults,
+        pastePresets: [PastePreset] = PastePreset.defaults,
+        activePastePresetName: String? = nil,
+        pastePresetShortcut: MimiShortcut = .pastePresetDefault,
         showLiveTranscript: Bool = true,
         fillerCleanupEnabled: Bool = true,
         vocabulary: [VocabularyEntry] = [],
@@ -322,6 +380,9 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         self.correctionShortcut = correctionShortcut
         self.dictationPasteSettings = dictationPasteSettings
         self.ambientPasteSettings = ambientPasteSettings
+        self.pastePresets = pastePresets
+        self.activePastePresetName = activePastePresetName
+        self.pastePresetShortcut = pastePresetShortcut
         self.showLiveTranscript = showLiveTranscript
         self.fillerCleanupEnabled = fillerCleanupEnabled
         self.vocabulary = vocabulary
@@ -395,6 +456,9 @@ public struct MimiConfig: Codable, Equatable, Sendable {
                 postPasteDelayMilliseconds: legacyPostPasteDelay
             )
         }
+        pastePresets = try container.decodeIfPresent([PastePreset].self, forKey: .pastePresets) ?? Self.defaults.pastePresets
+        activePastePresetName = try container.decodeIfPresent(String.self, forKey: .activePastePresetName)
+        pastePresetShortcut = try container.decodeIfPresent(MimiShortcut.self, forKey: .pastePresetShortcut) ?? Self.defaults.pastePresetShortcut
         showLiveTranscript = try container.decodeIfPresent(Bool.self, forKey: .showLiveTranscript) ?? Self.defaults.showLiveTranscript
         fillerCleanupEnabled = try container.decodeIfPresent(Bool.self, forKey: .fillerCleanupEnabled) ?? Self.defaults.fillerCleanupEnabled
         if let decodedVocabulary = try container.decodeIfPresent([VocabularyEntry].self, forKey: .vocabulary) {
@@ -426,6 +490,9 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         try container.encode(correctionShortcut, forKey: .correctionShortcut)
         try container.encode(dictationPasteSettings, forKey: .dictationPasteSettings)
         try container.encode(ambientPasteSettings, forKey: .ambientPasteSettings)
+        try container.encode(pastePresets, forKey: .pastePresets)
+        try container.encodeIfPresent(activePastePresetName, forKey: .activePastePresetName)
+        try container.encode(pastePresetShortcut, forKey: .pastePresetShortcut)
         try container.encode(ambientPasteSettings.prePasteKeystroke, forKey: .ambientPrePasteKeystroke)
         try container.encode(ambientPasteSettings.postPasteKeystroke, forKey: .ambientPostPasteKeystroke)
         try container.encode(ambientPasteSettings.prePasteKeystroke, forKey: .ambientStartKeystroke)
@@ -473,7 +540,31 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         ambientModeEnabled = capabilities.normalizeAmbientModeEnabled(ambientModeEnabled)
         silenceDetectionMode = capabilities.normalizeSilenceDetectionMode(silenceDetectionMode)
         voiceprintThreshold = min(0.95, max(0.45, voiceprintThreshold))
+        if activePastePresetName != nil, activePastePreset == nil {
+            activePastePresetName = nil
+        }
         return self != oldValue
+    }
+
+    /// Paste keystrokes in effect: active preset wins over the per-mode settings.
+    public var activePastePreset: PastePreset? {
+        guard let activePastePresetName else { return nil }
+        return pastePresets.first { $0.name == activePastePresetName }
+    }
+
+    public var activePastePresetLabel: String {
+        activePastePreset?.name ?? PastePreset.manualName
+    }
+
+    public func pasteSettings(isAmbient: Bool) -> PasteSettings {
+        activePastePreset?.paste ?? (isAmbient ? ambientPasteSettings : dictationPasteSettings)
+    }
+
+    /// Advances Manual → each preset → Manual.
+    public mutating func cyclePastePreset() {
+        let names: [String?] = [nil] + pastePresets.map(\.name)
+        let index = names.firstIndex(of: activePastePreset?.name) ?? 0
+        activePastePresetName = names[(index + 1) % names.count]
     }
 
     public func normalizedForBackend() -> MimiConfig {

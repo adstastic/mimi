@@ -1,6 +1,16 @@
 import AppKit
 import Foundation
 
+/// Marks keystrokes Mimi posts itself so HotkeyMonitor never reads them back as user shortcuts.
+/// Posted events inherit physically-held modifiers, so an untagged synthetic "C" can look like ⌃⌥C.
+enum SyntheticKeystroke {
+    static let tag: Int64 = 0x4D_49_4D_49 // "MIMI"
+
+    static func isMimi(_ event: CGEvent) -> Bool {
+        event.getIntegerValueField(.eventSourceUserData) == tag
+    }
+}
+
 @MainActor
 final class TextInserter {
     enum InsertError: LocalizedError {
@@ -63,6 +73,8 @@ final class TextInserter {
 
         down.flags = flags
         up.flags = flags
+        down.setIntegerValueField(.eventSourceUserData, value: SyntheticKeystroke.tag)
+        up.setIntegerValueField(.eventSourceUserData, value: SyntheticKeystroke.tag)
         down.post(tap: .cghidEventTap)
         up.post(tap: .cghidEventTap)
     }

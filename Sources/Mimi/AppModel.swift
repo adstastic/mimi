@@ -45,7 +45,8 @@ final class AppModel: ObservableObject {
             if !shortcutRecording,
                oldValue.dictationShortcut != config.dictationShortcut
                 || oldValue.ambientToggleShortcut != config.ambientToggleShortcut
-                || oldValue.correctionShortcut != config.correctionShortcut {
+                || oldValue.correctionShortcut != config.correctionShortcut
+                || oldValue.pastePresetShortcut != config.pastePresetShortcut {
                 restartHotkeyMonitor()
             }
         }
@@ -114,10 +115,12 @@ final class AppModel: ObservableObject {
             dictationShortcut: config.dictationShortcut,
             ambientToggleShortcut: config.ambientToggleShortcut,
             correctionShortcut: config.correctionShortcut,
+            pastePresetShortcut: config.pastePresetShortcut,
             onDictationDown: { [weak self] in self?.dictationController.hotkeyDown() },
             onDictationUp: { [weak self] in self?.dictationController.hotkeyUp() },
             onAmbientToggle: { [weak self] in self?.toggleAmbientModeFromShortcut() },
             onCorrection: { [weak self] in self?.requestLastTranscriptCorrection() },
+            onPastePresetCycle: { [weak self] in self?.cyclePastePresetFromShortcut() },
             onCancel: { [weak self] in self?.dictationController.cancelRecording() },
             recordingIsActive: { [weak self] in self?.dictationController.isRecording ?? false }
         )
@@ -244,7 +247,8 @@ final class AppModel: ObservableObject {
         hotkeyMonitor.update(
             dictationShortcut: config.dictationShortcut,
             ambientToggleShortcut: config.ambientToggleShortcut,
-            correctionShortcut: config.correctionShortcut
+            correctionShortcut: config.correctionShortcut,
+            pastePresetShortcut: config.pastePresetShortcut
         )
         guard started else { return }
         hotkeyMonitor.stop()
@@ -254,6 +258,15 @@ final class AppModel: ObservableObject {
             applyStatus("Hotkey error: \(error.localizedDescription)")
             overlay.show(AppBrand.hotkeyErrorTitle, detail: error.localizedDescription)
         }
+    }
+
+    private func cyclePastePresetFromShortcut() {
+        config.cyclePastePreset()
+        overlay.show(
+            "Paste: \(config.activePastePresetLabel)",
+            detail: config.pasteSettings(isAmbient: config.ambientModeEnabled).keystrokeSummary
+        )
+        overlay.hide(after: 1_200)
     }
 
     private func toggleAmbientModeFromShortcut() {

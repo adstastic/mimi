@@ -168,6 +168,15 @@ extension MimiShortcut {
     }
 }
 
+extension PasteSettings {
+    /// e.g. "C → paste → Return".
+    var keystrokeSummary: String {
+        [prePasteKeystroke?.displayName, "paste", postPasteKeystroke?.displayName]
+            .compactMap { $0 }
+            .joined(separator: " → ")
+    }
+}
+
 private extension NSEvent.ModifierFlags {
     var shortcutSymbols: String {
         var symbols = ""

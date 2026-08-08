@@ -77,7 +77,7 @@ struct SettingsView: View {
                 SettingsCard(
                     "Paste",
                     systemImage: "doc.on.clipboard",
-                    trailing: AnyView(
+                    trailing: activePresetIndex == nil ? AnyView(
                         Picker("Paste mode", selection: $pasteMode) {
                             Text("Shortcut").tag(PasteMode.shortcut)
                             Text("Ambient").tag(PasteMode.ambient)
@@ -86,16 +86,37 @@ struct SettingsView: View {
                         .pickerStyle(.segmented)
                         .controlSize(.small)
                         .frame(width: 150)
-                    )
+                    ) : nil
                 ) {
+                    PickerLine("Preset", systemImage: "square.stack.3d.up") {
+                        Picker("Preset", selection: activePresetSelection) {
+                            Text(PastePreset.manualName).tag("")
+                            ForEach(config.pastePresets) { preset in
+                                Text(preset.name).tag(preset.name)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .controlSize(.small)
+                    }
+
                     PasteSettingsEditor(
                         settings: selectedPasteSettings,
                         beforeDelayField: selectedDelayFields.before,
                         afterDelayField: selectedDelayFields.after,
                         focusedField: $focusedField,
-                        disabled: pasteMode == .ambient && !backendCapabilities.supportsAmbient,
+                        disabled: activePresetIndex == nil && pasteMode == .ambient && !backendCapabilities.supportsAmbient,
                         onRecordingChanged: shortcutRecordingChanged
                     )
+
+                    if activePresetIndex != nil {
+                        Label(
+                            "Preset overrides shortcut and ambient paste keys. Add or rename presets in the config file.",
+                            systemImage: "info.circle"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
                 }
 
                 SettingsCard("Shortcuts", systemImage: "keyboard") {
@@ -118,6 +139,12 @@ struct SettingsView: View {
                         shortcut: $config.correctionShortcut,
                         onRecordingChanged: shortcutRecordingChanged
                     )
+                    ShortcutRecorderRow(
+                        title: "Next paste preset",
+                        systemImage: "square.stack.3d.up",
+                        shortcut: $config.pastePresetShortcut,
+                        onRecordingChanged: shortcutRecordingChanged
+                    )
                     if config.dictationShortcut == config.ambientToggleShortcut {
                         Label("Ambient shortcut ignored because it matches dictation.", systemImage: "exclamationmark.triangle.fill")
                             .font(.caption)
@@ -126,6 +153,13 @@ struct SettingsView: View {
                     if config.correctionShortcut == config.dictationShortcut
                         || config.correctionShortcut == config.ambientToggleShortcut {
                         Label("Correct last shortcut ignored because it matches another shortcut.", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                    if config.pastePresetShortcut == config.dictationShortcut
+                        || config.pastePresetShortcut == config.ambientToggleShortcut
+                        || config.pastePresetShortcut == config.correctionShortcut {
+                        Label("Paste preset shortcut ignored because it matches another shortcut.", systemImage: "exclamationmark.triangle.fill")
                             .font(.caption)
                             .foregroundStyle(.orange)
                     }
@@ -278,12 +312,27 @@ struct SettingsView: View {
         config.preferredBackend.capabilities
     }
 
+    private var activePresetIndex: Int? {
+        guard let name = config.activePastePresetName else { return nil }
+        return config.pastePresets.firstIndex { $0.name == name }
+    }
+
+    private var activePresetSelection: Binding<String> {
+        Binding(
+            get: { config.activePastePresetName ?? "" },
+            set: { config.activePastePresetName = $0.isEmpty ? nil : $0 }
+        )
+    }
+
     private var selectedPasteSettings: Binding<PasteSettings> {
+        if let index = activePresetIndex {
+            return $config.pastePresets[index].paste
+        }
         switch pasteMode {
         case .shortcut:
-            $config.dictationPasteSettings
+            return $config.dictationPasteSettings
         case .ambient:
-            $config.ambientPasteSettings
+            return $config.ambientPasteSettings
         }
     }
 

@@ -17,32 +17,39 @@ final class HotkeyMonitor {
     private var dictationShortcut: MimiShortcut
     private var ambientToggleShortcut: MimiShortcut
     private var correctionShortcut: MimiShortcut
+    private var pastePresetShortcut: MimiShortcut
     private let onDictationDown: @MainActor () -> Void
     private let onDictationUp: @MainActor () -> Void
     private let onAmbientToggle: @MainActor () -> Void
     private let onCorrection: @MainActor () -> Void
+    private let onPastePresetCycle: @MainActor () -> Void
     private let onCancel: @MainActor () -> Void
     private var eventTap: CFMachPort?
     private var eventTapSource: CFRunLoopSource?
     private var dictationPressed = false
     private var ambientPressed = false
     private var correctionPressed = false
+    private var pastePresetPressed = false
     private var recordingIsActive: @MainActor () -> Bool = { false }
 
     init(
         dictationShortcut: MimiShortcut,
         ambientToggleShortcut: MimiShortcut,
         correctionShortcut: MimiShortcut,
+        pastePresetShortcut: MimiShortcut = .pastePresetDefault,
         onDictationDown: @escaping @MainActor () -> Void,
         onDictationUp: @escaping @MainActor () -> Void,
         onAmbientToggle: @escaping @MainActor () -> Void,
         onCorrection: @escaping @MainActor () -> Void,
+        onPastePresetCycle: @escaping @MainActor () -> Void = {},
         onCancel: @escaping @MainActor () -> Void,
         recordingIsActive: @escaping @MainActor () -> Bool = { false }
     ) {
         self.dictationShortcut = dictationShortcut
         self.ambientToggleShortcut = ambientToggleShortcut
         self.correctionShortcut = correctionShortcut
+        self.pastePresetShortcut = pastePresetShortcut
+        self.onPastePresetCycle = onPastePresetCycle
         self.onDictationDown = onDictationDown
         self.onDictationUp = onDictationUp
         self.onAmbientToggle = onAmbientToggle
@@ -58,14 +65,17 @@ final class HotkeyMonitor {
     func update(
         dictationShortcut: MimiShortcut,
         ambientToggleShortcut: MimiShortcut,
-        correctionShortcut: MimiShortcut
+        correctionShortcut: MimiShortcut,
+        pastePresetShortcut: MimiShortcut = .pastePresetDefault
     ) {
         self.dictationShortcut = dictationShortcut
         self.ambientToggleShortcut = ambientToggleShortcut
         self.correctionShortcut = correctionShortcut
+        self.pastePresetShortcut = pastePresetShortcut
         dictationPressed = false
         ambientPressed = false
         correctionPressed = false
+        pastePresetPressed = false
     }
 
     func start() throws {
@@ -107,6 +117,7 @@ final class HotkeyMonitor {
         dictationPressed = false
         ambientPressed = false
         correctionPressed = false
+        pastePresetPressed = false
     }
 
     private static let eventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
@@ -120,6 +131,9 @@ final class HotkeyMonitor {
             if let eventTap {
                 CGEvent.tapEnable(tap: eventTap, enable: true)
             }
+            return Unmanaged.passUnretained(event)
+        }
+        if SyntheticKeystroke.isMimi(event) {
             return Unmanaged.passUnretained(event)
         }
         if let nsEvent = NSEvent(cgEvent: event) {
@@ -157,6 +171,14 @@ final class HotkeyMonitor {
                     action: onCorrection
                 )
             }
+            if isPastePresetShortcutDistinct {
+                handleModifierToggle(
+                    event,
+                    shortcut: pastePresetShortcut,
+                    pressed: &pastePresetPressed,
+                    action: onPastePresetCycle
+                )
+            }
         case .keyDown:
             guard !event.isARepeat else { return }
             if event.keyCode == 53 { // Escape.
@@ -183,6 +205,13 @@ final class HotkeyMonitor {
                !correctionShortcut.isModifierOnly,
                matches(event, shortcut: correctionShortcut) {
                 correctionPressed = true
+                return
+            }
+            if isPastePresetShortcutDistinct,
+               !pastePresetShortcut.isModifierOnly,
+               matches(event, shortcut: pastePresetShortcut) {
+                Task { @MainActor in onPastePresetCycle() }
+                return
             }
         case .keyUp:
             if !dictationShortcut.isModifierOnly,
@@ -200,6 +229,12 @@ final class HotkeyMonitor {
         default:
             break
         }
+    }
+
+    private var isPastePresetShortcutDistinct: Bool {
+        pastePresetShortcut != dictationShortcut
+            && pastePresetShortcut != ambientToggleShortcut
+            && pastePresetShortcut != correctionShortcut
     }
 
     private func handleModifierShortcut(
