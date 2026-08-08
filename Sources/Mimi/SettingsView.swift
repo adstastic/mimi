@@ -14,303 +14,238 @@ private enum PasteMode: Hashable {
     case ambient
 }
 
+enum SettingsPane: String, CaseIterable {
+    static let selectionDefaultsKey = "Mimi.Settings.selectedPane.v1"
+
+    case general
+    case paste
+    case shortcuts
+    case voice
+    case advanced
+}
+
 struct SettingsView: View {
     @Binding var config: MimiConfig
-    @FocusState private var focusedField: SettingsField?
-    @State private var pasteMode = PasteMode.shortcut
-    let statusText: String
+    @AppStorage(SettingsPane.selectionDefaultsKey) private var selectedPane = SettingsPane.general
+
     let permissionStatus: PermissionStatus
     let inputDevices: [AudioInputDevice]
     let voiceprintStatus: String
     let voiceprintProfileExists: Bool
     let voiceprintBusy: Bool
-    let lastDictation: TranscriptEntry?
-    let liveTranscript: String?
+    let configErrorText: String?
     let enrollVoiceprint: () -> Void
     let verifyVoiceprint: () -> Void
     let resetVoiceprint: () -> Void
-    let copyLastTranscript: () -> Void
-    let requestLastTranscriptCorrection: () -> Void
     let shortcutRecordingChanged: (Bool) -> Void
     let refreshPermissions: () -> Void
     let refreshInputDevices: () -> Void
+    let openConfigFile: () -> Void
+    let reloadConfig: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            header
-
-            SettingsCard("Dictation", systemImage: "waveform") {
-                    PickerLine("Model", systemImage: "cpu") {
-                        Picker("Model", selection: $config.preferredBackend) {
-                            ForEach(ASRBackend.allCases, id: \.self) { backend in
-                                Text(backend.displayName).tag(backend)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.menu)
-                        .controlSize(.small)
-                    }
-
-                    InputDevicePickerLine(
-                        selectedID: $config.inputDeviceID,
-                        devices: inputDevices,
-                        refresh: refreshInputDevices
-                    )
-
-                    ToggleLine(
-                        "Ambient mode",
-                        systemImage: "ear.and.waveform",
-                        isOn: $config.ambientModeEnabled,
-                        disabled: !backendCapabilities.supportsAmbient
-                    )
-                    ToggleLine("End shortcut on silence", systemImage: "speaker.slash", isOn: $config.silenceAutoStopEnabled)
-                    ToggleLine("Show live transcript", systemImage: "text.bubble", isOn: $config.showLiveTranscript)
-                    ToggleLine("Remove filler words", systemImage: "text.badge.minus", isOn: $config.fillerCleanupEnabled)
-                    Label(
-                        "Live transcript is raw mic audio and may show every speaker. My Voice filtering happens after recording stops.",
-                        systemImage: "info.circle"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-
-                SettingsCard(
-                    "Paste",
-                    systemImage: "doc.on.clipboard",
-                    trailing: activePresetIndex == nil ? AnyView(
-                        Picker("Paste mode", selection: $pasteMode) {
-                            Text("Shortcut").tag(PasteMode.shortcut)
-                            Text("Ambient").tag(PasteMode.ambient)
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.segmented)
-                        .controlSize(.small)
-                        .frame(width: 150)
-                    ) : nil
-                ) {
-                    PickerLine("Preset", systemImage: "square.stack.3d.up") {
-                        Picker("Preset", selection: activePresetSelection) {
-                            Text(PastePreset.manualName).tag("")
-                            ForEach(config.pastePresets) { preset in
-                                Text(preset.name).tag(preset.name)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.menu)
-                        .controlSize(.small)
-                    }
-
-                    PasteSettingsEditor(
-                        settings: selectedPasteSettings,
-                        beforeDelayField: selectedDelayFields.before,
-                        afterDelayField: selectedDelayFields.after,
-                        focusedField: $focusedField,
-                        disabled: activePresetIndex == nil && pasteMode == .ambient && !backendCapabilities.supportsAmbient,
-                        onRecordingChanged: shortcutRecordingChanged
-                    )
-
-                    if activePresetIndex != nil {
-                        Label(
-                            "Preset overrides shortcut and ambient paste keys. Add or rename presets in the config file.",
-                            systemImage: "info.circle"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    }
-                }
-
-                SettingsCard("Shortcuts", systemImage: "keyboard") {
-                    ShortcutRecorderRow(
-                        title: "Dictation",
-                        systemImage: "mic",
-                        shortcut: $config.dictationShortcut,
-                        onRecordingChanged: shortcutRecordingChanged
-                    )
-                    ShortcutRecorderRow(
-                        title: "Ambient",
-                        systemImage: "switch.2",
-                        shortcut: $config.ambientToggleShortcut,
-                        disabled: !backendCapabilities.supportsAmbient,
-                        onRecordingChanged: shortcutRecordingChanged
-                    )
-                    ShortcutRecorderRow(
-                        title: "Correct last",
-                        systemImage: "pencil.line",
-                        shortcut: $config.correctionShortcut,
-                        onRecordingChanged: shortcutRecordingChanged
-                    )
-                    ShortcutRecorderRow(
-                        title: "Next paste preset",
-                        systemImage: "square.stack.3d.up",
-                        shortcut: $config.pastePresetShortcut,
-                        onRecordingChanged: shortcutRecordingChanged
-                    )
-                    if config.dictationShortcut == config.ambientToggleShortcut {
-                        Label("Ambient shortcut ignored because it matches dictation.", systemImage: "exclamationmark.triangle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    }
-                    if config.correctionShortcut == config.dictationShortcut
-                        || config.correctionShortcut == config.ambientToggleShortcut {
-                        Label("Correct last shortcut ignored because it matches another shortcut.", systemImage: "exclamationmark.triangle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    }
-                    if config.pastePresetShortcut == config.dictationShortcut
-                        || config.pastePresetShortcut == config.ambientToggleShortcut
-                        || config.pastePresetShortcut == config.correctionShortcut {
-                        Label("Paste preset shortcut ignored because it matches another shortcut.", systemImage: "exclamationmark.triangle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    }
-                }
-
-                SettingsCard("Silence", systemImage: "waveform.badge.magnifyingglass") {
-                    PickerLine(
-                        "Stop detection",
-                        systemImage: "waveform.and.magnifyingglass"
-                    ) {
-                        Picker("Stop detection", selection: $config.silenceDetectionMode) {
-                            ForEach(SilenceDetectionMode.allCases, id: \.self) { mode in
-                                Text(mode.displayName)
-                                    .tag(mode)
-                                    .disabled(!backendCapabilities.supportsSilenceDetectionMode(mode))
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.menu)
-                        .controlSize(.small)
-                    }
-
-                    SliderLine(
-                        "Noise floor",
-                        value: "\(Int(config.silenceThresholdDBFS)) dBFS",
-                        systemImage: "dial.low"
-                    ) {
-                        Slider(value: $config.silenceThresholdDBFS, in: -65 ... -15, step: 1)
-                            .frame(width: 170)
-                    }
-                    SliderLine(
-                        "Stop after",
-                        value: String(format: "%.1f s", Double(config.silenceDurationMilliseconds) / 1_000.0),
-                        systemImage: "timer"
-                    ) {
-                        Slider(
-                            value: Binding(
-                                get: { Double(config.silenceDurationMilliseconds) / 1_000.0 },
-                                set: { config.silenceDurationMilliseconds = Int(($0 * 1_000).rounded()) }
-                            ),
-                            in: 0.0 ... 3.0,
-                            step: 0.1
-                        )
-                        .frame(width: 170)
-                    }
-                }
-
-                SettingsCard(
-                    "Permissions",
-                    systemImage: "lock.shield",
-                    trailing: AnyView(
-                        Button {
-                            refreshPermissions()
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                        }
-                        .help("Refresh permissions")
-                        .controlSize(.small)
-                    )
-                ) {
-                    PermissionLine("Microphone", systemImage: "mic", granted: permissionStatus.microphone) {
-                        openPrivacyPane("Privacy_Microphone")
-                    }
-                    PermissionLine("Accessibility", systemImage: "accessibility", granted: permissionStatus.accessibility) {
-                        openPrivacyPane("Privacy_Accessibility")
-                    }
-                    PermissionLine("Input Monitoring", systemImage: "keyboard.badge.eye", granted: permissionStatus.inputMonitoring) {
-                        openPrivacyPane("Privacy_ListenEvent")
-                    }
-                }
-
-                SettingsCard("My Voice", systemImage: "person.wave.2") {
-                    HStack(spacing: 8) {
-                        Image(systemName: voiceprintProfileExists ? "checkmark.seal.fill" : "person.badge.plus")
-                            .foregroundStyle(voiceprintProfileExists ? .green : .secondary)
-                            .frame(width: 18)
-                        Text(voiceprintStatus)
-                            .lineLimit(2)
-                        Spacer()
-                        if voiceprintBusy {
-                            ProgressView()
-                                .controlSize(.small)
-                        }
-                    }
-                    ToggleLine("Filter dictation to my voice", systemImage: "person.crop.circle.badge.checkmark", isOn: $config.voiceprintEnabled)
-                    SliderLine(
-                        "Voice threshold",
-                        value: String(format: "%.2f", config.voiceprintThreshold),
-                        systemImage: "slider.horizontal.3"
-                    ) {
-                        Slider(value: $config.voiceprintThreshold, in: 0.45 ... 0.95, step: 0.01)
-                            .frame(width: 170)
-                    }
-                    .disabled(!config.voiceprintEnabled || !voiceprintProfileExists)
-                    Label(
-                        config.voiceprintEnabled
-                            ? "Higher is looser and keeps more speech; lower is stricter."
-                            : "Voice filtering is off; dictation transcribes the whole recording.",
-                        systemImage: "info.circle"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Read twice while enrolling:")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text("“\(VoiceprintPrototype.enrollmentPrompt)”")
-                            .font(.callout)
-                            .textSelection(.enabled)
-                    }
-                    HStack {
-                        Button("Enroll", action: enrollVoiceprint)
-                            .disabled(voiceprintBusy)
-                        Button("Verify", action: verifyVoiceprint)
-                            .disabled(voiceprintBusy || !voiceprintProfileExists)
-                        Button("Reset", action: resetVoiceprint)
-                            .disabled(voiceprintBusy || !voiceprintProfileExists)
-                    }
-                    .controlSize(.small)
-                    Label("Prototype keeps matching speaker segments, then transcribes only those.", systemImage: "info.circle")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-            if let liveTranscript, !liveTranscript.isEmpty {
-                TranscriptCard(title: "Live", systemImage: "text.bubble", text: liveTranscript)
+        TabView(selection: $selectedPane) {
+            Tab("General", systemImage: "gear", value: .general) {
+                GeneralSettingsPane(
+                    config: $config,
+                    permissionStatus: permissionStatus,
+                    inputDevices: inputDevices,
+                    refreshPermissions: refreshPermissions,
+                    refreshInputDevices: refreshInputDevices
+                )
             }
 
-            if let lastDictation {
-                TranscriptCard(
-                    title: "Last",
-                    systemImage: "doc.on.clipboard",
-                    text: lastDictation.text,
-                    action: copyLastTranscript,
-                    secondaryAction: requestLastTranscriptCorrection
+            Tab("Paste", systemImage: "doc.on.clipboard", value: .paste) {
+                PasteSettingsPane(
+                    config: $config,
+                    shortcutRecordingChanged: shortcutRecordingChanged,
+                    openConfigFile: openConfigFile
+                )
+            }
+
+            Tab("Shortcuts", systemImage: "keyboard", value: .shortcuts) {
+                ShortcutSettingsPane(
+                    config: $config,
+                    shortcutRecordingChanged: shortcutRecordingChanged
+                )
+            }
+
+            Tab("My Voice", systemImage: "person.wave.2", value: .voice) {
+                VoiceSettingsPane(
+                    config: $config,
+                    status: voiceprintStatus,
+                    profileExists: voiceprintProfileExists,
+                    busy: voiceprintBusy,
+                    enroll: enrollVoiceprint,
+                    verify: verifyVoiceprint,
+                    reset: resetVoiceprint
+                )
+            }
+
+            Tab("Advanced", systemImage: "slider.horizontal.3", value: .advanced) {
+                AdvancedSettingsPane(
+                    config: $config,
+                    configErrorText: configErrorText,
+                    openConfigFile: openConfigFile,
+                    reloadConfig: reloadConfig
                 )
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.top, 10)
-        .padding(.bottom, 13)
-        .frame(width: 430, alignment: .topLeading)
-        .fixedSize(horizontal: true, vertical: true)
-        .contentShape(Rectangle())
-        .onTapGesture { focusedField = nil }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let configErrorText {
+                ConfigErrorBanner(message: configErrorText, openConfigFile: openConfigFile)
+            }
+        }
+        .scenePadding()
+        .frame(width: 500, height: 500)
         .background(Color(nsColor: .windowBackgroundColor))
     }
+}
 
-    private var backendCapabilities: ASRBackendCapabilities {
-        config.preferredBackend.capabilities
+private struct ConfigErrorBanner: View {
+    let message: String
+    let openConfigFile: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+            Text(message)
+                .font(.caption)
+                .lineLimit(2)
+            Spacer(minLength: 8)
+            Button("Open Config…", action: openConfigFile)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
     }
+}
+
+private struct GeneralSettingsPane: View {
+    @Binding var config: MimiConfig
+    let permissionStatus: PermissionStatus
+    let inputDevices: [AudioInputDevice]
+    let refreshPermissions: () -> Void
+    let refreshInputDevices: () -> Void
+
+    private var allPermissionsGranted: Bool {
+        permissionStatus.microphone
+            && permissionStatus.accessibility
+            && permissionStatus.inputMonitoring
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                PickerLine("Model", systemImage: "cpu") {
+                    Picker("Model", selection: $config.preferredBackend) {
+                        ForEach(ASRBackend.allCases, id: \.self) { backend in
+                            Text(backend.displayName).tag(backend)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                }
+
+                InputDevicePickerLine(
+                    selectedID: $config.inputDeviceID,
+                    devices: inputDevices,
+                    refresh: refreshInputDevices
+                )
+
+                ToggleLine(
+                    "Ambient mode",
+                    systemImage: "ear.and.waveform",
+                    isOn: $config.ambientModeEnabled,
+                    disabled: !config.preferredBackend.capabilities.supportsAmbient
+                )
+                ToggleLine(
+                    "End shortcut on silence",
+                    systemImage: "speaker.slash",
+                    isOn: $config.silenceAutoStopEnabled
+                )
+                ToggleLine(
+                    "Show live transcript",
+                    systemImage: "text.bubble",
+                    isOn: $config.showLiveTranscript
+                )
+                ToggleLine(
+                    "Remove filler words",
+                    systemImage: "text.badge.minus",
+                    isOn: $config.fillerCleanupEnabled
+                )
+            } header: {
+                Text("Dictation")
+            } footer: {
+                Text("Live transcripts can include nearby speakers. My Voice filtering is applied after recording stops.")
+            }
+
+            Section {
+                if allPermissionsGranted {
+                    HStack(spacing: 8) {
+                        Label("All required permissions granted", systemImage: "checkmark.seal.fill")
+                            .foregroundStyle(.green)
+                        Spacer()
+                        Button(action: refreshPermissions) {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        .help("Refresh permissions")
+                    }
+                } else {
+                    MissingPermissionRows(status: permissionStatus)
+                    HStack {
+                        Spacer()
+                        Button("Refresh", systemImage: "arrow.clockwise", action: refreshPermissions)
+                    }
+                }
+            } header: {
+                Text("Permissions")
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+private struct MissingPermissionRows: View {
+    let status: PermissionStatus
+
+    var body: some View {
+        if !status.microphone {
+            PermissionLine("Microphone", systemImage: "mic") {
+                openPrivacyPane("Privacy_Microphone")
+            }
+        }
+        if !status.accessibility {
+            PermissionLine("Accessibility", systemImage: "accessibility") {
+                openPrivacyPane("Privacy_Accessibility")
+            }
+        }
+        if !status.inputMonitoring {
+            PermissionLine("Input Monitoring", systemImage: "keyboard.badge.eye") {
+                openPrivacyPane("Privacy_ListenEvent")
+            }
+        }
+    }
+
+    private func openPrivacyPane(_ pane: String) {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") else {
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+}
+
+private struct PasteSettingsPane: View {
+    @Binding var config: MimiConfig
+    @State private var pasteMode = PasteMode.shortcut
+    @FocusState private var focusedField: SettingsField?
+
+    let shortcutRecordingChanged: (Bool) -> Void
+    let openConfigFile: () -> Void
 
     private var activePresetIndex: Int? {
         guard let name = config.activePastePresetName else { return nil }
@@ -345,97 +280,294 @@ struct SettingsView: View {
         }
     }
 
-    private var header: some View {
-        HStack(spacing: 8) {
-            AppLogoView()
-
-            Text(AppBrand.name)
-                .font(.title.bold())
-
-            StatusDot(color: statusColor, title: statusText)
-
-            Spacer()
-        }
-    }
-
-    private var statusColor: Color {
-        let lowercased = statusText.lowercased()
-        if lowercased.contains("error") || lowercased.contains("missing") || lowercased.contains("denied") {
-            return .red
-        }
-        if lowercased.contains("preparing") || lowercased.contains("loading") || lowercased.contains("starting") || lowercased.contains("transcribing") || lowercased.contains("recording") {
-            return .yellow
-        }
-        return .green
-    }
-
-    private func openPrivacyPane(_ pane: String) {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
-            NSWorkspace.shared.open(url)
-        }
-    }
-}
-
-private struct AppLogoView: View {
     var body: some View {
-        Group {
-            if let image = AppBrand.logoImage {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFit()
-            } else {
-                Image(systemName: "ear")
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(7)
-                    .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.accentColor))
+        Form {
+            Section {
+                PickerLine("Preset", systemImage: "square.stack.3d.up") {
+                    Picker("Preset", selection: activePresetSelection) {
+                        Text(PastePreset.manualName).tag("")
+                        ForEach(config.pastePresets) { preset in
+                            Text(preset.name).tag(preset.name)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                }
+
+                if activePresetIndex == nil {
+                    PickerLine("Applies to", systemImage: "arrow.triangle.branch") {
+                        Picker("Applies to", selection: $pasteMode) {
+                            Text("Shortcut").tag(PasteMode.shortcut)
+                            Text("Ambient").tag(PasteMode.ambient)
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
+                        .frame(width: 170)
+                    }
+                }
+
+                PasteSettingsEditor(
+                    settings: selectedPasteSettings,
+                    beforeDelayField: selectedDelayFields.before,
+                    afterDelayField: selectedDelayFields.after,
+                    focusedField: $focusedField,
+                    disabled: activePresetIndex == nil
+                        && pasteMode == .ambient
+                        && !config.preferredBackend.capabilities.supportsAmbient,
+                    onRecordingChanged: shortcutRecordingChanged
+                )
+            } header: {
+                Text("Paste Behavior")
+            } footer: {
+                if activePresetIndex == nil {
+                    Text("Manual settings can differ between shortcut and ambient dictation.")
+                } else {
+                    Text("The selected preset overrides both shortcut and ambient paste behavior.")
+                }
+            }
+
+            Section {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Preset collection")
+                        Text("Add, rename, remove, or reorder presets in the config file.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Open Config…", action: openConfigFile)
+                }
             }
         }
-        .frame(width: 34, height: 34)
+        .formStyle(.grouped)
+        .contentShape(Rectangle())
+        .onTapGesture { focusedField = nil }
     }
 }
 
-private struct StatusDot: View {
-    let color: Color
-    let title: String
+private struct ShortcutSettingsPane: View {
+    @Binding var config: MimiConfig
+    let shortcutRecordingChanged: (Bool) -> Void
 
     var body: some View {
-        Circle()
-            .fill(color)
-            .frame(width: 10, height: 10)
-            .overlay(Circle().stroke(Color.primary.opacity(0.18), lineWidth: 1))
-            .help(title)
-    }
-}
-
-private struct SettingsCard<Content: View>: View {
-    let title: String
-    let systemImage: String
-    // TODO(ponytail): replace AnyView with a generic trailing view if more cards need actions.
-    let trailing: AnyView?
-    let content: Content
-
-    init(_ title: String, systemImage: String, trailing: AnyView? = nil, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.systemImage = systemImage
-        self.trailing = trailing
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack {
-                Label(title, systemImage: systemImage)
-                    .font(.headline)
-                Spacer()
-                trailing
+        Form {
+            Section {
+                ShortcutRecorderRow(
+                    title: "Dictation",
+                    systemImage: "mic",
+                    shortcut: $config.dictationShortcut,
+                    onRecordingChanged: shortcutRecordingChanged
+                )
+                ShortcutRecorderRow(
+                    title: "Ambient",
+                    systemImage: "switch.2",
+                    shortcut: $config.ambientToggleShortcut,
+                    disabled: !config.preferredBackend.capabilities.supportsAmbient,
+                    onRecordingChanged: shortcutRecordingChanged
+                )
+                ShortcutRecorderRow(
+                    title: "Correct last",
+                    systemImage: "pencil.line",
+                    shortcut: $config.correctionShortcut,
+                    onRecordingChanged: shortcutRecordingChanged
+                )
+                ShortcutRecorderRow(
+                    title: "Next paste preset",
+                    systemImage: "square.stack.3d.up",
+                    shortcut: $config.pastePresetShortcut,
+                    onRecordingChanged: shortcutRecordingChanged
+                )
+            } header: {
+                Text("Global Shortcuts")
+            } footer: {
+                Text("Select the pencil button, then press the desired key combination.")
             }
-            content
+
+            ShortcutConflictWarnings(config: config)
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.primary.opacity(0.08), lineWidth: 1))
+        .formStyle(.grouped)
+    }
+}
+
+private struct ShortcutConflictWarnings: View {
+    let config: MimiConfig
+
+    var body: some View {
+        if config.dictationShortcut == config.ambientToggleShortcut {
+            WarningLabel("Ambient shortcut is ignored because it matches dictation.")
+        }
+        if config.correctionShortcut == config.dictationShortcut
+            || config.correctionShortcut == config.ambientToggleShortcut {
+            WarningLabel("Correct Last is ignored because it matches another shortcut.")
+        }
+        if config.pastePresetShortcut == config.dictationShortcut
+            || config.pastePresetShortcut == config.ambientToggleShortcut
+            || config.pastePresetShortcut == config.correctionShortcut {
+            WarningLabel("Next Paste Preset is ignored because it matches another shortcut.")
+        }
+    }
+}
+
+private struct WarningLabel: View {
+    let message: String
+
+    init(_ message: String) {
+        self.message = message
+    }
+
+    var body: some View {
+        Label(message, systemImage: "exclamationmark.triangle.fill")
+            .font(.caption)
+            .foregroundStyle(.orange)
+    }
+}
+
+private struct VoiceSettingsPane: View {
+    @Binding var config: MimiConfig
+    let status: String
+    let profileExists: Bool
+    let busy: Bool
+    let enroll: () -> Void
+    let verify: () -> Void
+    let reset: () -> Void
+
+    var body: some View {
+        Form {
+            Section {
+                HStack(spacing: 8) {
+                    Image(systemName: profileExists ? "checkmark.seal.fill" : "person.badge.plus")
+                        .foregroundStyle(profileExists ? .green : .secondary)
+                    Text(status)
+                        .lineLimit(2)
+                    Spacer()
+                    if busy {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+
+                ToggleLine(
+                    "Filter dictation to my voice",
+                    systemImage: "person.crop.circle.badge.checkmark",
+                    isOn: $config.voiceprintEnabled
+                )
+                SliderLine(
+                    "Voice threshold",
+                    value: String(format: "%.2f", config.voiceprintThreshold),
+                    systemImage: "slider.horizontal.3"
+                ) {
+                    Slider(value: $config.voiceprintThreshold, in: 0.45 ... 0.95, step: 0.01)
+                        .frame(width: 190)
+                }
+                .disabled(!config.voiceprintEnabled || !profileExists)
+            } header: {
+                Text("Voice Filtering")
+            } footer: {
+                Text(config.voiceprintEnabled
+                    ? "Higher values are looser and keep more speech; lower values are stricter."
+                    : "Voice filtering is off, so Mimi transcribes the entire recording.")
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Read twice while enrolling:")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("“\(VoiceprintPrototype.enrollmentPrompt)”")
+                        .textSelection(.enabled)
+                }
+
+                HStack {
+                    Button("Enroll", action: enroll)
+                        .disabled(busy)
+                    Button("Verify", action: verify)
+                        .disabled(busy || !profileExists)
+                    Button("Reset", role: .destructive, action: reset)
+                        .disabled(busy || !profileExists)
+                }
+            } header: {
+                Text("Enrollment")
+            } footer: {
+                Text("Mimi keeps matching speaker segments, then transcribes only those segments.")
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+private struct AdvancedSettingsPane: View {
+    @Binding var config: MimiConfig
+    let configErrorText: String?
+    let openConfigFile: () -> Void
+    let reloadConfig: () -> Void
+
+    var body: some View {
+        Form {
+            Section {
+                PickerLine("Stop detection", systemImage: "waveform.and.magnifyingglass") {
+                    Picker("Stop detection", selection: $config.silenceDetectionMode) {
+                        ForEach(SilenceDetectionMode.allCases, id: \.self) { mode in
+                            Text(mode.displayName)
+                                .tag(mode)
+                                .disabled(!config.preferredBackend.capabilities.supportsSilenceDetectionMode(mode))
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                }
+
+                SliderLine(
+                    "Noise floor",
+                    value: "\(Int(config.silenceThresholdDBFS)) dBFS",
+                    systemImage: "dial.low"
+                ) {
+                    Slider(value: $config.silenceThresholdDBFS, in: -65 ... -15, step: 1)
+                        .frame(width: 190)
+                }
+                SliderLine(
+                    "Stop after",
+                    value: String(format: "%.1f s", Double(config.silenceDurationMilliseconds) / 1_000.0),
+                    systemImage: "timer"
+                ) {
+                    Slider(
+                        value: Binding(
+                            get: { Double(config.silenceDurationMilliseconds) / 1_000.0 },
+                            set: { config.silenceDurationMilliseconds = Int(($0 * 1_000).rounded()) }
+                        ),
+                        in: 0.0 ... 3.0,
+                        step: 0.1
+                    )
+                    .frame(width: 190)
+                }
+            } header: {
+                Text("Silence Detection")
+            }
+
+            Section {
+                LabeledContent("Location") {
+                    Text("~/.config/mimi/config.json")
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                }
+
+                HStack {
+                    Button("Open Config…", action: openConfigFile)
+                    Button("Reload", action: reloadConfig)
+                    Spacer()
+                }
+
+                if let configErrorText {
+                    Label(configErrorText, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            } header: {
+                Text("Config File")
+            } footer: {
+                Text("Expert timing, vocabulary, and preset collection options remain available in the canonical config file.")
+            }
+        }
+        .formStyle(.grouped)
     }
 }
 
@@ -523,14 +655,12 @@ private struct InputDevicePickerLine: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
-                .controlSize(.small)
                 Button {
                     refresh()
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
                 .help("Refresh input devices")
-                .controlSize(.small)
             }
             if selectedDeviceMissing {
                 Label("Selected microphone is not connected.", systemImage: "exclamationmark.triangle.fill")
@@ -860,24 +990,24 @@ private final class ShortcutRecorder: ObservableObject {
 private struct PermissionLine: View {
     let title: String
     let systemImage: String
-    let granted: Bool
     let open: () -> Void
 
-    init(_ title: String, systemImage: String, granted: Bool, open: @escaping () -> Void) {
+    init(_ title: String, systemImage: String, open: @escaping () -> Void) {
         self.title = title
         self.systemImage = systemImage
-        self.granted = granted
         self.open = open
     }
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: systemImage)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.orange)
                 .frame(width: 18)
             Text(title)
             Spacer()
-            StatusDot(color: granted ? .green : .orange, title: granted ? "Granted" : "Missing")
+            Text("Required")
+                .font(.caption)
+                .foregroundStyle(.orange)
             Button {
                 open()
             } label: {
@@ -885,53 +1015,6 @@ private struct PermissionLine: View {
             }
             .help("Open \(title) settings")
             .controlSize(.small)
-        }
-    }
-}
-
-private struct TranscriptCard: View {
-    let title: String
-    let systemImage: String
-    let text: String
-    let action: (() -> Void)?
-    let secondaryAction: (() -> Void)?
-
-    init(
-        title: String,
-        systemImage: String,
-        text: String,
-        action: (() -> Void)? = nil,
-        secondaryAction: (() -> Void)? = nil
-    ) {
-        self.title = title
-        self.systemImage = systemImage
-        self.text = text
-        self.action = action
-        self.secondaryAction = secondaryAction
-    }
-
-    var body: some View {
-        SettingsCard(title, systemImage: systemImage) {
-            HStack(alignment: .top) {
-                Text(text)
-                    .lineLimit(4)
-                    .textSelection(.enabled)
-                Spacer()
-                if let secondaryAction {
-                    Button(action: secondaryAction) {
-                        Image(systemName: "pencil")
-                    }
-                    .help("Correct last dictation")
-                    .controlSize(.small)
-                }
-                if let action {
-                    Button(action: action) {
-                        Image(systemName: "doc.on.doc")
-                    }
-                    .help("Copy transcript")
-                    .controlSize(.small)
-                }
-            }
         }
     }
 }

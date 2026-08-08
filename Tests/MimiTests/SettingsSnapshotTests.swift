@@ -5,42 +5,53 @@ import XCTest
 
 @MainActor
 final class SettingsSnapshotTests: XCTestCase {
-    func testRenderSettingsSnapshot() throws {
+    func testRenderSettingsSnapshots() throws {
         var config = MimiConfig.defaults
         config.ambientModeEnabled = true
         config.dictationPasteSettings.prePasteKeystroke = .returnKey
         config.ambientPasteSettings.prePasteKeystroke = .returnKey
 
-        let view = SettingsView(
+        let defaults = UserDefaults.standard
+        let previousPane = defaults.string(forKey: SettingsPane.selectionDefaultsKey)
+        defer {
+            if let previousPane {
+                defaults.set(previousPane, forKey: SettingsPane.selectionDefaultsKey)
+            } else {
+                defaults.removeObject(forKey: SettingsPane.selectionDefaultsKey)
+            }
+        }
+
+        for pane in SettingsPane.allCases {
+            defaults.set(pane.rawValue, forKey: SettingsPane.selectionDefaultsKey)
+            let path = pane == .general
+                ? "/tmp/mimi-settings-snapshot.png"
+                : "/tmp/mimi-settings-\(pane.rawValue)-snapshot.png"
+            let size = try render(makeSettingsView(config: config), to: path)
+
+            XCTAssertEqual(size.width, 500, accuracy: 0.5, "\(pane.rawValue) pane width changed")
+            XCTAssertEqual(size.height, 500, accuracy: 0.5, "\(pane.rawValue) pane height changed")
+            print("SETTINGS_\(pane.rawValue.uppercased())_SNAPSHOT_SIZE=\(Int(size.width))x\(Int(size.height))")
+        }
+    }
+
+    private func makeSettingsView(config: MimiConfig) -> SettingsView {
+        SettingsView(
             config: .constant(config),
-            statusText: "Ready — hold Right Command to dictate",
             permissionStatus: PermissionStatus(microphone: true, accessibility: true, inputMonitoring: true),
             inputDevices: [AudioInputDevice(id: "studio-mic", name: "Studio Microphone")],
             voiceprintStatus: "Enrolled — 256D threshold 0.78",
             voiceprintProfileExists: true,
             voiceprintBusy: false,
-            lastDictation: TranscriptEntry(
-                sourceText: "This is a representative recent transcript long enough to wrap across several lines in the settings window and expose its maximum practical height.",
-                text: "This is a representative recent transcript long enough to wrap across several lines in the settings window and expose its maximum practical height.",
-                backend: .appleSpeechTranscriber,
-                audioURL: nil,
-                createdAt: Date(timeIntervalSince1970: 0)
-            ),
-            liveTranscript: "This is a representative live transcript long enough to wrap across several lines while recording remains active.",
+            configErrorText: nil,
             enrollVoiceprint: {},
             verifyVoiceprint: {},
             resetVoiceprint: {},
-            copyLastTranscript: {},
-            requestLastTranscriptCorrection: {},
             shortcutRecordingChanged: { _ in },
             refreshPermissions: {},
-            refreshInputDevices: {}
+            refreshInputDevices: {},
+            openConfigFile: {},
+            reloadConfig: {}
         )
-        let size = try render(view, to: "/tmp/mimi-settings-snapshot.png")
-        XCTAssertEqual(size.width, 430, accuracy: 0.5)
-        XCTAssertGreaterThan(size.height, 1_000)
-        XCTAssertLessThanOrEqual(size.height, 1_300)
-        print("SETTINGS_SNAPSHOT_SIZE=\(Int(size.width))x\(Int(size.height))")
     }
 
     func testRenderLastDictationCorrectionSnapshot() throws {

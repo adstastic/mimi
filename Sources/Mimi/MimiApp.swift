@@ -37,22 +37,20 @@ struct MimiApp: App {
         Settings {
             SettingsView(
                 config: $appModel.config,
-                statusText: appModel.statusText,
                 permissionStatus: appModel.permissionStatus,
                 inputDevices: appModel.inputDevices,
                 voiceprintStatus: appModel.voiceprintStatus,
                 voiceprintProfileExists: appModel.voiceprintProfileExists,
                 voiceprintBusy: appModel.voiceprintBusy,
-                lastDictation: appModel.lastDictation,
-                liveTranscript: appModel.liveTranscript,
+                configErrorText: appModel.configErrorText,
                 enrollVoiceprint: { appModel.enrollVoiceprint() },
                 verifyVoiceprint: { appModel.verifyVoiceprint() },
                 resetVoiceprint: { appModel.resetVoiceprint() },
-                copyLastTranscript: { appModel.copyLastTranscript() },
-                requestLastTranscriptCorrection: { appModel.requestLastTranscriptCorrection() },
                 shortcutRecordingChanged: { appModel.setShortcutRecording($0) },
                 refreshPermissions: { appModel.refreshPermissions() },
-                refreshInputDevices: { appModel.refreshInputDevices() }
+                refreshInputDevices: { appModel.refreshInputDevices() },
+                openConfigFile: { appModel.openConfigFile() },
+                reloadConfig: { appModel.reloadConfig() }
             )
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active {
@@ -124,6 +122,11 @@ private struct MimiMenu: View {
         Toggle("Ambient Mode", isOn: $appModel.config.ambientModeEnabled)
 
         Divider()
+
+        Button("Copy Last Dictation") {
+            appModel.copyLastTranscript()
+        }
+        .disabled(appModel.lastDictation == nil)
 
         Button("Correct Last Dictation…") {
             appModel.requestLastTranscriptCorrection()

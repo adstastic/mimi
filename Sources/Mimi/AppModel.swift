@@ -7,7 +7,6 @@ import MimiSpeech
 final class AppModel: ObservableObject {
     @Published private(set) var statusText = "Starting…"
     @Published private(set) var lastTranscript: String?
-    @Published private(set) var liveTranscript: String?
     @Published private(set) var permissionStatus = PermissionStatus.current()
     @Published private(set) var inputDevices = AudioInputDevice.available()
     @Published private(set) var voiceprintStatus = "No voice enrolled"
@@ -109,7 +108,7 @@ final class AppModel: ObservableObject {
             overlay: overlay,
             onStatus: { [weak self] status in self?.applyStatus(status) },
             onTranscript: { [weak self] transcript in self?.lastTranscript = transcript },
-            onPartialTranscript: { [weak self] transcript in self?.liveTranscript = transcript }
+            onPartialTranscript: { _ in }
         )
         hotkeyMonitor = HotkeyMonitor(
             dictationShortcut: config.dictationShortcut,
