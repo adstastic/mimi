@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-08-08
+
+### Changed
+
+- Redesigned Settings as five native macOS toolbar panes—General, Paste, Shortcuts, My Voice, and Advanced—so the window fits comfortably on a MacBook display.
+- Kept expert timing, vocabulary, and paste-preset collection options in the canonical config file while exposing Open and Reload actions from Advanced.
+- Moved Copy Last Dictation to the menu-bar menu and kept live transcription in the recording overlay instead of mixing transient content into Settings.
+
+### Fixed
+
+- Settings now surface config persistence errors across every pane.
+- The audio input picker now uses the same control size and typography as neighboring settings.
+
 ## [0.1.9] - 2026-08-08
 
 ### Added
@@ -104,7 +117,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configurable microphone, silence detection, shortcuts, and Return after paste.
 - Local-only operation with no account or telemetry.
 
-[Unreleased]: https://github.com/adstastic/mimi/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/adstastic/mimi/compare/v0.1.10...HEAD
+[0.1.10]: https://github.com/adstastic/mimi/compare/v0.1.9...v0.1.10
+[0.1.9]: https://github.com/adstastic/mimi/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/adstastic/mimi/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/adstastic/mimi/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/adstastic/mimi/compare/v0.1.5...v0.1.6
