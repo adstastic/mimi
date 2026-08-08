@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-08-08
+
 ### Added
 
 - Paste presets: named pre/post-paste keystroke sets (Terminal agent, RevDiff, TUICR by default) selectable in Settings or cycled with a global shortcut (default Control-Option-P) that shows the active preset in the overlay.
