@@ -2,21 +2,28 @@ import Foundation
 
 final class EchoCancellationPipeline {
     private let processingQueue = DispatchQueue(label: "com.ad1.mimi.echo-processing", qos: .userInteractive)
-    private let tapQueue = DispatchQueue(label: "com.ad1.mimi.system-audio-tap", qos: .userInitiated)
+    private let tapQueue = DispatchQueue(label: "com.ad1.mimi.system-audio-tap-control", qos: .userInitiated)
+    private let tapIOQueue = DispatchQueue(label: "com.ad1.mimi.system-audio-tap-io", qos: .userInitiated)
     private var stream: EchoCancellationStream?
     private var active = false
     private var tap: SystemAudioTap?
 
-    func start() {
+    func start(systemAudioReferenceEnabled: Bool = true) {
         processingQueue.async { [self] in
-            active = true
-            stream = EchoCancellationStream()
+            active = systemAudioReferenceEnabled
+            stream = systemAudioReferenceEnabled ? EchoCancellationStream() : nil
         }
         tapQueue.async { [self] in
             tap?.stop()
+            tap = nil
+            guard systemAudioReferenceEnabled else {
+                DebugLog.write("echo reference bypassed for Bluetooth output")
+                return
+            }
+
             let newTap = SystemAudioTap()
             do {
-                try newTap.start(on: tapQueue) { [weak self] samples, sampleRate, _ in
+                try newTap.start(on: tapIOQueue) { [weak self] samples, sampleRate, _ in
                     self?.processingQueue.async { [weak self] in
                         guard let self, active else { return }
                         stream?.processRender(samples, sampleRate: sampleRate)

@@ -639,6 +639,14 @@ private struct InputDevicePickerLine: View {
         return !devices.contains { $0.id == selectedID }
     }
 
+    private var automaticDeviceName: String? {
+        let automaticID = AudioInputDevice.automaticSelection(
+            defaultInputDeviceID: AudioInputDevice.defaultInputDeviceUID(),
+            in: devices
+        )
+        return devices.first(where: { $0.id == automaticID })?.name
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
@@ -648,13 +656,14 @@ private struct InputDevicePickerLine: View {
                 Text("Input")
                 Spacer()
                 Picker("Input", selection: selection) {
-                    Text("System Default").tag("")
+                    Text(automaticDeviceName.map { "Automatic — \($0)" } ?? "Automatic").tag("")
                     ForEach(devices) { device in
                         Text(device.name).tag(device.id)
                     }
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
+                .help("Automatic uses the built-in microphone when the system default is Bluetooth, preserving headphone playback and media controls.")
                 Button {
                     refresh()
                 } label: {

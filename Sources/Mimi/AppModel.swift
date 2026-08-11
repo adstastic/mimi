@@ -71,6 +71,7 @@ final class AppModel: ObservableObject {
     private var audioPreparationTask: Task<Void, Never>?
     private var voiceprintTemporaryAudioURL: URL?
     private var lastDefaultInputDeviceID = AudioInputDevice.defaultInputDeviceUID()
+    private var lastDefaultOutputDeviceID = AudioInputDevice.defaultOutputDeviceUID()
     private var started = false
     private var shortcutRecording = false
     private var isApplyingConfigReload = false
@@ -169,6 +170,7 @@ final class AppModel: ObservableObject {
     func refreshInputDevices() {
         inputDevices = AudioInputDevice.available()
         lastDefaultInputDeviceID = AudioInputDevice.defaultInputDeviceUID()
+        lastDefaultOutputDeviceID = AudioInputDevice.defaultOutputDeviceUID()
         let resetMissingDevice = resetMissingSelectedInputDevice()
         if config.ambientModeEnabled, !resetMissingDevice {
             scheduleAmbientModeUpdate()
@@ -204,16 +206,23 @@ final class AppModel: ObservableObject {
                     guard let self else { return }
                     let devices = AudioInputDevice.available()
                     let defaultInputDeviceID = AudioInputDevice.defaultInputDeviceUID()
+                    let defaultOutputDeviceID = AudioInputDevice.defaultOutputDeviceUID()
                     let devicesChanged = devices != self.inputDevices
-                    let defaultChanged = defaultInputDeviceID != self.lastDefaultInputDeviceID
+                    let defaultInputChanged = defaultInputDeviceID != self.lastDefaultInputDeviceID
+                    let defaultOutputChanged = defaultOutputDeviceID != self.lastDefaultOutputDeviceID
                     if devicesChanged {
                         self.inputDevices = devices
                     }
-                    if defaultChanged {
+                    if defaultInputChanged {
                         self.lastDefaultInputDeviceID = defaultInputDeviceID
                     }
+                    if defaultOutputChanged {
+                        self.lastDefaultOutputDeviceID = defaultOutputDeviceID
+                    }
                     let resetMissingDevice = self.resetMissingSelectedInputDevice()
-                    if (devicesChanged || defaultChanged), self.config.ambientModeEnabled, !resetMissingDevice {
+                    if (devicesChanged || defaultInputChanged || defaultOutputChanged),
+                       self.config.ambientModeEnabled,
+                       !resetMissingDevice {
                         self.scheduleAmbientModeUpdate()
                     }
                 }

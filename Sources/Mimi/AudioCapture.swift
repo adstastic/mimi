@@ -2,6 +2,31 @@ import AudioUnit
 import AVFoundation
 import Foundation
 
+final class AudioInputMuteState {
+    private let lock = NSLock()
+    private var muted = false
+
+    @discardableResult
+    func setMuted(_ muted: Bool) -> Bool {
+        lock.lock()
+        self.muted = muted
+        lock.unlock()
+        return true
+    }
+
+    func apply(to samples: [Float]) -> [Float] {
+        lock.lock()
+        let muted = muted
+        lock.unlock()
+        return muted ? [Float](repeating: 0, count: samples.count) : samples
+    }
+
+    func process(_ samples: [Float], using transform: ([Float]) -> [Float]) -> [Float] {
+        let mutedInput = apply(to: samples)
+        return apply(to: transform(mutedInput))
+    }
+}
+
 @MainActor
 final class AudioStartGate {
     private var occupied = false
@@ -54,6 +79,8 @@ final class AudioCapture {
 
     private var engine = AVAudioEngine()
     private let echoCancellation = EchoCancellationPipeline()
+    private let inputMuteState = AudioInputMuteState()
+    private var inputMuteHandlerInstalled = false
     private let lock = NSLock()
     private var tapInstalled = false
     private var inputRouteConfigured = false
@@ -91,7 +118,7 @@ final class AudioCapture {
         // can begin recording on an engine that never started.
         try await startGate.acquire()
         defer { startGate.release() }
-        let effectiveInputDeviceID = inputDeviceID ?? AudioInputDevice.defaultInputDeviceUID()
+        let effectiveInputDeviceID = AudioInputDevice.resolvedSelection(inputDeviceID)
         // UIDs survive sleep, but CoreAudio may assign the same device a new object ID.
         let effectiveAudioDeviceID = effectiveInputDeviceID.flatMap(AudioInputDevice.deviceID(for:))
         let shouldRecreateEngine = Self.requiresFreshEngine(
@@ -109,6 +136,8 @@ final class AudioCapture {
         if engine.isRunning {
             guard shouldRecreateEngine else { return }
             engine.stop()
+            clearInputMuteHandler()
+            echoCancellation.stop()
             if tapInstalled {
                 engine.inputNode.removeTap(onBus: 0)
                 tapInstalled = false
@@ -125,7 +154,7 @@ final class AudioCapture {
         }
 
         let input = engine.inputNode
-        try applyInputDevice(inputDeviceID, to: input)
+        try applyInputDevice(effectiveInputDeviceID, to: input)
 
         // A just-switched HAL device can momentarily report an invalid format
         // (0 Hz / 0 ch); installTap aborts on that too. Let it settle, then
@@ -157,6 +186,7 @@ final class AudioCapture {
         }
         tapInstalled = true
 
+        installInputMuteHandler()
         engine.prepare()
         do {
             try engine.start()
@@ -164,9 +194,12 @@ final class AudioCapture {
             configuredInputDeviceID = effectiveInputDeviceID
             configuredAudioDeviceID = effectiveAudioDeviceID
             inputRouteConfigured = true
-            echoCancellation.start()
+            echoCancellation.start(
+                systemAudioReferenceEnabled: AudioInputDevice.shouldUseSystemAudioReferenceForDefaultOutput()
+            )
         } catch {
             engine.stop()
+            clearInputMuteHandler()
             if tapInstalled {
                 input.removeTap(onBus: 0)
                 tapInstalled = false
@@ -206,7 +239,7 @@ final class AudioCapture {
     }
 
     func finishRecording() throws -> URL {
-        let trailingSamples = echoCancellation.flushCapture()
+        let trailingSamples = inputMuteState.apply(to: echoCancellation.flushCapture())
         if let trailingBuffer = Self.makeBuffer(samples: trailingSamples, sampleRate: sampleRate) {
             handle(buffer: trailingBuffer)
         }
@@ -250,6 +283,7 @@ final class AudioCapture {
     func stop() {
         DebugLog.write("audio stop running=\(engine.isRunning ? "Y" : "N") tap=\(tapInstalled ? "Y" : "N")")
         engine.stop()
+        clearInputMuteHandler()
         echoCancellation.stop()
         if tapInstalled {
             engine.inputNode.removeTap(onBus: 0)
@@ -345,12 +379,14 @@ final class AudioCapture {
         guard count > 0 else { return }
 
         let samples = Array(UnsafeBufferPointer(start: channel, count: count))
-        let processed = echoCancellation.processCapture(
-            samples,
-            sampleRate: Int32(buffer.format.sampleRate.rounded())
-        )
+        let audibleSamples = inputMuteState.process(samples) { [echoCancellation] samples in
+            echoCancellation.processCapture(
+                samples,
+                sampleRate: Int32(buffer.format.sampleRate.rounded())
+            )
+        }
         guard let processedBuffer = Self.makeBuffer(
-            samples: processed,
+            samples: audibleSamples,
             sampleRate: buffer.format.sampleRate
         ) else { return }
         handle(buffer: processedBuffer)
@@ -437,6 +473,46 @@ final class AudioCapture {
             }
         }
         return buffer
+    }
+
+    @MainActor
+    private func installInputMuteHandler() {
+        inputMuteState.setMuted(false)
+        let inputMuteState = inputMuteState
+        do {
+            try AVAudioApplication.shared.setInputMuteStateChangeHandler { [weak inputMuteState] shouldMute in
+                inputMuteState?.setMuted(shouldMute) ?? false
+            }
+            inputMuteHandlerInstalled = true
+        } catch {
+            DebugLog.write("input mute handler unavailable: \(error.localizedDescription)")
+            return
+        }
+        do {
+            try AVAudioApplication.shared.setInputMuted(false)
+        } catch {
+            DebugLog.write("input unmute failed: \(error.localizedDescription)")
+        }
+    }
+
+    @MainActor
+    private func clearInputMuteHandler() {
+        guard inputMuteHandlerInstalled else {
+            inputMuteState.setMuted(false)
+            return
+        }
+        do {
+            try AVAudioApplication.shared.setInputMuted(false)
+        } catch {
+            DebugLog.write("input unmute cleanup failed: \(error.localizedDescription)")
+        }
+        do {
+            try AVAudioApplication.shared.setInputMuteStateChangeHandler(nil)
+            inputMuteHandlerInstalled = false
+        } catch {
+            DebugLog.write("input mute handler cleanup failed: \(error.localizedDescription)")
+        }
+        inputMuteState.setMuted(false)
     }
 
     private static func requestMicrophoneAccess() async throws -> Bool {

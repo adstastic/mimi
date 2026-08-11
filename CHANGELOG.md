@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- AirPods playback and media controls now remain uninterrupted after dictation by preferring the built-in microphone for automatic Bluetooth input and skipping unnecessary speaker echo capture for Bluetooth output.
+- AirPods microphone mute gestures are handled during active recording instead of producing a “Cannot Control Mic” notification.
+
 ## [0.1.10] - 2026-08-08
 
 ### Changed

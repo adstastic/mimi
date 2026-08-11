@@ -11,6 +11,77 @@ final class AudioInputDeviceTests: XCTestCase {
         XCTAssertNil(AudioInputDevice.validSelection("", in: devices))
     }
 
+    func testAutomaticInputAvoidsBluetoothWhenBuiltInMicrophoneIsAvailable() {
+        let devices = [
+            AudioInputDevice(id: "airpods", name: "AirPods Pro", transport: .bluetooth),
+            AudioInputDevice(id: "built-in", name: "MacBook Pro Microphone", transport: .builtIn),
+        ]
+
+        XCTAssertEqual(
+            AudioInputDevice.automaticSelection(defaultInputDeviceID: "airpods", in: devices),
+            "built-in"
+        )
+        XCTAssertEqual(
+            AudioInputDevice.resolvedSelection(
+                "airpods",
+                defaultInputDeviceID: "airpods",
+                in: devices
+            ),
+            "airpods",
+            "An explicit Bluetooth microphone selection must remain explicit"
+        )
+    }
+
+    func testAutomaticInputKeepsNonBluetoothDefaultAndBluetoothFallback() {
+        let devices = [
+            AudioInputDevice(id: "usb", name: "Studio Microphone", transport: .other),
+            AudioInputDevice(id: "built-in", name: "MacBook Pro Microphone", transport: .builtIn),
+            AudioInputDevice(id: "airpods", name: "AirPods Pro", transport: .bluetooth),
+        ]
+
+        XCTAssertEqual(
+            AudioInputDevice.automaticSelection(defaultInputDeviceID: "usb", in: devices),
+            "usb"
+        )
+        XCTAssertEqual(
+            AudioInputDevice.automaticSelection(
+                defaultInputDeviceID: "airpods",
+                in: [AudioInputDevice(id: "airpods", name: "AirPods Pro", transport: .bluetooth)]
+            ),
+            "airpods"
+        )
+    }
+
+    func testBluetoothOutputDoesNotNeedSpeakerEchoReference() {
+        XCTAssertFalse(AudioInputDevice.shouldUseSystemAudioReference(outputTransport: .bluetooth))
+        XCTAssertTrue(AudioInputDevice.shouldUseSystemAudioReference(outputTransport: .builtIn))
+        XCTAssertTrue(AudioInputDevice.shouldUseSystemAudioReference(outputTransport: .other))
+    }
+
+    func testAirPodsMuteStateZeroesSamplesUntilUnmuted() {
+        let state = AudioInputMuteState()
+        let samples: [Float] = [0.25, -0.5, 0.75]
+
+        XCTAssertEqual(state.apply(to: samples), samples)
+        XCTAssertTrue(state.setMuted(true))
+        XCTAssertEqual(state.apply(to: samples), [0, 0, 0])
+        XCTAssertTrue(state.setMuted(false))
+        XCTAssertEqual(state.apply(to: samples), samples)
+
+        state.setMuted(true)
+        let afterUnmuteDuringProcessing = state.process(samples) { mutedInput in
+            state.setMuted(false)
+            return mutedInput
+        }
+        XCTAssertEqual(afterUnmuteDuringProcessing, [0, 0, 0])
+
+        let afterMuteDuringProcessing = state.process(samples) { unmutedInput in
+            state.setMuted(true)
+            return unmutedInput
+        }
+        XCTAssertEqual(afterMuteDuringProcessing, [0, 0, 0])
+    }
+
     @MainActor
     func testCaptureStartGateWaitsForInFlightStart() async throws {
         let gate = AudioStartGate()
