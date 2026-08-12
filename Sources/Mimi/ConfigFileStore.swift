@@ -11,6 +11,7 @@ final class MimiConfigFileStore {
     let fileURL: URL
     private(set) var isWritable = true
     private(set) var errorDescription: String?
+    private(set) var didCreateInitialConfig = false
 
     private let legacyDefaults: UserDefaults
     private var lastKnownData: Data?
@@ -25,6 +26,7 @@ final class MimiConfigFileStore {
 
     func loadInitial() -> MimiConfig {
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            didCreateInitialConfig = true
             let migrated = MimiConfig.load(userDefaults: legacyDefaults)
             do {
                 try write(migrated)

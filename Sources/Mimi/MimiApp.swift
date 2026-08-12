@@ -5,10 +5,10 @@ import SwiftUI
 @main
 struct MimiApp: App {
     static let correctionWindowID = "last-dictation-correction"
+    static let settingsWindowID = "settings"
     private static let instanceGuard = SingleInstanceGuard()
 
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
     @StateObject private var appModel: AppModel
 
@@ -34,7 +34,7 @@ struct MimiApp: App {
         .defaultLaunchBehavior(.suppressed)
         .windowResizability(.contentSize)
 
-        Settings {
+        Window("\(AppBrand.name) Settings", id: Self.settingsWindowID) {
             SettingsView(
                 config: $appModel.config,
                 permissionStatus: appModel.permissionStatus,
@@ -52,14 +52,32 @@ struct MimiApp: App {
                 openConfigFile: { appModel.openConfigFile() },
                 reloadConfig: { appModel.reloadConfig() }
             )
+            .onAppear {
+                NSApplication.shared.setActivationPolicy(.regular)
+                NSApplication.shared.activate(ignoringOtherApps: true)
+            }
+            .onDisappear {
+                NSApplication.shared.setActivationPolicy(.accessory)
+            }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active {
                     appModel.refreshPermissions()
                 }
             }
         }
+        .defaultLaunchBehavior(
+            appModel.shouldShowSettingsOnLaunch || !appModel.permissionStatus.allRequiredGranted
+                ? .presented
+                : .suppressed
+        )
         .windowResizability(.contentSize)
         .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") {
+                    showSettings()
+                }
+                .keyboardShortcut(",")
+            }
             CommandGroup(replacing: .appTermination) {
                 Button("Quit \(AppBrand.name)") {
                     appModel.quit()
@@ -67,6 +85,12 @@ struct MimiApp: App {
                 .keyboardShortcut("q")
             }
         }
+    }
+
+    private func showSettings() {
+        NSApplication.shared.setActivationPolicy(.regular)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        openWindow(id: Self.settingsWindowID)
     }
 
     @ViewBuilder
@@ -109,7 +133,7 @@ private struct CorrectionWindow: View {
 
 private struct MimiMenu: View {
     @ObservedObject var appModel: AppModel
-    @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Text(appModel.statusText)
@@ -134,8 +158,9 @@ private struct MimiMenu: View {
         .disabled(appModel.lastDictation == nil)
 
         Button("Settings…") {
+            NSApplication.shared.setActivationPolicy(.regular)
             NSApplication.shared.activate(ignoringOtherApps: true)
-            openSettings()
+            openWindow(id: MimiApp.settingsWindowID)
         }
         .keyboardShortcut(",")
 

@@ -93,7 +93,7 @@ swift run MimiSmoke voiceprint-verify /path/to/check.wav
 swift run MimiSmoke voiceprint-extract /path/to/mixed.wav --output /tmp/owner-only.wav
 ```
 
-Click the mimi logo in the menu bar to open Settings or quit the app. The settings window also has My Voice → Enroll / Verify / Reset. If a profile exists, mimi diarizes recordings, keeps matching speaker segments, then transcribes only those.
+On first launch, Settings opens so you can grant required permissions. After setup, click the mimi logo in the menu bar to reopen Settings or quit the app. The settings window also has My Voice → Enroll / Verify / Reset. If a profile exists, mimi diarizes recordings, keeps matching speaker segments, then transcribes only those.
 
 Grant:
 

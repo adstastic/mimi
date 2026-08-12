@@ -1,4 +1,7 @@
 import AppKit
+import AVFoundation
+import ApplicationServices
+import CoreGraphics
 import MimiSpeech
 import SwiftUI
 
@@ -196,7 +199,10 @@ private struct GeneralSettingsPane: View {
                         .help("Refresh permissions")
                     }
                 } else {
-                    MissingPermissionRows(status: permissionStatus)
+                    MissingPermissionRows(
+                        status: permissionStatus,
+                        refreshPermissions: refreshPermissions
+                    )
                     HStack {
                         Spacer()
                         Button("Refresh", systemImage: "arrow.clockwise", action: refreshPermissions)
@@ -212,22 +218,38 @@ private struct GeneralSettingsPane: View {
 
 private struct MissingPermissionRows: View {
     let status: PermissionStatus
+    let refreshPermissions: () -> Void
 
     var body: some View {
         if !status.microphone {
             PermissionLine("Microphone", systemImage: "mic") {
-                openPrivacyPane("Privacy_Microphone")
+                requestMicrophoneAccess()
             }
         }
         if !status.accessibility {
             PermissionLine("Accessibility", systemImage: "accessibility") {
-                openPrivacyPane("Privacy_Accessibility")
+                let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+                _ = AXIsProcessTrustedWithOptions(options)
             }
         }
         if !status.inputMonitoring {
             PermissionLine("Input Monitoring", systemImage: "keyboard.badge.eye") {
-                openPrivacyPane("Privacy_ListenEvent")
+                if !CGRequestListenEventAccess() {
+                    openPrivacyPane("Privacy_ListenEvent")
+                }
+                refreshPermissions()
             }
+        }
+    }
+
+    private func requestMicrophoneAccess() {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .audio) { _ in
+                DispatchQueue.main.async(execute: refreshPermissions)
+            }
+        default:
+            openPrivacyPane("Privacy_Microphone")
         }
     }
 

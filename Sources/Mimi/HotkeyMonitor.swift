@@ -58,6 +58,8 @@ final class HotkeyMonitor {
         self.recordingIsActive = recordingIsActive
     }
 
+    var isRunning: Bool { eventTap != nil }
+
     var statusText: String {
         "Dictation: \(dictationShortcut.displayName); Ambient: \(ambientToggleShortcut.displayName); Correct: \(correctionShortcut.displayName)"
     }

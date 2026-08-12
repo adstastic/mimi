@@ -15,6 +15,7 @@ final class ConfigFileStoreTests: XCTestCase {
         )
         let loaded = store.loadInitial()
 
+        XCTAssertTrue(store.didCreateInitialConfig)
         XCTAssertEqual(
             loaded.vocabulary,
             [VocabularyEntry(from: ["nema", "neema"], to: "nima")]
@@ -38,6 +39,17 @@ final class ConfigFileStoreTests: XCTestCase {
         XCTAssertTrue(text.contains(#"    { "from" : ["nema", "neema"], "to" : "nima" }"#))
         let permissions = try FileManager.default.attributesOfItem(atPath: fixture.configURL.path)[.posixPermissions] as? NSNumber
         XCTAssertEqual(permissions?.intValue, 0o600)
+    }
+
+    func testExistingFileDoesNotCountAsInitialConfigCreation() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        _ = MimiConfigFileStore(fileURL: fixture.configURL, legacyDefaults: fixture.defaults).loadInitial()
+
+        let store = MimiConfigFileStore(fileURL: fixture.configURL, legacyDefaults: fixture.defaults)
+        _ = store.loadInitial()
+
+        XCTAssertFalse(store.didCreateInitialConfig)
     }
 
     func testExternalManualEditBlocksWritesUntilReload() throws {

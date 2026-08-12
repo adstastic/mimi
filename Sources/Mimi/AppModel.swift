@@ -52,6 +52,7 @@ final class AppModel: ObservableObject {
     }
 
     let history: HistoryStore
+    let shouldShowSettingsOnLaunch: Bool
 
     var lastDictation: TranscriptEntry? { history.latest }
 
@@ -83,6 +84,7 @@ final class AppModel: ObservableObject {
         history = HistoryStore(audioStorageURL: HistoryStore.productionAudioStorageURL)
         let loadedInputDevices = AudioInputDevice.available()
         var loadedConfig = configStore.loadInitial()
+        shouldShowSettingsOnLaunch = configStore.didCreateInitialConfig
         let validInputDeviceID = AudioInputDevice.validSelection(loadedConfig.inputDeviceID, in: loadedInputDevices)
         if validInputDeviceID != loadedConfig.inputDeviceID {
             loadedConfig.inputDeviceID = validInputDeviceID
@@ -138,21 +140,7 @@ final class AppModel: ObservableObject {
     func start() async {
         guard !started else { return }
         started = true
-
-        NSApplication.shared.setActivationPolicy(.accessory)
-
         refreshPermissions()
-
-        do {
-            refreshPermissions()
-            try hotkeyMonitor.start()
-            refreshPermissions()
-        } catch {
-            refreshPermissions()
-            applyStatus("Hotkey error: \(error.localizedDescription)")
-            overlay.show(AppBrand.hotkeyErrorTitle, detail: error.localizedDescription)
-            return
-        }
 
         dictationController.prepareASR()
         wakeCancellable = NSWorkspace.shared.notificationCenter
@@ -260,6 +248,15 @@ final class AppModel: ObservableObject {
         )
         guard started else { return }
         hotkeyMonitor.stop()
+        startHotkeyMonitor()
+    }
+
+    private func startHotkeyMonitor() {
+        guard !shortcutRecording, !hotkeyMonitor.isRunning else { return }
+        guard permissionStatus.globalShortcutsGranted else {
+            applyStatus("Permissions required")
+            return
+        }
         do {
             try hotkeyMonitor.start()
         } catch {
@@ -296,6 +293,9 @@ final class AppModel: ObservableObject {
 
     func refreshPermissions() {
         permissionStatus = PermissionStatus.current()
+        if started {
+            startHotkeyMonitor()
+        }
     }
 
     func copyLastTranscript() {

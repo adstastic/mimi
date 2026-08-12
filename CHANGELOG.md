@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fresh installs now open Settings on launch so required permissions can be granted even when macOS Tahoe hides the menu-bar item.
+- Global shortcuts now start after permissions are granted without requiring Mimi to be relaunched.
 - AirPods playback and media controls now remain uninterrupted after dictation by preferring the built-in microphone for automatic Bluetooth input and skipping unnecessary speaker echo capture for Bluetooth output.
 - AirPods microphone mute gestures are handled during active recording instead of producing a “Cannot Control Mic” notification.
 
