@@ -845,6 +845,7 @@ final class AmbientCrashRegressionTests: XCTestCase {
                 VocabularyEntry(from: ["pie torch"], to: "PyTorch")
             ]
             asr.appleFinalText = "Um, whisper flow uses pie torch."
+            asr.streamFinalText = "Um, whisper flow uses pie torch."
             asr.batchFinalText = "Um, whisper flow uses pie torch."
 
             let controller = makeController(
@@ -936,6 +937,39 @@ final class AmbientCrashRegressionTests: XCTestCase {
         audio.dbfs = -20
         let visibleSpeech = await waitUntil({ overlay.updatedLevels.contains(-20) }, timeout: 1.0)
         XCTAssertTrue(visibleSpeech)
+        controller.cancelRecording()
+    }
+
+    func testLiveTranscriptStartsAppleStreamWithAudioLevelStopDetection() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = MimiConfig.defaults
+        config.preferredBackend = .appleSpeechTranscriber
+        config.silenceDetectionMode = .audioLevel
+        config.silenceAutoStopEnabled = false
+        config.showLiveTranscript = true
+        config.voiceprintEnabled = false
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        let streamStarted = await waitUntil({ asr.snapshotEvents().contains("stream.start") }, timeout: 1.0)
+        XCTAssertTrue(streamStarted)
+
+        asr.emitPartial("Live correction preview")
+        let previewShown = await waitUntil({
+            overlay.updatedDetails.contains { $0 == "Live correction preview" }
+        }, timeout: 1.0)
+        XCTAssertTrue(previewShown)
         controller.cancelRecording()
     }
 
@@ -1834,6 +1868,7 @@ private final class FakeTextInserter: TextInserting {
 private final class FakeOverlay: OverlayShowing {
     var messages: [(message: String, detail: String?, level: Double?)] = []
     var updatedLevels: [Double] = []
+    var updatedDetails: [String?] = []
     var hiddenAfter: [Int] = []
 
     func show(_ message: String, detail: String?, level: Double?) {
@@ -1844,7 +1879,9 @@ private final class FakeOverlay: OverlayShowing {
         updatedLevels.append(level)
     }
 
-    func updateDetail(_ detail: String?) {}
+    func updateDetail(_ detail: String?) {
+        updatedDetails.append(detail)
+    }
 
     func hide(after milliseconds: Int) {
         hiddenAfter.append(milliseconds)

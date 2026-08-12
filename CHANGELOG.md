@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Settings panes now stay visible inside the window instead of collapsing into Tahoe's Navigation Toolbar Items overflow menu.
+- Live transcript previews now stream with the default audio-level stop detection mode instead of appearing only with Apple VAD or ambient mode.
+
 ## [0.1.11] - 2026-08-12
 
 ### Fixed

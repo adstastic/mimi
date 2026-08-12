@@ -25,6 +25,26 @@ enum SettingsPane: String, CaseIterable {
     case shortcuts
     case voice
     case advanced
+
+    var title: String {
+        switch self {
+        case .general: "General"
+        case .paste: "Paste"
+        case .shortcuts: "Shortcuts"
+        case .voice: "My Voice"
+        case .advanced: "Advanced"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .general: "gear"
+        case .paste: "doc.on.clipboard"
+        case .shortcuts: "keyboard"
+        case .voice: "person.wave.2"
+        case .advanced: "slider.horizontal.3"
+        }
+    }
 }
 
 struct SettingsView: View {
@@ -47,52 +67,20 @@ struct SettingsView: View {
     let reloadConfig: () -> Void
 
     var body: some View {
-        TabView(selection: $selectedPane) {
-            Tab("General", systemImage: "gear", value: .general) {
-                GeneralSettingsPane(
-                    config: $config,
-                    permissionStatus: permissionStatus,
-                    inputDevices: inputDevices,
-                    refreshPermissions: refreshPermissions,
-                    refreshInputDevices: refreshInputDevices
-                )
+        VStack(spacing: 0) {
+            Picker("Settings pane", selection: $selectedPane) {
+                ForEach(SettingsPane.allCases, id: \.self) { pane in
+                    Label(pane.title, systemImage: pane.systemImage)
+                        .tag(pane)
+                }
             }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
 
-            Tab("Paste", systemImage: "doc.on.clipboard", value: .paste) {
-                PasteSettingsPane(
-                    config: $config,
-                    shortcutRecordingChanged: shortcutRecordingChanged,
-                    openConfigFile: openConfigFile
-                )
-            }
-
-            Tab("Shortcuts", systemImage: "keyboard", value: .shortcuts) {
-                ShortcutSettingsPane(
-                    config: $config,
-                    shortcutRecordingChanged: shortcutRecordingChanged
-                )
-            }
-
-            Tab("My Voice", systemImage: "person.wave.2", value: .voice) {
-                VoiceSettingsPane(
-                    config: $config,
-                    status: voiceprintStatus,
-                    profileExists: voiceprintProfileExists,
-                    busy: voiceprintBusy,
-                    enroll: enrollVoiceprint,
-                    verify: verifyVoiceprint,
-                    reset: resetVoiceprint
-                )
-            }
-
-            Tab("Advanced", systemImage: "slider.horizontal.3", value: .advanced) {
-                AdvancedSettingsPane(
-                    config: $config,
-                    configErrorText: configErrorText,
-                    openConfigFile: openConfigFile,
-                    reloadConfig: reloadConfig
-                )
-            }
+            Divider()
+            selectedPaneContent
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             if let configErrorText {
@@ -102,6 +90,48 @@ struct SettingsView: View {
         .scenePadding()
         .frame(width: 500, height: 500)
         .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    @ViewBuilder
+    private var selectedPaneContent: some View {
+        switch selectedPane {
+        case .general:
+            GeneralSettingsPane(
+                config: $config,
+                permissionStatus: permissionStatus,
+                inputDevices: inputDevices,
+                refreshPermissions: refreshPermissions,
+                refreshInputDevices: refreshInputDevices
+            )
+        case .paste:
+            PasteSettingsPane(
+                config: $config,
+                shortcutRecordingChanged: shortcutRecordingChanged,
+                openConfigFile: openConfigFile
+            )
+        case .shortcuts:
+            ShortcutSettingsPane(
+                config: $config,
+                shortcutRecordingChanged: shortcutRecordingChanged
+            )
+        case .voice:
+            VoiceSettingsPane(
+                config: $config,
+                status: voiceprintStatus,
+                profileExists: voiceprintProfileExists,
+                busy: voiceprintBusy,
+                enroll: enrollVoiceprint,
+                verify: verifyVoiceprint,
+                reset: resetVoiceprint
+            )
+        case .advanced:
+            AdvancedSettingsPane(
+                config: $config,
+                configErrorText: configErrorText,
+                openConfigFile: openConfigFile,
+                reloadConfig: reloadConfig
+            )
+        }
     }
 }
 

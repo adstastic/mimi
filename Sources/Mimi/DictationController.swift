@@ -122,7 +122,8 @@ final class DictationController {
             self.isAmbient = isAmbient
             usesAppleStream = capabilities.usesStreamingTranscription(
                 isAmbient: isAmbient,
-                silenceDetectionMode: normalizedConfig.silenceDetectionMode
+                silenceDetectionMode: normalizedConfig.silenceDetectionMode,
+                showLiveTranscript: normalizedConfig.showLiveTranscript
             )
             usesSpeechActivityStop = capabilities.usesSpeechActivityStop(normalizedConfig.silenceDetectionMode)
             pasteSettings = normalizedConfig.pasteSettings(isAmbient: isAmbient)

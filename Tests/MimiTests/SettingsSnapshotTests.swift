@@ -5,6 +5,20 @@ import XCTest
 
 @MainActor
 final class SettingsSnapshotTests: XCTestCase {
+    func testSettingsPaneSelectorLivesInsideWindowContent() {
+        let host = NSHostingView(rootView: makeSettingsView(config: .defaults))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 500),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = host
+        window.layoutIfNeeded()
+
+        XCTAssertTrue(host.descendants.contains { $0 is NSSegmentedControl })
+    }
+
     func testRenderSettingsSnapshots() throws {
         var config = MimiConfig.defaults
         config.ambientModeEnabled = true
@@ -87,5 +101,11 @@ final class SettingsSnapshotTests: XCTestCase {
         let data = try XCTUnwrap(representation.representation(using: .png, properties: [:]))
         try data.write(to: URL(fileURLWithPath: path))
         return size
+    }
+}
+
+private extension NSView {
+    var descendants: [NSView] {
+        subviews + subviews.flatMap(\.descendants)
     }
 }

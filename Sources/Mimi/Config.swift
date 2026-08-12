@@ -213,8 +213,13 @@ public struct ASRBackendCapabilities: Equatable, Sendable {
         supportsSilenceDetectionMode(.speechActivity) && mode == .speechActivity
     }
 
-    public func usesStreamingTranscription(isAmbient: Bool, silenceDetectionMode: SilenceDetectionMode) -> Bool {
-        supportsStreamingTranscription && (isAmbient || usesSpeechActivityStop(silenceDetectionMode))
+    public func usesStreamingTranscription(
+        isAmbient: Bool,
+        silenceDetectionMode: SilenceDetectionMode,
+        showLiveTranscript: Bool
+    ) -> Bool {
+        supportsStreamingTranscription
+            && (isAmbient || showLiveTranscript || usesSpeechActivityStop(silenceDetectionMode))
     }
 }
 
