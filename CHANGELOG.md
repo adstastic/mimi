@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-08-12
+
 ### Fixed
 
 - Settings panes now stay visible inside the window instead of collapsing into Tahoe's Navigation Toolbar Items overflow menu.
@@ -131,7 +133,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configurable microphone, silence detection, shortcuts, and Return after paste.
 - Local-only operation with no account or telemetry.
 
-[Unreleased]: https://github.com/adstastic/mimi/compare/v0.1.11...HEAD
+[Unreleased]: https://github.com/adstastic/mimi/compare/v0.1.12...HEAD
+[0.1.12]: https://github.com/adstastic/mimi/compare/v0.1.11...v0.1.12
 [0.1.11]: https://github.com/adstastic/mimi/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/adstastic/mimi/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/adstastic/mimi/compare/v0.1.8...v0.1.9
