@@ -4,6 +4,27 @@ import XCTest
 
 @MainActor
 final class HotkeyMonitorTests: XCTestCase {
+    func testCorrectionShortcutEventsAreConsumed() throws {
+        let monitor = HotkeyMonitor(
+            dictationShortcut: .rightCommand,
+            ambientToggleShortcut: .ambientToggleDefault,
+            correctionShortcut: .correctionDefault,
+            onDictationDown: {},
+            onDictationUp: {},
+            onAmbientToggle: {},
+            onCorrection: {},
+            onCancel: {}
+        )
+        let source = CGEventSource(stateID: .hidSystemState)
+        let keyDown = try XCTUnwrap(CGEvent(keyboardEventSource: source, virtualKey: 8, keyDown: true))
+        let keyUp = try XCTUnwrap(CGEvent(keyboardEventSource: source, virtualKey: 8, keyDown: false))
+        keyDown.flags = [.maskControl, .maskAlternate]
+        keyUp.flags = [.maskControl, .maskAlternate]
+
+        XCTAssertNil(monitor.handle(type: .keyDown, event: keyDown))
+        XCTAssertNil(monitor.handle(type: .keyUp, event: keyUp))
+    }
+
     func testCorrectionShortcutInvokesAfterKeyRelease() async throws {
         guard CGPreflightListenEventAccess(), CGPreflightPostEventAccess() else {
             throw XCTSkip("Global keyboard test requires Input Monitoring and Accessibility permissions.")

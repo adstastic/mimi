@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Correct Last Dictation now consumes its global shortcut instead of forwarding Option/Escape-prefixed input to the focused app.
+
 ## [0.1.12] - 2026-08-20
 
 ### Fixed

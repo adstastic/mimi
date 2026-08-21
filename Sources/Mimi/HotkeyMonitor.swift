@@ -128,7 +128,7 @@ final class HotkeyMonitor {
         return monitor.handle(type: type, event: event)
     }
 
-    private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+    func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let eventTap {
                 CGEvent.tapEnable(tap: eventTap, enable: true)
@@ -143,13 +143,29 @@ final class HotkeyMonitor {
                 Task { @MainActor in onCancel() }
                 return nil
             }
+            let consumeCorrection = shouldConsumeCorrectionShortcut(nsEvent)
             handle(nsEvent)
+            if consumeCorrection { return nil }
         }
         return Unmanaged.passUnretained(event)
     }
 
     private func shouldConsumeEscape() -> Bool {
         MainActor.assumeIsolated { recordingIsActive() }
+    }
+
+    private func shouldConsumeCorrectionShortcut(_ event: NSEvent) -> Bool {
+        guard correctionShortcut != dictationShortcut,
+              correctionShortcut != ambientToggleShortcut,
+              !correctionShortcut.isModifierOnly else { return false }
+        switch event.type {
+        case .keyDown:
+            return matches(event, shortcut: correctionShortcut)
+        case .keyUp:
+            return Int(event.keyCode) == correctionShortcut.keyCode && correctionPressed
+        default:
+            return false
+        }
     }
 
     private func handle(_ event: NSEvent) {
