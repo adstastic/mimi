@@ -556,6 +556,22 @@ private struct AdvancedSettingsPane: View {
     var body: some View {
         Form {
             Section {
+                SliderLine(
+                    "Start threshold",
+                    value: "\(Int(config.ambientStartThresholdDBFS)) dBFS",
+                    systemImage: "waveform"
+                ) {
+                    Slider(value: $config.ambientStartThresholdDBFS, in: -65 ... -15, step: 1)
+                        .frame(width: 190)
+                }
+                .disabled(!config.preferredBackend.capabilities.supportsAmbient)
+            } header: {
+                Text("Ambient Start")
+            } footer: {
+                Text("Lower values detect quieter speech, but may trigger on background noise.")
+            }
+
+            Section {
                 PickerLine("Stop detection", systemImage: "waveform.and.magnifyingglass") {
                     Picker("Stop detection", selection: $config.silenceDetectionMode) {
                         ForEach(SilenceDetectionMode.allCases, id: \.self) { mode in
@@ -569,7 +585,7 @@ private struct AdvancedSettingsPane: View {
                 }
 
                 SliderLine(
-                    "Noise floor",
+                    "Stop threshold",
                     value: "\(Int(config.silenceThresholdDBFS)) dBFS",
                     systemImage: "dial.low"
                 ) {
@@ -592,7 +608,9 @@ private struct AdvancedSettingsPane: View {
                     .frame(width: 190)
                 }
             } header: {
-                Text("Silence Detection")
+                Text("Silence Stop")
+            } footer: {
+                Text("Higher values treat quieter sound as silence and stop sooner.")
             }
 
             Section {

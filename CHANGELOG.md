@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Correct Last Dictation now consumes its global shortcut instead of forwarding Option/Escape-prefixed input to the focused app.
+- Ambient start and silence stop thresholds are now independent, clearly labeled controls in Advanced Settings.
 
 ## [0.1.12] - 2026-08-20
 

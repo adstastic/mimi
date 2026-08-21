@@ -780,14 +780,14 @@ final class DictationController {
         if shouldRunAmbientMonitoring() {
             switch state {
             case .idle:
-                if isAboveNoiseFloor(configProvider()) {
+                if isAboveAmbientStartThreshold(configProvider()) {
                     speechDetectedByDetector = true
                     lastSpeechDetectedAt = Date()
                     DebugLog.write("ambient start transcriber event chars=\(text.count)")
                     startRecording(mode: .ambient, speechAlreadyDetected: true)
                 }
             case .recording(.ambient, let plan):
-                if isAboveNoiseFloor(plan.config) {
+                if isAboveSilenceThreshold(plan.config) {
                     speechDetectedByDetector = true
                     lastSpeechDetectedAt = Date()
                 }
@@ -796,7 +796,7 @@ final class DictationController {
             }
         }
 
-        if case .recording(_, let plan) = state, isAboveNoiseFloor(plan.config) {
+        if case .recording(_, let plan) = state, isAboveSilenceThreshold(plan.config) {
             speechDetectedByDetector = true
             lastSpeechDetectedAt = Date()
             sawSpeech = true
@@ -919,7 +919,7 @@ final class DictationController {
         if let ambientCooldownUntil, now < ambientCooldownUntil { return }
 
         let level = audioCapture.currentDBFS()
-        let recentSpeech = recentlyDetectedSpeech(within: 1.0) && isAboveNoiseFloor(configProvider())
+        let recentSpeech = recentlyDetectedSpeech(within: 1.0) && isAboveAmbientStartThreshold(configProvider())
         let nowLog = Date()
         if nowLog.timeIntervalSince(lastAmbientDecisionLogAt) >= 1 {
             lastAmbientDecisionLogAt = nowLog
@@ -987,7 +987,11 @@ final class DictationController {
         return Date().timeIntervalSince(ambientMicStartedAt) > missingInputTimeout
     }
 
-    private func isAboveNoiseFloor(_ config: MimiConfig) -> Bool {
+    private func isAboveAmbientStartThreshold(_ config: MimiConfig) -> Bool {
+        audioCapture.peakDBFS(within: 1.5) >= config.normalizedForBackend().ambientStartThresholdDBFS
+    }
+
+    private func isAboveSilenceThreshold(_ config: MimiConfig) -> Bool {
         audioCapture.peakDBFS(within: 1.5) >= config.normalizedForBackend().silenceThresholdDBFS
     }
 

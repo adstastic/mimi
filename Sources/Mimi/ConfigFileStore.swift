@@ -329,6 +329,7 @@ final class MimiConfigFileStore {
         try validateShortcut(config.dictationPasteSettings.postPasteKeystroke, name: "dictationPasteSettings.postPasteKeystroke")
         try validateShortcut(config.ambientPasteSettings.prePasteKeystroke, name: "ambientPasteSettings.prePasteKeystroke")
         try validateShortcut(config.ambientPasteSettings.postPasteKeystroke, name: "ambientPasteSettings.postPasteKeystroke")
+        try require((-65 ... -15).contains(config.ambientStartThresholdDBFS), "ambientStartThresholdDBFS must be between -65 and -15.")
         try require((-65 ... -15).contains(config.silenceThresholdDBFS), "silenceThresholdDBFS must be between -65 and -15.")
         try require((0 ... 3_000).contains(config.silenceDurationMilliseconds), "silenceDurationMilliseconds must be between 0 and 3000.")
         try require((200 ... 1_000).contains(config.minUtteranceMilliseconds), "minUtteranceMilliseconds must be between 200 and 1000.")
@@ -410,6 +411,7 @@ private struct CanonicalMimiConfig: Encodable {
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case preferredBackend
         case silenceAutoStopEnabled
+        case ambientStartThresholdDBFS
         case silenceThresholdDBFS
         case silenceDurationMilliseconds
         case silenceDetectionMode
@@ -438,6 +440,7 @@ private struct CanonicalMimiConfig: Encodable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(config.preferredBackend, forKey: .preferredBackend)
         try container.encode(config.silenceAutoStopEnabled, forKey: .silenceAutoStopEnabled)
+        try container.encode(config.ambientStartThresholdDBFS, forKey: .ambientStartThresholdDBFS)
         try container.encode(config.silenceThresholdDBFS, forKey: .silenceThresholdDBFS)
         try container.encode(config.silenceDurationMilliseconds, forKey: .silenceDurationMilliseconds)
         try container.encode(config.silenceDetectionMode, forKey: .silenceDetectionMode)

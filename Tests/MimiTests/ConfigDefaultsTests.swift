@@ -23,6 +23,7 @@ final class ConfigDefaultsTests: XCTestCase {
         XCTAssertNil(config.inputDeviceID)
         XCTAssertEqual(config.silenceDetectionMode, .audioLevel)
 
+        XCTAssertEqual(config.ambientStartThresholdDBFS, -50)
         XCTAssertEqual(config.silenceThresholdDBFS, -50)
         XCTAssertLessThan(config.silenceThresholdDBFS, 0)
         XCTAssertGreaterThan(config.silenceThresholdDBFS, -80)
@@ -52,11 +53,31 @@ final class ConfigDefaultsTests: XCTestCase {
 
         let firstLoad = MimiConfig.load(userDefaults: userDefaults)
         XCTAssertEqual(firstLoad.preferredBackend, .appleSpeechTranscriber)
+        XCTAssertEqual(firstLoad.ambientStartThresholdDBFS, -50)
         XCTAssertEqual(firstLoad.silenceThresholdDBFS, -50)
 
         let secondLoad = MimiConfig.load(userDefaults: userDefaults)
         XCTAssertEqual(secondLoad.preferredBackend, .appleSpeechTranscriber)
+        XCTAssertEqual(secondLoad.ambientStartThresholdDBFS, -50)
         XCTAssertEqual(secondLoad.silenceThresholdDBFS, -50)
+    }
+
+    func testThresholdsPersistIndependently() {
+        let suiteName = "MimiTests.\(UUID().uuidString)"
+        guard let userDefaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults")
+            return
+        }
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        var config = MimiConfig.defaults
+        config.ambientStartThresholdDBFS = -58
+        config.silenceThresholdDBFS = -36
+        config.save(userDefaults: userDefaults)
+
+        let loaded = MimiConfig.load(userDefaults: userDefaults)
+        XCTAssertEqual(loaded.ambientStartThresholdDBFS, -58)
+        XCTAssertEqual(loaded.silenceThresholdDBFS, -36)
     }
 
     func testParakeetForcesRmsAndDisablesAmbient() {
@@ -129,6 +150,15 @@ final class ConfigDefaultsTests: XCTestCase {
         XCTAssertEqual(config.vocabulary, [])
         XCTAssertTrue(config.voiceprintEnabled)
         XCTAssertEqual(config.voiceprintThreshold, 0.78)
+    }
+
+    func testLegacyConfigUsesSilenceThresholdForAmbientStart() throws {
+        let json = #"{"silenceThresholdDBFS":-57}"#
+
+        let config = try JSONDecoder().decode(MimiConfig.self, from: Data(json.utf8))
+
+        XCTAssertEqual(config.ambientStartThresholdDBFS, -57)
+        XCTAssertEqual(config.silenceThresholdDBFS, -57)
     }
 
     func testLegacyAmbientReturnSettingMigratesToKeystroke() throws {

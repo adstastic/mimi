@@ -119,6 +119,7 @@ final class ConfigFileStoreTests: XCTestCase {
 
         for invalid in [
             #"{"silenceDurationMilliseconds":"fast"}"#,
+            #"{"ambientStartThresholdDBFS":0}"#,
             #"{"silenceDetectionMode":"mystery"}"#,
             #"{"dictationShortcut":{"keyCode":-1,"modifierFlagsRaw":0}}"#,
             #"{"correctionShortcut":{"keyCode":128,"modifierFlagsRaw":0}}"#,

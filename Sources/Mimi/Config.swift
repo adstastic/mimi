@@ -251,6 +251,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case preferredBackend
         case silenceAutoStopEnabled
+        case ambientStartThresholdDBFS
         case silenceThresholdDBFS
         case silenceDurationMilliseconds
         case silenceDetectionMode
@@ -288,6 +289,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
 
     public var preferredBackend: ASRBackend
     public var silenceAutoStopEnabled: Bool
+    public var ambientStartThresholdDBFS: Double
     public var silenceThresholdDBFS: Double
     public var silenceDurationMilliseconds: Int
     public var silenceDetectionMode: SilenceDetectionMode
@@ -317,6 +319,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
     public static let defaults = MimiConfig(
         preferredBackend: .appleSpeechTranscriber,
         silenceAutoStopEnabled: true,
+        ambientStartThresholdDBFS: -50,
         silenceThresholdDBFS: -50,
         silenceDurationMilliseconds: 2_000,
         silenceDetectionMode: .audioLevel,
@@ -345,6 +348,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
     public init(
         preferredBackend: ASRBackend,
         silenceAutoStopEnabled: Bool,
+        ambientStartThresholdDBFS: Double? = nil,
         silenceThresholdDBFS: Double,
         silenceDurationMilliseconds: Int,
         silenceDetectionMode: SilenceDetectionMode = .audioLevel,
@@ -371,6 +375,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
     ) {
         self.preferredBackend = preferredBackend
         self.silenceAutoStopEnabled = silenceAutoStopEnabled
+        self.ambientStartThresholdDBFS = ambientStartThresholdDBFS ?? silenceThresholdDBFS
         self.silenceThresholdDBFS = silenceThresholdDBFS
         self.silenceDurationMilliseconds = silenceDurationMilliseconds
         self.silenceDetectionMode = silenceDetectionMode
@@ -401,6 +406,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         preferredBackend = try container.decodeIfPresent(ASRBackend.self, forKey: .preferredBackend) ?? Self.defaults.preferredBackend
         silenceAutoStopEnabled = try container.decodeIfPresent(Bool.self, forKey: .silenceAutoStopEnabled) ?? Self.defaults.silenceAutoStopEnabled
         silenceThresholdDBFS = try container.decodeIfPresent(Double.self, forKey: .silenceThresholdDBFS) ?? Self.defaults.silenceThresholdDBFS
+        ambientStartThresholdDBFS = try container.decodeIfPresent(Double.self, forKey: .ambientStartThresholdDBFS) ?? silenceThresholdDBFS
         silenceDurationMilliseconds = try container.decodeIfPresent(Int.self, forKey: .silenceDurationMilliseconds) ?? Self.defaults.silenceDurationMilliseconds
         silenceDetectionMode = try container.decodeIfPresent(SilenceDetectionMode.self, forKey: .silenceDetectionMode) ?? Self.defaults.silenceDetectionMode
         minUtteranceMilliseconds = try container.decodeIfPresent(Int.self, forKey: .minUtteranceMilliseconds) ?? Self.defaults.minUtteranceMilliseconds
@@ -481,6 +487,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(preferredBackend, forKey: .preferredBackend)
         try container.encode(silenceAutoStopEnabled, forKey: .silenceAutoStopEnabled)
+        try container.encode(ambientStartThresholdDBFS, forKey: .ambientStartThresholdDBFS)
         try container.encode(silenceThresholdDBFS, forKey: .silenceThresholdDBFS)
         try container.encode(silenceDurationMilliseconds, forKey: .silenceDurationMilliseconds)
         try container.encode(silenceDetectionMode, forKey: .silenceDetectionMode)
@@ -521,6 +528,9 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         else { return .defaults }
         var migrated = false
         if config.silenceThresholdDBFS == -38 {
+            if config.ambientStartThresholdDBFS == -38 {
+                config.ambientStartThresholdDBFS = Self.defaults.ambientStartThresholdDBFS
+            }
             config.silenceThresholdDBFS = Self.defaults.silenceThresholdDBFS
             migrated = true
         }

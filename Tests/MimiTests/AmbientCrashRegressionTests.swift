@@ -874,6 +874,69 @@ final class AmbientCrashRegressionTests: XCTestCase {
         }
     }
 
+    func testAmbientStartThresholdIsIndependentFromSilenceStopThreshold() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = ambientConfig(inputDeviceID: "quiet-mic")
+        config.ambientStartThresholdDBFS = -55
+        config.silenceThresholdDBFS = -35
+        audio.dbfs = -45
+        audio.peakDBFS = -45
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.updateAmbientMode()
+        let streamStarted = await waitUntil({ asr.snapshotEvents().contains("stream.start") }, timeout: 1.0)
+        XCTAssertTrue(streamStarted)
+
+        asr.emitPartial("quiet words")
+        let speechStarted = await waitUntil({ audio.startInputDeviceIDs == ["quiet-mic", "quiet-mic"] }, timeout: 1.0)
+        XCTAssertTrue(speechStarted)
+    }
+
+    func testAmbientStopThresholdIsIndependentFromStartThreshold() async throws {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        var config = ambientConfig(inputDeviceID: "quiet-mic")
+        config.ambientStartThresholdDBFS = -60
+        config.silenceThresholdDBFS = -35
+        config.silenceDurationMilliseconds = 0
+        audio.dbfs = -20
+        audio.peakDBFS = -20
+
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: overlay,
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        controller.updateAmbientMode()
+        let streamStarted = await waitUntil({ asr.snapshotEvents().contains("stream.start") }, timeout: 1.0)
+        XCTAssertTrue(streamStarted)
+        asr.emitPartial("start recording")
+        let speechStarted = await waitUntil({ audio.startInputDeviceIDs == ["quiet-mic", "quiet-mic"] }, timeout: 1.0)
+        XCTAssertTrue(speechStarted)
+
+        audio.dbfs = -45
+        audio.peakDBFS = -45
+        let stopped = await waitUntil({ status.values.contains("Transcribing…") }, timeout: 1.0)
+        XCTAssertTrue(stopped)
+    }
+
     func testAmbientStartsWhenTranscriptArrivesAfterLevelFallsBelowNoiseFloor() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
