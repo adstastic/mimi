@@ -47,7 +47,7 @@ struct AudioInputDevice: Identifiable, Hashable, Sendable {
     }
 
     static func available() -> [AudioInputDevice] {
-        allDeviceIDs().compactMap { deviceID in
+        selectable(allDeviceIDs().compactMap { deviceID in
             guard hasInputStreams(deviceID),
                   let uid = stringProperty(kAudioDevicePropertyDeviceUID, deviceID: deviceID),
                   let name = stringProperty(kAudioObjectPropertyName, deviceID: deviceID)
@@ -57,8 +57,12 @@ struct AudioInputDevice: Identifiable, Hashable, Sendable {
                 name: name,
                 transport: transport(deviceID)
             )
-        }
+        })
         .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    static func selectable(_ devices: [AudioInputDevice]) -> [AudioInputDevice] {
+        devices.filter { !$0.id.hasPrefix(SystemAudioTap.aggregateUIDPrefix) }
     }
 
     static func deviceID(for uid: String) -> AudioDeviceID? {

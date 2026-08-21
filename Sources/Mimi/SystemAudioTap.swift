@@ -4,6 +4,8 @@ import CoreAudio
 import Foundation
 
 final class SystemAudioTap {
+    static let aggregateUIDPrefix = "com.ad1.mimi.echo-reference."
+
     enum TapError: LocalizedError {
         case createTap(OSStatus)
         case readFormat(OSStatus)
@@ -56,7 +58,7 @@ final class SystemAudioTap {
 
             let aggregateDescription: [String: Any] = [
                 kAudioAggregateDeviceNameKey: "Mimi Echo Reference",
-                kAudioAggregateDeviceUIDKey: "com.ad1.mimi.echo-reference.\(UUID().uuidString)",
+                kAudioAggregateDeviceUIDKey: "\(Self.aggregateUIDPrefix)\(UUID().uuidString)",
                 kAudioAggregateDeviceIsPrivateKey: true,
                 kAudioAggregateDeviceTapAutoStartKey: false,
                 kAudioAggregateDeviceTapListKey: [[

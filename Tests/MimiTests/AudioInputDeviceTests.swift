@@ -52,6 +52,21 @@ final class AudioInputDeviceTests: XCTestCase {
         )
     }
 
+    func testMimiEchoReferenceDoesNotChangeSelectableInputDevices() {
+        let microphone = AudioInputDevice(id: "built-in", name: "Built-in Microphone")
+        let first = AudioInputDevice.selectable([
+            microphone,
+            AudioInputDevice(id: "\(SystemAudioTap.aggregateUIDPrefix)first", name: "Mimi Echo Reference"),
+        ])
+        let second = AudioInputDevice.selectable([
+            microphone,
+            AudioInputDevice(id: "\(SystemAudioTap.aggregateUIDPrefix)second", name: "Mimi Echo Reference"),
+        ])
+
+        XCTAssertEqual(first, [microphone])
+        XCTAssertEqual(second, first)
+    }
+
     func testBluetoothOutputDoesNotNeedSpeakerEchoReference() {
         XCTAssertFalse(AudioInputDevice.shouldUseSystemAudioReference(outputTransport: .bluetooth))
         XCTAssertTrue(AudioInputDevice.shouldUseSystemAudioReference(outputTransport: .builtIn))
