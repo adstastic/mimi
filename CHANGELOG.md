@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Selected speech models preload at launch and on model changes instead of leaving model preparation until the first recording.
+- Parakeet preparation no longer leaves callers waiting indefinitely when model selection and dictation overlap.
+
 ## [0.1.13] - 2026-08-22
 
 ### Fixed

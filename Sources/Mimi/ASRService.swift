@@ -49,9 +49,10 @@ actor ASRService {
     private var errorReaderTask: Task<Void, Never>?
     private var outputBuffer = Data()
     private var ready = false
-    private var readyContinuation: CheckedContinuation<Void, Error>?
+    private var readyContinuations: [CheckedContinuation<Void, Error>] = []
     private var pending: [String: CheckedContinuation<String, Error>] = [:]
     private let appleBackend: any AppleSpeechServing
+    private let makeMLXProcess: @Sendable () throws -> Process
     private var appleStreamStarting = false
     private var appleStreamActive = false
     private var applePendingBuffers: [AVAudioPCMBuffer] = []
@@ -61,9 +62,11 @@ actor ASRService {
 
     init(
         appleBackend: any AppleSpeechServing = AppleSpeechTranscriberBackend(),
+        makeMLXProcess: @escaping @Sendable () throws -> Process = { try ASRService.makeMLXProcess() },
         onStatus: @escaping @Sendable (String) -> Void = { _ in }
     ) {
         self.appleBackend = appleBackend
+        self.makeMLXProcess = makeMLXProcess
         self.onStatus = onStatus
     }
 
@@ -189,7 +192,7 @@ actor ASRService {
         }
 
         try await withCheckedThrowingContinuation { continuation in
-            readyContinuation = continuation
+            readyContinuations.append(continuation)
         }
     }
 
@@ -217,12 +220,9 @@ actor ASRService {
         }
     }
 
-    private func launchSidecar() throws {
-        let uvPath = try Self.findUVPath()
-        let sidecarURL = try Self.findSidecarURL()
-
-        onStatus("Loading MLX Parakeet v2…")
-
+    private static func makeMLXProcess() throws -> Process {
+        let uvPath = try findUVPath()
+        let sidecarURL = try findSidecarURL()
         let process = Process()
         process.executableURL = URL(fileURLWithPath: uvPath)
         process.arguments = ["run", "--python", "3.12", "--script", sidecarURL.path]
@@ -241,6 +241,12 @@ actor ASRService {
         ].joined(separator: ":")
         environment["MIMI_PARAKEET_MODEL"] = environment["MIMI_PARAKEET_MODEL"] ?? "mlx-community/parakeet-tdt-0.6b-v2"
         process.environment = environment
+        return process
+    }
+
+    private func launchSidecar() throws {
+        let process = try makeMLXProcess()
+        onStatus("Loading MLX Parakeet v2…")
 
         let stdin = Pipe()
         let stdout = Pipe()
@@ -306,8 +312,10 @@ actor ASRService {
         case "ready":
             ready = true
             onStatus("Ready")
-            readyContinuation?.resume()
-            readyContinuation = nil
+            for continuation in readyContinuations {
+                continuation.resume()
+            }
+            readyContinuations.removeAll()
         case "result":
             guard let id = object["id"] as? String else { return }
             let text = object["text"] as? String ?? ""
@@ -317,8 +325,10 @@ actor ASRService {
             if let id = object["id"] as? String, let continuation = pending.removeValue(forKey: id) {
                 continuation.resume(throwing: ASRError.sidecarError(message))
             } else {
-                readyContinuation?.resume(throwing: ASRError.sidecarError(message))
-                readyContinuation = nil
+                for continuation in readyContinuations {
+                    continuation.resume(throwing: ASRError.sidecarError(message))
+                }
+                readyContinuations.removeAll()
                 onStatus("MLX error")
             }
         default:
@@ -337,8 +347,10 @@ actor ASRService {
         outputReaderTask = nil
         errorReaderTask = nil
         let error = ASRError.sidecarError("MLX sidecar exited with status \(status).")
-        readyContinuation?.resume(throwing: error)
-        readyContinuation = nil
+        for continuation in readyContinuations {
+            continuation.resume(throwing: error)
+        }
+        readyContinuations.removeAll()
         for continuation in pending.values {
             continuation.resume(throwing: error)
         }

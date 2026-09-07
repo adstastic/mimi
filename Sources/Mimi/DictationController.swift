@@ -249,10 +249,10 @@ final class DictationController {
     }
 
     func prepareASR() {
+        let backend = configProvider().preferredBackend
+        onStatus("Preparing \(backend.displayName)…")
         Task {
             do {
-                let backend = configProvider().preferredBackend
-                onStatus("Preparing \(backend.displayName)…")
                 try await asrService.prepare(backend: backend)
                 onStatus("Ready — hold Right Command to dictate")
             } catch {

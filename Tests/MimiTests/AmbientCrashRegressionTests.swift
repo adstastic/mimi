@@ -6,6 +6,31 @@ import MimiSpeech
 
 @MainActor
 final class AmbientCrashRegressionTests: XCTestCase {
+    func testModelChangesPrepareSelectedBackendsWithoutRecording() async {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let status = StatusSink()
+        var config = MimiConfig.defaults
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            overlay: FakeOverlay(),
+            status: status,
+            missingInputTimeout: 10
+        )
+
+        config.preferredBackend = .appleSpeechTranscriber
+        controller.prepareASR()
+        config.preferredBackend = .mlxParakeetV2
+        controller.prepareASR()
+
+        let prepared = await waitUntil({ asr.snapshotEvents().count == 2 }, timeout: 1)
+        XCTAssertTrue(prepared)
+        XCTAssertEqual(Set(asr.snapshotEvents()), ["prepare.appleSpeechTranscriber", "prepare.mlxParakeetV2"])
+        XCTAssertTrue(audio.startInputDeviceIDs.isEmpty)
+    }
+
     func testCorrectingLastDictationUpdatesStoreAndClipboardWithoutRepasting() throws {
         let history = HistoryStore()
         history.record(
@@ -1770,7 +1795,9 @@ private final class FakeASRService: ASRServicing {
         handler?(.partial(text))
     }
 
-    func prepare(backend: ASRBackend) async throws {}
+    func prepare(backend: ASRBackend) async throws {
+        record("prepare.\(backend.rawValue)")
+    }
 
     func transcribeApple(audioURL: URL) async throws -> String {
         record("transcribe.apple")

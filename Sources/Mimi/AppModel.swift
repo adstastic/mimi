@@ -95,11 +95,11 @@ final class AppModel: ObservableObject {
         inputDevices = loadedInputDevices
         refreshVoiceprintState()
 
-        asrService = ASRService { [weak self] status in
+        asrService = ASRService(onStatus: { [weak self] status in
             Task { @MainActor in
                 self?.applyStatus(status)
             }
-        }
+        })
         voiceprintVerifier = FileVoiceprintVerifier(service: voiceprintService)
         dictationController = DictationController(
             configProvider: { [weak self] in self?.config ?? .defaults },

@@ -69,6 +69,17 @@ public actor AppleSpeechTranscriberBackend {
         _ = try await locale()
         let module = makeTranscriber(locale: try await locale(), reportingOptions: [])
         try await ensureAssets(for: module)
+        let analyzer = SpeechAnalyzer(
+            modules: [module],
+            options: SpeechAnalyzer.Options(priority: .userInitiated, modelRetention: .processLifetime)
+        )
+        do {
+            try await analyzer.prepareToAnalyze(in: nil)
+        } catch {
+            await analyzer.cancelAndFinishNow()
+            throw error
+        }
+        await analyzer.cancelAndFinishNow()
     }
 
     public func transcribe(audioURL: URL) async throws -> String {

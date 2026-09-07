@@ -6,6 +6,7 @@ Current usable path:
 
 - Apple SpeechTranscriber streaming backend by default
 - MLX Parakeet v2 English ASR sidecar fallback (`parakeet-mlx` via `uv`)
+- selected speech model preloads at launch and on model changes, without microphone capture
 - global Right Command hotkey:
   - hold Right Command, speak, release to transcribe/insert
   - tap Right Command, speak, pause or tap again to transcribe/insert
@@ -83,6 +84,13 @@ Safe streaming smoke test (no UI focus stealing):
 
 ```bash
 scripts/smoke_streaming.sh
+```
+
+Model preload regression checks (no model download):
+
+```bash
+swift test
+uv run --no-project Tests/test_mlx_preload.py
 ```
 
 Prototype voiceprint extraction:

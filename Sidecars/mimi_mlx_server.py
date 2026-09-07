@@ -33,6 +33,8 @@ def main():
             from parakeet_mlx.parakeet import DecodingConfig, Greedy, SentenceConfig
 
             model = from_pretrained(MODEL_ID, dtype=mx.bfloat16, cache_dir=CACHE_DIR)
+            # Materialize lazy weights before announcing readiness, not on first dictation.
+            mx.eval(model.parameters())
             decoding_config = DecodingConfig(decoding=Greedy(), sentence=SentenceConfig())
     except Exception as exc:
         emit({"event": "error", "message": f"failed to load {MODEL_ID}: {exc}"})

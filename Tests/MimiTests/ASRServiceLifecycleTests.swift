@@ -4,6 +4,43 @@ import MimiSpeech
 @testable import Mimi
 
 final class ASRServiceLifecycleTests: XCTestCase {
+    func testConcurrentMLXPreloadsAllCompleteOnReadyOrFailure() async throws {
+        for event in ["ready", "error", "exit"] {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let gate = directory.appendingPathComponent("release")
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/sh")
+            process.arguments = ["-c", """
+                while [ ! -f "$1" ]; do sleep 0.01; done
+                if [ "$2" = exit ]; then exit 1; fi
+                printf '{"event":"%s","message":"load failed"}\\n' "$2"
+                while read -r line; do :; done
+                """, "mlx-fixture", gate.path, event]
+            let service = ASRService(makeMLXProcess: { process })
+            defer { if process.isRunning { process.terminate() } }
+            let finished = expectation(description: "Both preload callers finish on \(event)")
+            finished.expectedFulfillmentCount = 2
+            for _ in 0..<2 {
+                Task {
+                    do {
+                        try await service.prepare(backend: .mlxParakeetV2)
+                        XCTAssertEqual(event, "ready")
+                    } catch {
+                        XCTAssertNotEqual(event, "ready")
+                    }
+                    finished.fulfill()
+                }
+            }
+            let started = await waitUntil { process.isRunning }
+            XCTAssertTrue(started)
+            try await Task.sleep(nanoseconds: 50_000_000)
+            try Data().write(to: gate)
+            await fulfillment(of: [finished], timeout: 2)
+        }
+    }
+
     func testRestartWaitsForPreviousStartBeforeCancelling() async {
         let backend = SlowStartingAppleBackend()
         let service = ASRService(appleBackend: backend)
