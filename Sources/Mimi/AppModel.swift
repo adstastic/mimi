@@ -43,6 +43,7 @@ final class AppModel: ObservableObject {
             }
             if !shortcutRecording,
                oldValue.dictationShortcut != config.dictationShortcut
+                || oldValue.dictationToggleShortcut != config.dictationToggleShortcut
                 || oldValue.ambientToggleShortcut != config.ambientToggleShortcut
                 || oldValue.correctionShortcut != config.correctionShortcut
                 || oldValue.pastePresetShortcut != config.pastePresetShortcut {
@@ -115,11 +116,13 @@ final class AppModel: ObservableObject {
         )
         hotkeyMonitor = HotkeyMonitor(
             dictationShortcut: config.dictationShortcut,
+            dictationToggleShortcut: config.dictationToggleShortcut,
             ambientToggleShortcut: config.ambientToggleShortcut,
             correctionShortcut: config.correctionShortcut,
             pastePresetShortcut: config.pastePresetShortcut,
             onDictationDown: { [weak self] in self?.dictationController.hotkeyDown() },
             onDictationUp: { [weak self] in self?.dictationController.hotkeyUp() },
+            onDictationToggle: { [weak self] in self?.dictationController.toggleDictation() },
             onAmbientToggle: { [weak self] in self?.toggleAmbientModeFromShortcut() },
             onCorrection: { [weak self] in self?.requestLastTranscriptCorrection() },
             onPastePresetCycle: { [weak self] in self?.cyclePastePresetFromShortcut() },
@@ -242,6 +245,7 @@ final class AppModel: ObservableObject {
     private func restartHotkeyMonitor() {
         hotkeyMonitor.update(
             dictationShortcut: config.dictationShortcut,
+            dictationToggleShortcut: config.dictationToggleShortcut,
             ambientToggleShortcut: config.ambientToggleShortcut,
             correctionShortcut: config.correctionShortcut,
             pastePresetShortcut: config.pastePresetShortcut

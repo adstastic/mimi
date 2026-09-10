@@ -15,11 +15,13 @@ final class HotkeyMonitor {
     }
 
     private var dictationShortcut: MimiShortcut
+    private var dictationToggleShortcut: MimiShortcut?
     private var ambientToggleShortcut: MimiShortcut
     private var correctionShortcut: MimiShortcut
     private var pastePresetShortcut: MimiShortcut
     private let onDictationDown: @MainActor () -> Void
     private let onDictationUp: @MainActor () -> Void
+    private let onDictationToggle: @MainActor () -> Void
     private let onAmbientToggle: @MainActor () -> Void
     private let onCorrection: @MainActor () -> Void
     private let onPastePresetCycle: @MainActor () -> Void
@@ -27,6 +29,7 @@ final class HotkeyMonitor {
     private var eventTap: CFMachPort?
     private var eventTapSource: CFRunLoopSource?
     private var dictationPressed = false
+    private var dictationTogglePressed = false
     private var ambientPressed = false
     private var correctionPressed = false
     private var pastePresetPressed = false
@@ -34,11 +37,13 @@ final class HotkeyMonitor {
 
     init(
         dictationShortcut: MimiShortcut,
+        dictationToggleShortcut: MimiShortcut? = nil,
         ambientToggleShortcut: MimiShortcut,
         correctionShortcut: MimiShortcut,
         pastePresetShortcut: MimiShortcut = .pastePresetDefault,
         onDictationDown: @escaping @MainActor () -> Void,
         onDictationUp: @escaping @MainActor () -> Void,
+        onDictationToggle: @escaping @MainActor () -> Void = {},
         onAmbientToggle: @escaping @MainActor () -> Void,
         onCorrection: @escaping @MainActor () -> Void,
         onPastePresetCycle: @escaping @MainActor () -> Void = {},
@@ -52,6 +57,8 @@ final class HotkeyMonitor {
         self.onPastePresetCycle = onPastePresetCycle
         self.onDictationDown = onDictationDown
         self.onDictationUp = onDictationUp
+        self.onDictationToggle = onDictationToggle
+        self.dictationToggleShortcut = dictationToggleShortcut
         self.onAmbientToggle = onAmbientToggle
         self.onCorrection = onCorrection
         self.onCancel = onCancel
@@ -61,11 +68,12 @@ final class HotkeyMonitor {
     var isRunning: Bool { eventTap != nil }
 
     var statusText: String {
-        "Dictation: \(dictationShortcut.displayName); Ambient: \(ambientToggleShortcut.displayName); Correct: \(correctionShortcut.displayName)"
+        "Hold: \(dictationShortcut.displayName); Toggle: \(dictationToggleShortcut?.displayName ?? "None"); Ambient: \(ambientToggleShortcut.displayName); Correct: \(correctionShortcut.displayName)"
     }
 
     func update(
         dictationShortcut: MimiShortcut,
+        dictationToggleShortcut: MimiShortcut? = nil,
         ambientToggleShortcut: MimiShortcut,
         correctionShortcut: MimiShortcut,
         pastePresetShortcut: MimiShortcut = .pastePresetDefault
@@ -74,7 +82,9 @@ final class HotkeyMonitor {
         self.ambientToggleShortcut = ambientToggleShortcut
         self.correctionShortcut = correctionShortcut
         self.pastePresetShortcut = pastePresetShortcut
+        self.dictationToggleShortcut = dictationToggleShortcut
         dictationPressed = false
+        dictationTogglePressed = false
         ambientPressed = false
         correctionPressed = false
         pastePresetPressed = false
@@ -117,6 +127,7 @@ final class HotkeyMonitor {
         eventTap = nil
         eventTapSource = nil
         dictationPressed = false
+        dictationTogglePressed = false
         ambientPressed = false
         correctionPressed = false
         pastePresetPressed = false
@@ -156,6 +167,7 @@ final class HotkeyMonitor {
 
     private func shouldConsumeCorrectionShortcut(_ event: NSEvent) -> Bool {
         guard correctionShortcut != dictationShortcut,
+              correctionShortcut != dictationToggleShortcut,
               correctionShortcut != ambientToggleShortcut,
               !correctionShortcut.isModifierOnly else { return false }
         switch event.type {
@@ -172,7 +184,16 @@ final class HotkeyMonitor {
         switch event.type {
         case .flagsChanged:
             handleModifierShortcut(event, shortcut: dictationShortcut, pressed: &dictationPressed, down: onDictationDown, up: onDictationUp)
-            if ambientToggleShortcut != dictationShortcut {
+            if let dictationToggleShortcut, dictationToggleShortcut != dictationShortcut {
+                handleModifierToggle(
+                    event,
+                    shortcut: dictationToggleShortcut,
+                    pressed: &dictationTogglePressed,
+                    action: onDictationToggle
+                )
+            }
+            if ambientToggleShortcut != dictationShortcut,
+               ambientToggleShortcut != dictationToggleShortcut {
                 handleModifierToggle(
                     event,
                     shortcut: ambientToggleShortcut,
@@ -181,6 +202,7 @@ final class HotkeyMonitor {
                 )
             }
             if correctionShortcut != dictationShortcut,
+               correctionShortcut != dictationToggleShortcut,
                correctionShortcut != ambientToggleShortcut {
                 handleModifierToggle(
                     event,
@@ -212,13 +234,24 @@ final class HotkeyMonitor {
                 Task { @MainActor in onDictationDown() }
                 return
             }
+            if let dictationToggleShortcut,
+               dictationToggleShortcut != dictationShortcut,
+               !dictationToggleShortcut.isModifierOnly,
+               matches(event, shortcut: dictationToggleShortcut),
+               !dictationTogglePressed {
+                dictationTogglePressed = true
+                Task { @MainActor in onDictationToggle() }
+                return
+            }
             if ambientToggleShortcut != dictationShortcut,
+               ambientToggleShortcut != dictationToggleShortcut,
                !ambientToggleShortcut.isModifierOnly,
                matches(event, shortcut: ambientToggleShortcut) {
                 Task { @MainActor in onAmbientToggle() }
                 return
             }
             if correctionShortcut != dictationShortcut,
+               correctionShortcut != dictationToggleShortcut,
                correctionShortcut != ambientToggleShortcut,
                !correctionShortcut.isModifierOnly,
                matches(event, shortcut: correctionShortcut) {
@@ -232,6 +265,11 @@ final class HotkeyMonitor {
                 return
             }
         case .keyUp:
+            if let dictationToggleShortcut,
+               !dictationToggleShortcut.isModifierOnly,
+               Int(event.keyCode) == dictationToggleShortcut.keyCode {
+                dictationTogglePressed = false
+            }
             if !dictationShortcut.isModifierOnly,
                Int(event.keyCode) == dictationShortcut.keyCode,
                dictationPressed {
@@ -251,6 +289,7 @@ final class HotkeyMonitor {
 
     private var isPastePresetShortcutDistinct: Bool {
         pastePresetShortcut != dictationShortcut
+            && pastePresetShortcut != dictationToggleShortcut
             && pastePresetShortcut != ambientToggleShortcut
             && pastePresetShortcut != correctionShortcut
     }

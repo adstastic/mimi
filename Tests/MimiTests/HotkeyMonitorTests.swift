@@ -4,6 +4,90 @@ import XCTest
 
 @MainActor
 final class HotkeyMonitorTests: XCTestCase {
+    func testHoldAndToggleDispatchIndependentlyForKeysAndModifiers() async throws {
+        let shortcuts: [(MimiShortcut, MimiShortcut)] = [
+            (.rightCommand, .legacySingleKey(keyCode: 62)),
+            (MimiShortcut(keyCode: 4, modifierFlagsRaw: NSEvent.ModifierFlags.control.rawValue),
+             MimiShortcut(keyCode: 2, modifierFlagsRaw: NSEvent.ModifierFlags.option.rawValue))
+        ]
+        for (hold, toggle) in shortcuts {
+            var actions: [String] = []
+            let handled = expectation(description: "Hold down/up and two toggle presses")
+            handled.expectedFulfillmentCount = 4
+            let monitor = HotkeyMonitor(
+                dictationShortcut: hold,
+                dictationToggleShortcut: toggle,
+                ambientToggleShortcut: .ambientToggleDefault,
+                correctionShortcut: .correctionDefault,
+                onDictationDown: { actions.append("hold.down"); handled.fulfill() },
+                onDictationUp: { actions.append("hold.up"); handled.fulfill() },
+                onDictationToggle: { actions.append("toggle"); handled.fulfill() },
+                onAmbientToggle: {},
+                onCorrection: {},
+                onCancel: {}
+            )
+            try send(hold, down: true, to: monitor)
+            try send(hold, down: false, to: monitor)
+            for _ in 0..<2 {
+                try send(toggle, down: true, to: monitor)
+                try send(toggle, down: true, to: monitor)
+                try send(toggle, down: true, isRepeat: true, to: monitor)
+                try send(toggle, down: false, to: monitor)
+            }
+            await fulfillment(of: [handled], timeout: 1)
+            XCTAssertEqual(actions.filter { $0 == "hold.down" }.count, 1)
+            XCTAssertEqual(actions.filter { $0 == "hold.up" }.count, 1)
+            XCTAssertEqual(actions.filter { $0 == "toggle" }.count, 2)
+
+            monitor.update(
+                dictationShortcut: hold,
+                dictationToggleShortcut: nil,
+                ambientToggleShortcut: .ambientToggleDefault,
+                correctionShortcut: .correctionDefault
+            )
+            try send(toggle, down: true, to: monitor)
+            try send(toggle, down: false, to: monitor)
+            try await Task.sleep(nanoseconds: 30_000_000)
+            XCTAssertEqual(actions.count, 4, "Clearing toggle must disable it")
+        }
+    }
+
+    func testShortcutConflictsKeepHoldThenTogglePriority() async throws {
+        for toggle in [MimiShortcut.rightCommand, .ambientToggleDefault, .correctionDefault, .pastePresetDefault] {
+            var actions: [String] = []
+            let handled = expectation(description: "Only highest-priority shortcut fires")
+            let monitor = HotkeyMonitor(
+                dictationShortcut: .rightCommand,
+                dictationToggleShortcut: toggle,
+                ambientToggleShortcut: .ambientToggleDefault,
+                correctionShortcut: .correctionDefault,
+                onDictationDown: { actions.append("hold"); handled.fulfill() },
+                onDictationUp: {},
+                onDictationToggle: { actions.append("toggle"); handled.fulfill() },
+                onAmbientToggle: { actions.append("ambient") },
+                onCorrection: { actions.append("correction") },
+                onPastePresetCycle: { actions.append("preset") },
+                onCancel: {}
+            )
+            try send(toggle, down: true, to: monitor)
+            try send(toggle, down: false, to: monitor)
+            await fulfillment(of: [handled], timeout: 1)
+            XCTAssertEqual(actions, [toggle == .rightCommand ? "hold" : "toggle"])
+        }
+    }
+
+    private func send(_ shortcut: MimiShortcut, down: Bool, isRepeat: Bool = false, to monitor: HotkeyMonitor) throws {
+        let event = try XCTUnwrap(CGEvent(
+            keyboardEventSource: nil,
+            virtualKey: CGKeyCode(shortcut.keyCode),
+            keyDown: down
+        ))
+        event.type = shortcut.isModifierOnly ? .flagsChanged : (down ? .keyDown : .keyUp)
+        event.flags = shortcut.isModifierOnly && !down ? [] : CGEventFlags(rawValue: UInt64(shortcut.modifierFlagsRaw))
+        event.setIntegerValueField(.keyboardEventAutorepeat, value: isRepeat ? 1 : 0)
+        _ = monitor.handle(type: event.type, event: event)
+    }
+
     func testCorrectionShortcutEventsAreConsumed() throws {
         let monitor = HotkeyMonitor(
             dictationShortcut: .rightCommand,

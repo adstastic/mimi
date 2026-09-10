@@ -239,6 +239,11 @@ final class MimiConfigFileStore {
             path: "dictationShortcut"
         )
         try rejectUnknownKeys(
+            in: object["dictationToggleShortcut"],
+            allowed: ["keyCode", "modifierFlagsRaw"],
+            path: "dictationToggleShortcut"
+        )
+        try rejectUnknownKeys(
             in: object["ambientToggleShortcut"],
             allowed: ["keyCode", "modifierFlagsRaw"],
             path: "ambientToggleShortcut"
@@ -323,6 +328,7 @@ final class MimiConfigFileStore {
 
     private func validate(_ config: MimiConfig) throws {
         try validateShortcut(config.dictationShortcut, name: "dictationShortcut")
+        try validateShortcut(config.dictationToggleShortcut, name: "dictationToggleShortcut")
         try validateShortcut(config.ambientToggleShortcut, name: "ambientToggleShortcut")
         try validateShortcut(config.correctionShortcut, name: "correctionShortcut")
         try validateShortcut(config.dictationPasteSettings.prePasteKeystroke, name: "dictationPasteSettings.prePasteKeystroke")
@@ -419,6 +425,7 @@ private struct CanonicalMimiConfig: Encodable {
         case preRollMilliseconds
         case tapThresholdMilliseconds
         case dictationShortcut
+        case dictationToggleShortcut
         case inputDeviceID
         case ambientModeEnabled
         case ambientToggleShortcut
@@ -448,6 +455,7 @@ private struct CanonicalMimiConfig: Encodable {
         try container.encode(config.preRollMilliseconds, forKey: .preRollMilliseconds)
         try container.encode(config.tapThresholdMilliseconds, forKey: .tapThresholdMilliseconds)
         try container.encode(config.dictationShortcut, forKey: .dictationShortcut)
+        try container.encode(config.dictationToggleShortcut, forKey: .dictationToggleShortcut)
         try container.encodeIfPresent(config.inputDeviceID, forKey: .inputDeviceID)
         try container.encode(config.ambientModeEnabled, forKey: .ambientModeEnabled)
         try container.encode(config.ambientToggleShortcut, forKey: .ambientToggleShortcut)

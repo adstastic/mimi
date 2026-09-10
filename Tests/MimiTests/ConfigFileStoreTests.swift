@@ -3,6 +3,34 @@ import XCTest
 @testable import Mimi
 
 final class ConfigFileStoreTests: XCTestCase {
+    func testLegacyShortcutBecomesHoldAndToggleRoundTripsIndependently() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        try Data(#"{"dictationShortcut":{"keyCode":62,"modifierFlagsRaw":262144}}"#.utf8)
+            .write(to: fixture.configURL)
+        let store = MimiConfigFileStore(fileURL: fixture.configURL, legacyDefaults: fixture.defaults)
+        var config = store.loadInitial()
+        let hold = MimiShortcut.legacySingleKey(keyCode: 62)
+        XCTAssertTrue(store.isWritable)
+        XCTAssertEqual(config.dictationShortcut, hold)
+        XCTAssertNil(config.dictationToggleShortcut)
+        XCTAssertNil(MimiConfig.defaults.dictationToggleShortcut)
+
+        let toggle = MimiShortcut(keyCode: 2, modifierFlagsRaw: 0)
+        config.dictationToggleShortcut = toggle
+        try store.save(config)
+        let reloaded = try store.reload()
+        XCTAssertEqual(reloaded.dictationShortcut, hold)
+        XCTAssertEqual(reloaded.dictationToggleShortcut, toggle)
+        XCTAssertEqual(MimiConfig.load(userDefaults: fixture.defaults).dictationToggleShortcut, toggle)
+
+        config.dictationToggleShortcut = nil
+        try store.save(config)
+        let cleared = try store.reload()
+        XCTAssertEqual(cleared.dictationShortcut, hold)
+        XCTAssertNil(cleared.dictationToggleShortcut)
+    }
+
     func testMissingFileMigratesLegacyConfigAndVocabulary() throws {
         let fixture = try Fixture()
         defer { fixture.cleanup() }
@@ -122,6 +150,10 @@ final class ConfigFileStoreTests: XCTestCase {
             #"{"ambientStartThresholdDBFS":0}"#,
             #"{"silenceDetectionMode":"mystery"}"#,
             #"{"dictationShortcut":{"keyCode":-1,"modifierFlagsRaw":0}}"#,
+            #"{"dictationToggleShortcut":"invalid"}"#,
+            #"{"dictationToggleShortcut":{"keyCode":128,"modifierFlagsRaw":0}}"#,
+            #"{"dictationToggleShortcut":{"keyCode":2,"modifierFlagsRaw":1}}"#,
+            #"{"dictationToggleShortcut":{"keyCode":2,"modifierFlagsRaw":0,"typo":true}}"#,
             #"{"correctionShortcut":{"keyCode":128,"modifierFlagsRaw":0}}"#,
             #"{"correctionShortcut":{"keyCode":8,"modifierFlagsRaw":1}}"#,
             #"{"voiceprintThreshold":9}"#,

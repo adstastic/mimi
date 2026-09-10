@@ -6,6 +6,64 @@ import MimiSpeech
 
 @MainActor
 final class AmbientCrashRegressionTests: XCTestCase {
+    func testQuickHoldReleaseStopsInsteadOfToggling() async {
+        let audio = FakeAudioCapture()
+        var config = MimiConfig.defaults
+        config.preferredBackend = .mlxParakeetV2
+        config.silenceAutoStopEnabled = false
+        config.voiceprintEnabled = false
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: FakeASRService(),
+            overlay: FakeOverlay(),
+            status: StatusSink(),
+            missingInputTimeout: 10
+        )
+
+        controller.hotkeyDown()
+        controller.hotkeyUp()
+
+        let stopped = await waitUntil({ audio.finishCount == 1 }, timeout: 1)
+        XCTAssertTrue(stopped, "A quick release must stop hold dictation, not switch to toggle mode")
+        controller.cancelRecording()
+    }
+
+    func testToggleStaysRecordingUntilNextToggleAndIgnoresHoldRelease() async {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let inserter = FakeTextInserter()
+        var config = MimiConfig.defaults
+        config.preferredBackend = .mlxParakeetV2
+        config.silenceAutoStopEnabled = false
+        config.voiceprintEnabled = false
+        asr.batchFinalText = "toggle recording"
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            textInserter: inserter,
+            overlay: FakeOverlay(),
+            status: StatusSink(),
+            missingInputTimeout: 10
+        )
+
+        controller.toggleDictation()
+        let started = await waitUntil({ audio.startInputDeviceIDs.count == 1 }, timeout: 1)
+        XCTAssertTrue(started)
+        controller.hotkeyDown()
+        controller.hotkeyUp()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertTrue(controller.isRecording)
+        XCTAssertEqual(audio.finishCount, 0)
+        XCTAssertEqual(audio.startInputDeviceIDs.count, 1)
+
+        controller.toggleDictation()
+        let stopped = await waitUntil({ inserter.insertedTexts == ["toggle recording"] }, timeout: 1)
+        XCTAssertTrue(stopped)
+        XCTAssertEqual(audio.finishCount, 1)
+    }
+
     func testModelChangesPrepareSelectedBackendsWithoutRecording() async {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
@@ -347,7 +405,7 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertEqual(audio.stopCount, 1)
     }
 
-    func testTapStopStreamFailureStillCancelsStreamBeforeNextRecording() async {
+    func testToggleStopStreamFailureStillCancelsStreamBeforeNextRecording() async {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
         let overlay = FakeOverlay()
@@ -372,13 +430,12 @@ final class AmbientCrashRegressionTests: XCTestCase {
             missingInputTimeout: 10
         )
 
-        controller.hotkeyDown()
+        controller.toggleDictation()
         let firstStarted = await waitUntil({
             asr.snapshotEvents().filter { $0 == "stream.start" }.count == 1
         }, timeout: 1.0)
         XCTAssertTrue(firstStarted)
-        controller.hotkeyUp()
-        controller.hotkeyDown()
+        controller.toggleDictation()
         let finishFailed = await waitUntil({
             status.values.contains { $0.hasPrefix("Error:") }
         }, timeout: 1.0)

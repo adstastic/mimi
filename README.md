@@ -7,9 +7,9 @@ Current usable path:
 - Apple SpeechTranscriber streaming backend by default
 - MLX Parakeet v2 English ASR sidecar fallback (`parakeet-mlx` via `uv`)
 - selected speech model preloads at launch and on model changes, without microphone capture
-- global Right Command hotkey:
-  - hold Right Command, speak, release to transcribe/insert
-  - tap Right Command, speak, pause or tap again to transcribe/insert
+- separate global dictation shortcuts:
+  - Hold to dictate: hold Right Command, speak, release to transcribe/insert
+  - Toggle dictation: assign a shortcut, then press once to start and again to transcribe/insert
   - press Escape while recording to cancel
 - silence auto-stop
 - optional ambient VAD mode that keeps mic armed and uses Apple SpeechDetector to start/stop on speech
@@ -48,6 +48,14 @@ Vocabulary pairs group observed forms under exact output:
 ```
 
 `to` also acts as a case-insensitive self-alias, preserving canonical casing. Delete a pairing to disable it.
+
+### Dictation shortcuts
+
+Settings → Shortcuts has separate **Hold to dictate** and **Toggle dictation** rows.
+The existing `dictationShortcut` config key controls hold dictation. Its default stays Right Command.
+The optional `dictationToggleShortcut` key controls toggle dictation. Its default is `null` (unassigned).
+A quick release of the hold shortcut stops recording. It no longer switches to toggle mode.
+The legacy `tapThresholdMilliseconds` key remains accepted but has no effect.
 
 ### Paste presets
 

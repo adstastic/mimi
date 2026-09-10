@@ -102,7 +102,7 @@ extension OverlayWindowController: OverlayShowing {}
 @MainActor
 final class DictationController {
     private enum RecordingMode {
-        case pressing(startedAt: Date)
+        case hold
         case toggle
         case ambient
     }
@@ -266,37 +266,34 @@ final class DictationController {
         DebugLog.write("dictation hotkey down")
         switch state {
         case .idle:
-            startRecording(mode: .pressing(startedAt: Date()))
-        case .recording(let mode, _):
-            switch mode {
-            case .toggle, .ambient:
-                Task { await stopAndTranscribe(reason: .stopped) }
-            case .pressing:
-                break
-            }
+            startRecording(mode: .hold)
+        case .recording(.ambient, _):
+            Task { await stopAndTranscribe(reason: .stopped) }
         case .preparingAudio:
             state = .idle
-            startRecording(mode: .pressing(startedAt: Date()))
-        case .processing:
+            startRecording(mode: .hold)
+        case .recording, .processing:
             break
         }
     }
 
     func hotkeyUp() {
-        guard case .recording(.pressing(let startedAt), let plan) = state else { return }
+        guard case .recording(.hold, _) = state else { return }
+        DebugLog.write("dictation hold released")
+        Task { await stopAndTranscribe(reason: .released) }
+    }
 
-        let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1_000)
-        DebugLog.write("dictation hotkey up elapsedMs=\(elapsedMs)")
-        if elapsedMs < plan.config.tapThresholdMilliseconds {
-            state = .recording(.toggle, plan)
-            onStatus("Recording — tap Right Command again to stop")
-            overlay.show(
-                "Recording",
-                detail: "Tap Right Command again or pause",
-                level: audioCapture.currentDBFS()
-            )
-        } else {
-            Task { await stopAndTranscribe(reason: .released) }
+    func toggleDictation() {
+        switch state {
+        case .idle:
+            startRecording(mode: .toggle)
+        case .preparingAudio:
+            state = .idle
+            startRecording(mode: .toggle)
+        case .recording:
+            Task { await stopAndTranscribe(reason: .stopped) }
+        case .processing:
+            break
         }
     }
 

@@ -260,6 +260,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         case tapThresholdMilliseconds
         case hotkeyKeyCode
         case dictationShortcut
+        case dictationToggleShortcut
         case inputDeviceID
         case ambientModeEnabled
         case ambientToggleShortcut
@@ -295,10 +296,12 @@ public struct MimiConfig: Codable, Equatable, Sendable {
     public var silenceDetectionMode: SilenceDetectionMode
     public var minUtteranceMilliseconds: Int
     public var preRollMilliseconds: Int
+    // Retained for old configs; separate shortcuts no longer use tap duration.
     public var tapThresholdMilliseconds: Int
     // TODO(ponytail): remove stored legacy mirror; decode hotkeyKeyCode locally only for old configs.
     public var hotkeyKeyCode: Int
     public var dictationShortcut: MimiShortcut
+    public var dictationToggleShortcut: MimiShortcut?
     public var inputDeviceID: String?
     public var ambientModeEnabled: Bool
     public var ambientToggleShortcut: MimiShortcut
@@ -357,6 +360,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         tapThresholdMilliseconds: Int,
         hotkeyKeyCode: Int,
         dictationShortcut: MimiShortcut = .rightCommand,
+        dictationToggleShortcut: MimiShortcut? = nil,
         inputDeviceID: String? = nil,
         ambientModeEnabled: Bool,
         ambientToggleShortcut: MimiShortcut = .ambientToggleDefault,
@@ -384,6 +388,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         self.tapThresholdMilliseconds = tapThresholdMilliseconds
         self.hotkeyKeyCode = hotkeyKeyCode
         self.dictationShortcut = dictationShortcut
+        self.dictationToggleShortcut = dictationToggleShortcut
         self.inputDeviceID = inputDeviceID
         self.ambientModeEnabled = ambientModeEnabled
         self.ambientToggleShortcut = ambientToggleShortcut
@@ -415,6 +420,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         hotkeyKeyCode = try container.decodeIfPresent(Int.self, forKey: .hotkeyKeyCode) ?? Self.defaults.hotkeyKeyCode
         dictationShortcut = try container.decodeIfPresent(MimiShortcut.self, forKey: .dictationShortcut)
             ?? MimiShortcut.legacySingleKey(keyCode: hotkeyKeyCode)
+        dictationToggleShortcut = try container.decodeIfPresent(MimiShortcut.self, forKey: .dictationToggleShortcut)
         inputDeviceID = try container.decodeIfPresent(String.self, forKey: .inputDeviceID)
         ambientModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .ambientModeEnabled) ?? Self.defaults.ambientModeEnabled
         ambientToggleShortcut = try container.decodeIfPresent(MimiShortcut.self, forKey: .ambientToggleShortcut) ?? Self.defaults.ambientToggleShortcut
@@ -496,6 +502,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         try container.encode(tapThresholdMilliseconds, forKey: .tapThresholdMilliseconds)
         try container.encode(dictationShortcut.keyCode, forKey: .hotkeyKeyCode)
         try container.encode(dictationShortcut, forKey: .dictationShortcut)
+        try container.encodeIfPresent(dictationToggleShortcut, forKey: .dictationToggleShortcut)
         try container.encodeIfPresent(inputDeviceID, forKey: .inputDeviceID)
         try container.encode(ambientModeEnabled, forKey: .ambientModeEnabled)
         try container.encode(ambientToggleShortcut, forKey: .ambientToggleShortcut)

@@ -405,10 +405,18 @@ private struct ShortcutSettingsPane: View {
         Form {
             Section {
                 ShortcutRecorderRow(
-                    title: "Dictation",
+                    title: "Hold to dictate",
                     systemImage: "mic",
                     shortcut: $config.dictationShortcut,
                     onRecordingChanged: shortcutRecordingChanged
+                )
+                OptionalShortcutRecorderRow(
+                    title: "Toggle dictation",
+                    systemImage: "mic.badge.plus",
+                    shortcut: $config.dictationToggleShortcut,
+                    disabled: false,
+                    onRecordingChanged: shortcutRecordingChanged,
+                    capturesEscape: false
                 )
                 ShortcutRecorderRow(
                     title: "Ambient",
@@ -432,7 +440,7 @@ private struct ShortcutSettingsPane: View {
             } header: {
                 Text("Global Shortcuts")
             } footer: {
-                Text("Select the pencil button, then press the desired key combination.")
+                Text("Hold records until you release the shortcut. Toggle starts or stops recording with each press. Select a pencil to change a shortcut.")
             }
 
             ShortcutConflictWarnings(config: config)
@@ -445,14 +453,20 @@ private struct ShortcutConflictWarnings: View {
     let config: MimiConfig
 
     var body: some View {
-        if config.dictationShortcut == config.ambientToggleShortcut {
-            WarningLabel("Ambient shortcut is ignored because it matches dictation.")
+        if config.dictationToggleShortcut == config.dictationShortcut {
+            WarningLabel("Toggle dictation is ignored because it matches Hold to dictate.")
+        }
+        if config.ambientToggleShortcut == config.dictationShortcut
+            || config.ambientToggleShortcut == config.dictationToggleShortcut {
+            WarningLabel("Ambient shortcut is ignored because it matches a dictation shortcut.")
         }
         if config.correctionShortcut == config.dictationShortcut
+            || config.correctionShortcut == config.dictationToggleShortcut
             || config.correctionShortcut == config.ambientToggleShortcut {
             WarningLabel("Correct Last is ignored because it matches another shortcut.")
         }
         if config.pastePresetShortcut == config.dictationShortcut
+            || config.pastePresetShortcut == config.dictationToggleShortcut
             || config.pastePresetShortcut == config.ambientToggleShortcut
             || config.pastePresetShortcut == config.correctionShortcut {
             WarningLabel("Next Paste Preset is ignored because it matches another shortcut.")
@@ -923,6 +937,7 @@ private struct OptionalShortcutRecorderRow: View {
     @Binding var shortcut: MimiShortcut?
     let disabled: Bool
     let onRecordingChanged: (Bool) -> Void
+    var capturesEscape = true
 
     var body: some View {
         HStack(spacing: 8) {
@@ -956,7 +971,7 @@ private struct OptionalShortcutRecorderRow: View {
             }
             ShortcutRecorderButton(
                 disabled: disabled,
-                capturesEscape: true,
+                capturesEscape: capturesEscape,
                 onCapture: { self.shortcut = $0 },
                 onRecordingChanged: onRecordingChanged
             )

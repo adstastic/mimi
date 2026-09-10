@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Hold to dictate and Toggle dictation have separate shortcut settings. The existing shortcut now records only while held.
+- Toggle dictation starts unassigned. Set its shortcut in Settings → Shortcuts to record with one press and stop with another.
+
 ### Fixed
 
 - Selected speech models preload at launch and on model changes instead of leaving model preparation until the first recording.
