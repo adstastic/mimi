@@ -1,0 +1,3 @@
+version: "1.0"
+defaults:
+  base_dir: .worktrees
