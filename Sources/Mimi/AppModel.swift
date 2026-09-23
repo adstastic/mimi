@@ -139,10 +139,6 @@ final class AppModel: ObservableObject {
             guard let self, self.config.inputDeviceID == RingAudioCapture.deviceID else { return }
             self.dictationController.cancelRecording()
         }
-        ring.onReleaseRequested = { [weak self] in
-            guard let self else { return }
-            self.releaseRing()
-        }
         hotkeyMonitor = HotkeyMonitor(
             dictationShortcut: config.dictationShortcut,
             dictationToggleShortcut: config.dictationToggleShortcut,
