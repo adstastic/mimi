@@ -59,6 +59,8 @@ struct AudioInputDevice: Identifiable, Hashable, Sendable {
             )
         })
         .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        // The Ring is not a CoreAudio device; RoutingAudioCapture routes on this id at start().
+        + [AudioInputDevice(id: RingAudioCapture.deviceID, name: RingAudioCapture.deviceName, transport: .other)]
     }
 
     static func selectable(_ devices: [AudioInputDevice]) -> [AudioInputDevice] {

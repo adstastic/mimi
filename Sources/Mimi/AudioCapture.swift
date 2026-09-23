@@ -443,7 +443,7 @@ final class AudioCapture {
         }
     }
 
-    private static func writeWAV(samples: [Float], sampleRate: Double, to url: URL) throws {
+    static func writeWAV(samples: [Float], sampleRate: Double, to url: URL) throws {
         guard let buffer = makeBuffer(samples: samples, sampleRate: sampleRate) else {
             throw CaptureError.outputBufferFailed
         }
@@ -452,7 +452,7 @@ final class AudioCapture {
         try file.write(from: buffer)
     }
 
-    private static func makeBuffer(samples: [Float], sampleRate: Double) -> AVAudioPCMBuffer? {
+    static func makeBuffer(samples: [Float], sampleRate: Double) -> AVAudioPCMBuffer? {
         guard !samples.isEmpty,
               let format = AVAudioFormat(
                   commonFormat: .pcmFormatFloat32,

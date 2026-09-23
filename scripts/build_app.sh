@@ -82,6 +82,8 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
     <string>$APP_NAME uses global keyboard shortcuts for dictation.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>$APP_NAME uses Apple on-device speech transcription when selected.</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>$APP_NAME connects to a Familiar Ring for dictation when selected as the input.</string>
 </dict>
 </plist>
 PLIST
@@ -116,6 +118,8 @@ if [[ -n "$SIGN_IDENTITY" ]]; then
 <plist version="1.0">
 <dict>
     <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <key>com.apple.security.device.bluetooth</key>
     <true/>
 </dict>
 </plist>

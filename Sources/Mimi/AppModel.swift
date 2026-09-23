@@ -41,6 +41,9 @@ final class AppModel: ObservableObject {
             if oldValue.inputDeviceID != config.inputDeviceID || oldValue.silenceDetectionMode != config.silenceDetectionMode {
                 scheduleAmbientModeUpdate()
             }
+            if oldValue.inputDeviceID != config.inputDeviceID {
+                connectRingIfSelected()
+            }
             if !shortcutRecording,
                oldValue.dictationShortcut != config.dictationShortcut
                 || oldValue.dictationToggleShortcut != config.dictationToggleShortcut
@@ -58,7 +61,8 @@ final class AppModel: ObservableObject {
     var lastDictation: TranscriptEntry? { history.latest }
 
     private let configStore: MimiConfigFileStore
-    private let audioCapture = AudioCapture()
+    let ring = RingAudioCapture()
+    private let audioCapture: RoutingAudioCapture
     private let textInserter = TextInserter()
     private let voiceprintService = VoiceprintEmbeddingService()
     private var voiceprintVerifier: FileVoiceprintVerifier!
@@ -82,6 +86,7 @@ final class AppModel: ObservableObject {
         TemporaryAudioFiles.removeStaleFiles()
         let configStore = MimiConfigFileStore()
         self.configStore = configStore
+        audioCapture = RoutingAudioCapture(mic: AudioCapture(), ring: ring)
         history = HistoryStore(audioStorageURL: HistoryStore.productionAudioStorageURL)
         let loadedInputDevices = AudioInputDevice.available()
         var loadedConfig = configStore.loadInitial()
@@ -114,6 +119,9 @@ final class AppModel: ObservableObject {
             onTranscript: { [weak self] transcript in self?.lastTranscript = transcript },
             onPartialTranscript: { _ in }
         )
+        ring.onPressBegan = { [weak self] in self?.dictationController.hotkeyDown() }
+        ring.onPressEnded = { [weak self] in self?.dictationController.hotkeyUp() }
+        ring.onPressCancelled = { [weak self] in self?.dictationController.cancelRecording() }
         hotkeyMonitor = HotkeyMonitor(
             dictationShortcut: config.dictationShortcut,
             dictationToggleShortcut: config.dictationToggleShortcut,
@@ -140,12 +148,27 @@ final class AppModel: ObservableObject {
         Task { await start() }
     }
 
+    /// The Ring's own button starts dictation, and that press only reaches mimi
+    /// over an open BLE link, so the link must be up before any press.
+    private func connectRingIfSelected() {
+        guard config.inputDeviceID == RingAudioCapture.deviceID else { return }
+        let preRoll = config.preRollMilliseconds
+        Task { [ring] in
+            do {
+                try await ring.start(preRollMilliseconds: preRoll, inputDeviceID: RingAudioCapture.deviceID)
+            } catch {
+                DebugLog.write("ring eager connect failed: \(error)")
+            }
+        }
+    }
+
     func start() async {
         guard !started else { return }
         started = true
         refreshPermissions()
 
         dictationController.prepareASR()
+        connectRingIfSelected()
         wakeCancellable = NSWorkspace.shared.notificationCenter
             .publisher(for: NSWorkspace.didWakeNotification)
             .sink { [weak self] _ in

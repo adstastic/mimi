@@ -22,7 +22,7 @@ struct MimiApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MimiMenu(appModel: appModel)
+            MimiMenu(appModel: appModel, ring: appModel.ring)
         } label: {
             menuBarLabel
         }
@@ -133,6 +133,7 @@ private struct CorrectionWindow: View {
 
 private struct MimiMenu: View {
     @ObservedObject var appModel: AppModel
+    @ObservedObject var ring: RingAudioCapture
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -141,6 +142,13 @@ private struct MimiMenu: View {
         if let configErrorText = appModel.configErrorText {
             Text(configErrorText)
                 .disabled(true)
+        }
+        if appModel.config.inputDeviceID == RingAudioCapture.deviceID {
+            Text("Ring: \(ring.readiness.rawValue)")
+                .disabled(true)
+            Button("Release Ring") {
+                ring.release()
+            }
         }
 
         Toggle("Ambient Mode", isOn: $appModel.config.ambientModeEnabled)
