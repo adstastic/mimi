@@ -45,6 +45,7 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
     private var sessionMaxPause: TimeInterval = 0
     /// Frames the Ring produced (100/s) minus frames received, at its worst.
     private var sessionMaxBacklog = 0
+    private var sessionGapBuckets = [0, 0, 0, 0, 0]
 
     /// Between START and beginRecording every packet is speech, so the pre-roll
     /// ring must not trim it. Cleared when recording begins or the press ends.
@@ -228,6 +229,7 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
                 sessionStalls = 0
                 sessionMaxPause = 0
                 sessionMaxBacklog = 0
+                sessionGapBuckets = [0, 0, 0, 0, 0]
                 lock.unlock()
                 Task { @MainActor in self.onPressBegan() }
             case .stop:
@@ -239,10 +241,11 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
                 let stalls = sessionStalls
                 let maxPause = sessionMaxPause
                 let maxBacklog = sessionMaxBacklog
+                let buckets = sessionGapBuckets
                 lock.unlock()
                 let rate = elapsed > 0 ? Double(packets) / elapsed : 0
-                DebugLog.write(String(format: "ring session %d packets=%d gaps=%d elapsed=%.2fs rate=%.1f/s expected=%d stalls=%d max_pause=%.0fms max_backlog=%d",
-                                      Int(event.sessionID), packets, gaps, elapsed, rate, Int(event.packetCount), stalls, maxPause * 1000, maxBacklog))
+                DebugLog.write(String(format: "ring session %d packets=%d gaps=%d elapsed=%.2fs rate=%.1f/s expected=%d stalls=%d max_pause=%.0fms max_backlog=%d gaps_ms[<5,5-20,20-40,40-80,>80]=%@",
+                                      Int(event.sessionID), packets, gaps, elapsed, rate, Int(event.packetCount), stalls, maxPause * 1000, maxBacklog, buckets.map(String.init).joined(separator: ",")))
                 Task { @MainActor in self.onPressEnded() }
             case .cancel:
                 Task { @MainActor in self.onPressCancelled() }
@@ -258,6 +261,11 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
                 let pause = now.timeIntervalSince(last)
                 if pause > 0.15 { sessionStalls += 1 }
                 sessionMaxPause = max(sessionMaxPause, pause)
+                // Inter-arrival buckets in ms: <5 same event, 5-20, 20-40, 40-80, >80.
+                // The dominant inter-burst bucket is the connection interval.
+                let ms = pause * 1000
+                let bucket = ms < 5 ? 0 : ms < 20 ? 1 : ms < 40 ? 2 : ms < 80 ? 3 : 4
+                sessionGapBuckets[bucket] += 1
             }
             sessionLastAt = now
             if let first = sessionFirstAt {
