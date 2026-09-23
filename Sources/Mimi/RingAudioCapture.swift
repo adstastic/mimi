@@ -64,11 +64,11 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
         ) { [weak self] delivery in
             self?.handle(delivery.notification)
         }
-        // The phone records blue and magenta. Green on the Ring means "held by
+        // The phone records blue and magenta. White on the Ring means "held by
         // the Mac". Double press is off: mimi has no second lane for it. The
         // second colour is wire-format filler while double press is off.
-        let green = RingColor(red: 0, green: 128, blue: 0)
-        ble.recordingConfigCommandOverride = .recordingConfig(doublePressEnabled: false, single: green, double: green)
+        let white = RingColor(red: 128, green: 128, blue: 128)
+        ble.recordingConfigCommandOverride = .recordingConfig(doublePressEnabled: false, single: white, double: white)
         readinessCancellable = ble.$readiness
             .combineLatest(ble.$currentCodec)
             .receive(on: RunLoop.main)
