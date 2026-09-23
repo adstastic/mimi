@@ -12,8 +12,8 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.4"),
-        // ponytail: absolute path until v1 feat/ringkit merges, then "../v1/apps/ios"
-        .package(name: "Guv", path: "/Users/adi/code/v1/.worktrees/feat/ringkit/apps/ios")
+        // RingKit lives in the Familiar v1 repo. Absolute path: a relative one breaks from a worktree.
+        .package(name: "Guv", path: "/Users/adi/code/v1/apps/ios")
     ],
     targets: [
         .target(
