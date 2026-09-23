@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Echo cancellation toggle (`echoCancellationEnabled`, default on) in Settings and config. Turn it off for an input that never hears the speakers, such as a virtual microphone: the pipeline then adds only convergence noise and eats the first word.
+
+### Changed
+
+- The overlay hides as soon as processing ends instead of showing "Inserted + copied" for 1.2 s. The overlay now means "busy": while it shows, the hold key is ignored.
+- A hold key that arrives while the previous clip is processing is logged (`dictation hotkey down ignored: still processing`). It is still dropped.
+
 ## [0.1.14] - 2026-09-10
 
 ### Changed

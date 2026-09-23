@@ -262,6 +262,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         case dictationShortcut
         case dictationToggleShortcut
         case inputDeviceID
+        case echoCancellationEnabled
         case ambientModeEnabled
         case ambientToggleShortcut
         case correctionShortcut
@@ -303,6 +304,9 @@ public struct MimiConfig: Codable, Equatable, Sendable {
     public var dictationShortcut: MimiShortcut
     public var dictationToggleShortcut: MimiShortcut?
     public var inputDeviceID: String?
+    /// Off for inputs that are already clean and never hear the speakers, such
+    /// as a virtual microphone; the pipeline's convergence eats the first word.
+    public var echoCancellationEnabled: Bool
     public var ambientModeEnabled: Bool
     public var ambientToggleShortcut: MimiShortcut
     public var correctionShortcut: MimiShortcut
@@ -332,6 +336,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         hotkeyKeyCode: 54, // Right Command on Apple keyboards.
         dictationShortcut: .rightCommand,
         inputDeviceID: nil,
+        echoCancellationEnabled: true,
         ambientModeEnabled: false,
         ambientToggleShortcut: .ambientToggleDefault,
         correctionShortcut: .correctionDefault,
@@ -362,6 +367,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         dictationShortcut: MimiShortcut = .rightCommand,
         dictationToggleShortcut: MimiShortcut? = nil,
         inputDeviceID: String? = nil,
+        echoCancellationEnabled: Bool = true,
         ambientModeEnabled: Bool,
         ambientToggleShortcut: MimiShortcut = .ambientToggleDefault,
         correctionShortcut: MimiShortcut = .correctionDefault,
@@ -390,6 +396,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         self.dictationShortcut = dictationShortcut
         self.dictationToggleShortcut = dictationToggleShortcut
         self.inputDeviceID = inputDeviceID
+        self.echoCancellationEnabled = echoCancellationEnabled
         self.ambientModeEnabled = ambientModeEnabled
         self.ambientToggleShortcut = ambientToggleShortcut
         self.correctionShortcut = correctionShortcut
@@ -422,6 +429,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
             ?? MimiShortcut.legacySingleKey(keyCode: hotkeyKeyCode)
         dictationToggleShortcut = try container.decodeIfPresent(MimiShortcut.self, forKey: .dictationToggleShortcut)
         inputDeviceID = try container.decodeIfPresent(String.self, forKey: .inputDeviceID)
+        echoCancellationEnabled = try container.decodeIfPresent(Bool.self, forKey: .echoCancellationEnabled) ?? Self.defaults.echoCancellationEnabled
         ambientModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .ambientModeEnabled) ?? Self.defaults.ambientModeEnabled
         ambientToggleShortcut = try container.decodeIfPresent(MimiShortcut.self, forKey: .ambientToggleShortcut) ?? Self.defaults.ambientToggleShortcut
         correctionShortcut = try container.decodeIfPresent(MimiShortcut.self, forKey: .correctionShortcut) ?? Self.defaults.correctionShortcut
@@ -504,6 +512,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
         try container.encode(dictationShortcut, forKey: .dictationShortcut)
         try container.encodeIfPresent(dictationToggleShortcut, forKey: .dictationToggleShortcut)
         try container.encodeIfPresent(inputDeviceID, forKey: .inputDeviceID)
+        try container.encode(echoCancellationEnabled, forKey: .echoCancellationEnabled)
         try container.encode(ambientModeEnabled, forKey: .ambientModeEnabled)
         try container.encode(ambientToggleShortcut, forKey: .ambientToggleShortcut)
         try container.encode(correctionShortcut, forKey: .correctionShortcut)

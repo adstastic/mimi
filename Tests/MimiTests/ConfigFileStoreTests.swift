@@ -31,6 +31,21 @@ final class ConfigFileStoreTests: XCTestCase {
         XCTAssertNil(cleared.dictationToggleShortcut)
     }
 
+    func testEchoCancellationToggleRoundTripsThroughTheFile() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        try Data("{}".utf8).write(to: fixture.configURL)
+        let store = MimiConfigFileStore(fileURL: fixture.configURL, legacyDefaults: fixture.defaults)
+        var config = store.loadInitial()
+        XCTAssertTrue(config.echoCancellationEnabled)
+
+        config.echoCancellationEnabled = false
+        try store.save(config)
+        // The store rejects unknown keys, so the saved key must be a known one.
+        XCTAssertTrue(store.isWritable)
+        XCTAssertFalse(try store.reload().echoCancellationEnabled)
+    }
+
     func testMissingFileMigratesLegacyConfigAndVocabulary() throws {
         let fixture = try Fixture()
         defer { fixture.cleanup() }

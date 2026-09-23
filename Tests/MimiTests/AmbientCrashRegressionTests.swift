@@ -1724,7 +1724,7 @@ private final class FakeAudioCapture: AudioCapturing {
         firstStartContinuation != nil
     }
 
-    func start(preRollMilliseconds: Int, inputDeviceID: String?) async throws {
+    func start(preRollMilliseconds: Int, inputDeviceID: String?, echoCancellationEnabled: Bool) async throws {
         let isFirstStart = startInputDeviceIDs.isEmpty
         startInputDeviceIDs.append(inputDeviceID)
         defer {

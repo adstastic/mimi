@@ -19,6 +19,7 @@ final class ConfigDefaultsTests: XCTestCase {
         XCTAssertEqual(config.hotkeyKeyCode, 54)
         XCTAssertEqual(config.dictationShortcut, .rightCommand)
         XCTAssertEqual(config.ambientToggleShortcut, .ambientToggleDefault)
+        XCTAssertTrue(config.echoCancellationEnabled, "missing key decodes to the default")
         XCTAssertEqual(config.correctionShortcut, .correctionDefault)
         XCTAssertNil(config.inputDeviceID)
         XCTAssertEqual(config.silenceDetectionMode, .audioLevel)

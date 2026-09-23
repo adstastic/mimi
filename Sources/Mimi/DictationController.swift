@@ -3,7 +3,7 @@ import Foundation
 import MimiSpeech
 
 protocol AudioCapturing: AnyObject {
-    @MainActor func start(preRollMilliseconds: Int, inputDeviceID: String?) async throws
+    @MainActor func start(preRollMilliseconds: Int, inputDeviceID: String?, echoCancellationEnabled: Bool) async throws
     @MainActor func setMonitorBufferHandler(_ handler: ((AVAudioPCMBuffer) -> Void)?)
     @MainActor func beginRecording(bufferHandler: ((AVAudioPCMBuffer) -> Void)?, replayPreRollToHandler: Bool)
     @MainActor func finishRecording() throws -> URL
@@ -229,7 +229,8 @@ final class DictationController {
             let startedAt = Date()
             try await audioCapture.start(
                 preRollMilliseconds: config.preRollMilliseconds,
-                inputDeviceID: config.inputDeviceID
+                inputDeviceID: config.inputDeviceID,
+                echoCancellationEnabled: config.echoCancellationEnabled
             )
             let ready = await waitForFirstAudioBuffer(
                 recordingGeneration: generation,
@@ -272,7 +273,13 @@ final class DictationController {
         case .preparingAudio:
             state = .idle
             startRecording(mode: .hold)
-        case .recording, .processing:
+        case .processing:
+            // A hardware button (the Ring) lights up regardless, so say why nothing
+            // happens instead of dropping the press silently.
+            // Dropped, with a log line to find it. TODO: start the next capture
+            // here while the previous clip finishes; a hardware button never waits.
+            DebugLog.write("dictation hotkey down ignored: still processing")
+        case .recording:
             break
         }
     }
@@ -429,7 +436,8 @@ final class DictationController {
                 guard self.recordingGeneration == generation else { return }
                 try await self.audioCapture.start(
                     preRollMilliseconds: plan.config.preRollMilliseconds,
-                    inputDeviceID: plan.config.inputDeviceID
+                    inputDeviceID: plan.config.inputDeviceID,
+                    echoCancellationEnabled: plan.config.echoCancellationEnabled
                 )
                 guard self.recordingGeneration == generation,
                       case .recording = self.state else { return }
@@ -559,8 +567,9 @@ final class DictationController {
                 resumeAmbientMonitoringAfterRecording(plan: plan)
             }
             onStatus(resumeAmbient ? "Ambient armed" : "Inserted + copied")
-            overlay.show("Inserted + copied", detail: preview(text))
-            overlay.hide(after: 1_200)
+            // The overlay is the "busy" signal: it goes away the instant the hold
+            // key works again, so no summary card lingers over a ready state.
+            overlay.hide(after: 0)
         } catch {
             guard recordingGeneration == generation else { return }
             let nsError = error as NSError
@@ -828,7 +837,8 @@ final class DictationController {
                 let config = self.configProvider().normalizedForBackend()
                 try await self.audioCapture.start(
                     preRollMilliseconds: config.preRollMilliseconds,
-                    inputDeviceID: config.inputDeviceID
+                    inputDeviceID: config.inputDeviceID,
+                    echoCancellationEnabled: config.echoCancellationEnabled
                 )
                 guard !Task.isCancelled else { return }
                 self.ambientMicStartedAt = Date()
