@@ -427,6 +427,7 @@ private struct CanonicalMimiConfig: Encodable {
         case dictationShortcut
         case dictationToggleShortcut
         case inputDeviceID
+        case echoCancellationEnabled
         case ambientModeEnabled
         case ambientToggleShortcut
         case correctionShortcut
@@ -457,6 +458,7 @@ private struct CanonicalMimiConfig: Encodable {
         try container.encode(config.dictationShortcut, forKey: .dictationShortcut)
         try container.encode(config.dictationToggleShortcut, forKey: .dictationToggleShortcut)
         try container.encodeIfPresent(config.inputDeviceID, forKey: .inputDeviceID)
+        try container.encode(config.echoCancellationEnabled, forKey: .echoCancellationEnabled)
         try container.encode(config.ambientModeEnabled, forKey: .ambientModeEnabled)
         try container.encode(config.ambientToggleShortcut, forKey: .ambientToggleShortcut)
         try container.encode(config.correctionShortcut, forKey: .correctionShortcut)
