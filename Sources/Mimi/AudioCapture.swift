@@ -134,7 +134,13 @@ final class AudioCapture {
                 + "fresh=\(shouldRecreateEngine ? "Y" : "N")"
         )
         if engine.isRunning {
-            guard shouldRecreateEngine else { return }
+            guard shouldRecreateEngine else {
+                // Same route, engine kept: the echo setting can still have changed.
+                echoCancellation.start(
+                    systemAudioReferenceEnabled: echoCancellationEnabled && AudioInputDevice.shouldUseSystemAudioReferenceForDefaultOutput()
+                )
+                return
+            }
             engine.stop()
             clearInputMuteHandler()
             echoCancellation.stop()

@@ -38,7 +38,9 @@ final class AppModel: ObservableObject {
             if oldValue.ambientModeEnabled != config.ambientModeEnabled {
                 scheduleAmbientModeUpdate()
             }
-            if oldValue.inputDeviceID != config.inputDeviceID || oldValue.silenceDetectionMode != config.silenceDetectionMode {
+            if oldValue.inputDeviceID != config.inputDeviceID
+                || oldValue.silenceDetectionMode != config.silenceDetectionMode
+                || oldValue.echoCancellationEnabled != config.echoCancellationEnabled {
                 scheduleAmbientModeUpdate()
             }
             if !shortcutRecording,

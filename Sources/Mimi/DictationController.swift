@@ -276,8 +276,8 @@ final class DictationController {
         case .processing:
             // A hardware button (the Ring) lights up regardless, so say why nothing
             // happens instead of dropping the press silently.
-            // TODO: start the next capture here while the previous clip finishes
-            // (a hardware button never waits). Until then the press is dropped.
+            // Dropped, with a log line to find it. TODO: start the next capture
+            // here while the previous clip finishes; a hardware button never waits.
             DebugLog.write("dictation hotkey down ignored: still processing")
         case .recording:
             break
@@ -664,7 +664,7 @@ final class DictationController {
             let detail = "best distance \(best), threshold \(String(format: "%.2f", extraction.threshold))"
             onStatus("Ignored — no matching speaker")
             overlay.show("Ignored — no matching speaker", detail: detail)
-            overlay.hide(after: 3_000)
+            overlay.hide(after: 1_500)
             return nil
         }
 
