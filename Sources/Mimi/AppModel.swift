@@ -75,6 +75,7 @@ final class AppModel: ObservableObject {
     private var inputDeviceTask: Task<Void, Never>?
     private var ambientModeUpdateTask: Task<Void, Never>?
     private var audioPreparationTask: Task<Void, Never>?
+    private var ringConnectTask: Task<Void, Never>?
     private var voiceprintTemporaryAudioURL: URL?
     private var lastDefaultInputDeviceID = AudioInputDevice.defaultInputDeviceUID()
     private var lastDefaultOutputDeviceID = AudioInputDevice.defaultOutputDeviceUID()
@@ -153,11 +154,20 @@ final class AppModel: ObservableObject {
     private func connectRingIfSelected() {
         guard config.inputDeviceID == RingAudioCapture.deviceID else { return }
         let preRoll = config.preRollMilliseconds
-        Task { [ring] in
-            do {
-                try await ring.start(preRollMilliseconds: preRoll, inputDeviceID: RingAudioCapture.deviceID)
-            } catch {
-                DebugLog.write("ring eager connect failed: \(error)")
+        ringConnectTask?.cancel()
+        ringConnectTask = Task { [ring] in
+            // The Ring may be held by the phone for minutes. Keep asking until it
+            // is free or the Ring stops being the selected input.
+            while !Task.isCancelled {
+                do {
+                    try await ring.start(preRollMilliseconds: preRoll, inputDeviceID: RingAudioCapture.deviceID)
+                    return
+                } catch is CancellationError {
+                    return
+                } catch {
+                    DebugLog.write("ring eager connect retry: \(error)")
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                }
             }
         }
     }
