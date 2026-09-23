@@ -181,6 +181,10 @@ final class DictationController {
     private var ambientUpdateGeneration = 0
     private var lastAmbientDecisionLogAt = Date.distantPast
     private var temporaryAudioURLs: Set<URL> = []
+    /// A hold key arrived while the previous clip was still processing. The
+    /// end-of-processing overlay then says "press again" instead of the paste
+    /// summary, so the moment you can act is readable.
+    private var ignoredPressDuringProcessing = false
 
     private var isAmbientRecording: Bool {
         if case .recording(.ambient, _) = state { true } else { false }
@@ -277,8 +281,8 @@ final class DictationController {
             // A hardware button (the Ring) lights up regardless, so say why nothing
             // happens instead of dropping the press silently.
             DebugLog.write("dictation hotkey down ignored: still processing")
-            overlay.show("Still finishing the last one", detail: "Try again in a moment")
-            overlay.hide(after: 1_500)
+            ignoredPressDuringProcessing = true
+            overlay.show("Still finishing the last one", detail: "Press again when this clears")
         case .recording:
             break
         }
@@ -567,8 +571,14 @@ final class DictationController {
                 resumeAmbientMonitoringAfterRecording(plan: plan)
             }
             onStatus(resumeAmbient ? "Ambient armed" : "Inserted + copied")
-            overlay.show("Inserted + copied", detail: preview(text))
-            overlay.hide(after: 1_200)
+            if ignoredPressDuringProcessing {
+                ignoredPressDuringProcessing = false
+                overlay.show("Ready, press again", detail: preview(text))
+                overlay.hide(after: 1_500)
+            } else {
+                overlay.show("Inserted + copied", detail: preview(text))
+                overlay.hide(after: 1_200)
+            }
         } catch {
             guard recordingGeneration == generation else { return }
             let nsError = error as NSError
@@ -663,7 +673,7 @@ final class DictationController {
             let detail = "best distance \(best), threshold \(String(format: "%.2f", extraction.threshold))"
             onStatus("Ignored — no matching speaker")
             overlay.show("Ignored — no matching speaker", detail: detail)
-            overlay.hide(after: 1_500)
+            overlay.hide(after: 3_000)
             return nil
         }
 
