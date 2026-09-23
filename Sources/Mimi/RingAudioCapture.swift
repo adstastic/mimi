@@ -13,6 +13,15 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
     private static let connectTimeout: TimeInterval = 10
 
     @Published private(set) var readiness: RingConnectionReadiness = .idle
+    /// Rings seen while scanning. The user picks one once; the choice persists.
+    @Published private(set) var discoveredDevices: [DiscoveredRingDevice] = []
+    @Published private(set) var selectedPeripheralID: UUID?
+    @Published private(set) var selectedName: String?
+
+    enum RingCaptureError: LocalizedError {
+        case noRingChosen
+        var errorDescription: String? { "Choose your Ring in Settings." }
+    }
 
     @MainActor var onPressBegan: @MainActor () -> Void = {}
     @MainActor var onPressEnded: @MainActor () -> Void = {}
@@ -55,6 +64,7 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
     private var ble: BLECentralService?
     private var readinessCancellable: AnyCancellable?
     private var flagsCancellable: AnyCancellable?
+    private var selectionCancellable: AnyCancellable?
     /// One connect at a time; concurrent start() calls await it.
     @MainActor private var connectTask: Task<Void, Error>?
     @MainActor private var pendingDisconnect: Task<Void, Never>?
@@ -92,6 +102,14 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
                 self.lock.lock()
                 self.codec = codec
                 self.lock.unlock()
+            }
+        selectionCancellable = ble.$discoveredDevices
+            .combineLatest(ble.$selectedPeripheralID, ble.$selectedName)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] devices, id, name in
+                self?.discoveredDevices = devices
+                self?.selectedPeripheralID = id
+                self?.selectedName = name
             }
         flagsCancellable = ble.$captureFlagsSupported
             .combineLatest(ble.$observedCaptureFlags, ble.$captureFlagsError, ble.$firmwareRevision)
@@ -135,6 +153,18 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
             setPreRollCapacity(milliseconds: preRollMilliseconds)
             return
         }
+        if ble.selectedPeripheralID == nil {
+            // Never pick a Ring for the user. Scan so Settings can list them,
+            // retrying until the central is powered on, then bail.
+            DebugLog.write("ring: no Ring chosen")
+            Task { @MainActor in
+                for _ in 0..<10 where ble.readiness != .scanning {
+                    ble.startScanning()
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                }
+            }
+            throw RingCaptureError.noRingChosen
+        }
         setPreRoll(milliseconds: preRollMilliseconds)
         if let connectTask {
             try await connectTask.value
@@ -168,19 +198,25 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
                 // startScanning() refuses until then, so keep asking until it takes.
                 ble.startScanning()
                 if ble.selectedPeripheralID != nil { ble.reconnectSelected() }
-            case .scanning:
-                if ble.selectedPeripheralID == nil,
-                   let strongest = ble.discoveredDevices.max(by: { $0.rssi < $1.rssi }) {
-                    DebugLog.write("ring select name=\(strongest.name) rssi=\(strongest.rssi)")
-                    ble.select(deviceID: strongest.id)
-                }
-            case .connecting, .connected, .discovered:
+            case .scanning, .connecting, .connected, .discovered:
                 break
             }
             try await Task.sleep(nanoseconds: 100_000_000)
         }
         DebugLog.write("ring start timeout readiness=\(ble.readiness.rawValue)")
         throw AudioCapture.CaptureError.inputDeviceUnavailable
+    }
+
+    /// The user's choice. Persists in the service's defaults and connects.
+    @MainActor
+    func select(_ id: UUID) {
+        service().select(deviceID: id)
+    }
+
+    /// Forget the chosen Ring and drop the link.
+    @MainActor
+    func forget() {
+        service().unpair()
     }
 
     /// Drops the BLE link. The phone can take the Ring back after this.

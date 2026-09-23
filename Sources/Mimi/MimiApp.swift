@@ -50,7 +50,10 @@ struct MimiApp: App {
                 refreshPermissions: { appModel.refreshPermissions() },
                 refreshInputDevices: { appModel.refreshInputDevices() },
                 openConfigFile: { appModel.openConfigFile() },
-                reloadConfig: { appModel.reloadConfig() }
+                reloadConfig: { appModel.reloadConfig() },
+                ring: appModel.ring,
+                chooseRing: { appModel.chooseRing($0) },
+                forgetRing: { appModel.forgetRing() }
             )
             .onAppear {
                 NSApplication.shared.setActivationPolicy(.regular)
@@ -144,9 +147,16 @@ private struct MimiMenu: View {
                 .disabled(true)
         }
         if appModel.config.inputDeviceID == RingAudioCapture.deviceID {
-            Text("Ring: \(ring.readiness.rawValue)")
-                .disabled(true)
-            if ring.readiness == .audioSubscribed {
+            if ring.selectedPeripheralID == nil {
+                Text("Ring: choose in Settings")
+                    .disabled(true)
+            } else {
+                Text("Ring: \(ring.readiness.rawValue)")
+                    .disabled(true)
+            }
+            if ring.selectedPeripheralID == nil {
+                EmptyView()
+            } else if ring.readiness == .audioSubscribed {
                 Button("Release Ring") {
                     appModel.releaseRing()
                 }

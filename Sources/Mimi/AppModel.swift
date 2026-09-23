@@ -181,6 +181,19 @@ final class AppModel: ObservableObject {
         connectRingIfSelected()
     }
 
+    /// First-time pairing from Settings. From then on mimi reconnects on its own.
+    func chooseRing(_ id: UUID) {
+        ring.select(id)
+        connectRingIfSelected()
+    }
+
+    func forgetRing() {
+        ringConnectTask?.cancel()
+        ringConnectTask = nil
+        ring.forget()
+        applyStatus("Choose your Ring in Settings")
+    }
+
     private func connectRingIfSelected() {
         guard config.inputDeviceID == RingAudioCapture.deviceID else { return }
         let preRoll = config.preRollMilliseconds
@@ -193,6 +206,9 @@ final class AppModel: ObservableObject {
                     try await ring.start(preRollMilliseconds: preRoll, inputDeviceID: RingAudioCapture.deviceID)
                     return
                 } catch is CancellationError {
+                    return
+                } catch RingAudioCapture.RingCaptureError.noRingChosen {
+                    await MainActor.run { self.applyStatus("Choose your Ring in Settings") }
                     return
                 } catch {
                     DebugLog.write("ring eager connect retry: \(error)")

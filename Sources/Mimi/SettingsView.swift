@@ -65,6 +65,9 @@ struct SettingsView: View {
     let refreshInputDevices: () -> Void
     let openConfigFile: () -> Void
     let reloadConfig: () -> Void
+    @ObservedObject var ring: RingAudioCapture
+    let chooseRing: (UUID) -> Void
+    let forgetRing: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -101,7 +104,10 @@ struct SettingsView: View {
                 permissionStatus: permissionStatus,
                 inputDevices: inputDevices,
                 refreshPermissions: refreshPermissions,
-                refreshInputDevices: refreshInputDevices
+                refreshInputDevices: refreshInputDevices,
+                ring: ring,
+                chooseRing: chooseRing,
+                forgetRing: forgetRing
             )
         case .paste:
             PasteSettingsPane(
@@ -164,6 +170,9 @@ private struct GeneralSettingsPane: View {
     let inputDevices: [AudioInputDevice]
     let refreshPermissions: () -> Void
     let refreshInputDevices: () -> Void
+    @ObservedObject var ring: RingAudioCapture
+    let chooseRing: (UUID) -> Void
+    let forgetRing: () -> Void
 
     private var allPermissionsGranted: Bool {
         permissionStatus.microphone
@@ -189,6 +198,9 @@ private struct GeneralSettingsPane: View {
                     devices: inputDevices,
                     refresh: refreshInputDevices
                 )
+                if config.inputDeviceID == RingAudioCapture.deviceID {
+                    RingPickerLine(ring: ring, choose: chooseRing, forget: forgetRing)
+                }
 
                 ToggleLine(
                     "Ambient mode",
@@ -702,6 +714,42 @@ private struct PickerLine<PickerContent: View>: View {
             Text(title)
             Spacer()
             picker
+        }
+    }
+}
+
+/// The user picks a Ring once. mimi never picks one for them.
+private struct RingPickerLine: View {
+    @ObservedObject var ring: RingAudioCapture
+    let choose: (UUID) -> Void
+    let forget: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let name = ring.selectedName, ring.selectedPeripheralID != nil {
+                HStack(spacing: 8) {
+                    Image(systemName: "circle.circle")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 18)
+                    Text("Ring: \(name)")
+                    Spacer()
+                    Button("Forget") { forget() }
+                }
+            } else if ring.discoveredDevices.isEmpty {
+                Label("Hold the Ring near the Mac", systemImage: "circle.circle")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(ring.discoveredDevices) { device in
+                    HStack(spacing: 8) {
+                        Image(systemName: "circle.circle")
+                            .foregroundStyle(.secondary)
+                            .frame(width: 18)
+                        Text("\(device.name)  \(device.rssi) dBm")
+                        Spacer()
+                        Button("Use") { choose(device.id) }
+                    }
+                }
+            }
         }
     }
 }

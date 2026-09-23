@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.15] - 2026-09-22
+
+### Added
+
+- Familiar Ring as a microphone. Select "Familiar Ring" in Settings → Microphone. mimi connects to the Ring over Bluetooth, and the Ring button drives hold dictation: press and hold to speak, release to transcribe and paste. No keyboard shortcut is involved while the Ring is selected. The Ring records white while the Mac holds it.
+- Menu bar shows the Ring link state, with "Release Ring" to hand the Ring to the phone and "Hold Ring" to take it back. Selecting another microphone also releases the Ring.
+
+### Changed
+
+- While mimi holds the Ring it asks the Ring not to request its own connection interval, because macOS delivers audio at 70 frames per second with that request and at 100 or more without it. mimi puts the setting back when it releases the Ring or quits.
+
 ## [0.1.14] - 2026-09-10
 
 ### Changed

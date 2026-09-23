@@ -119,4 +119,12 @@ Grant:
 
 Then focus a text field and use the dictation shortcut.
 
+## Familiar Ring
+
+mimi can use the Familiar Ring as its microphone. Select **Familiar Ring** in Settings → Microphone. mimi connects to the Ring over Bluetooth and the Ring button drives dictation: press and hold to speak, release to transcribe and paste. The dictation shortcut is not needed while the Ring is selected. The Ring records white while the Mac holds it.
+
+The Ring connects to one host at a time. The menu bar shows the link state. **Release Ring** hands it to the phone. **Hold Ring** takes it back. Selecting another microphone also releases the Ring. Grant Bluetooth permission when asked.
+
+The Ring code comes from the `RingKit` package in the Familiar `v1` repository, referenced by local path in `Package.swift`.
+
 See [PLAN.md](PLAN.md).

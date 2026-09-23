@@ -64,7 +64,10 @@ final class SettingsSnapshotTests: XCTestCase {
             refreshPermissions: {},
             refreshInputDevices: {},
             openConfigFile: {},
-            reloadConfig: {}
+            reloadConfig: {},
+            ring: RingAudioCapture(),
+            chooseRing: { _ in },
+            forgetRing: {}
         )
     }
 
