@@ -146,8 +146,14 @@ private struct MimiMenu: View {
         if appModel.config.inputDeviceID == RingAudioCapture.deviceID {
             Text("Ring: \(ring.readiness.rawValue)")
                 .disabled(true)
-            Button("Release Ring") {
-                ring.release()
+            if ring.readiness == .audioSubscribed {
+                Button("Release Ring") {
+                    appModel.releaseRing()
+                }
+            } else {
+                Button("Hold Ring") {
+                    appModel.holdRing()
+                }
             }
         }
 

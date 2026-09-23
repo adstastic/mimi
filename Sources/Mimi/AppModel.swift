@@ -139,6 +139,10 @@ final class AppModel: ObservableObject {
             guard let self, self.config.inputDeviceID == RingAudioCapture.deviceID else { return }
             self.dictationController.cancelRecording()
         }
+        ring.onReleaseRequested = { [weak self] in
+            guard let self else { return }
+            self.releaseRing()
+        }
         hotkeyMonitor = HotkeyMonitor(
             dictationShortcut: config.dictationShortcut,
             dictationToggleShortcut: config.dictationToggleShortcut,
@@ -167,6 +171,20 @@ final class AppModel: ObservableObject {
 
     /// The Ring's own button starts dictation, and that press only reaches mimi
     /// over an open BLE link, so the link must be up before any press.
+    /// Hand the Ring to the phone. mimi stays off it until Hold Ring, a hotkey
+    /// press, or a relaunch.
+    func releaseRing() {
+        ringConnectTask?.cancel()
+        ringConnectTask = nil
+        ring.release()
+        applyStatus("Ring released")
+    }
+
+    /// Take the Ring back after a release.
+    func holdRing() {
+        connectRingIfSelected()
+    }
+
     private func connectRingIfSelected() {
         guard config.inputDeviceID == RingAudioCapture.deviceID else { return }
         let preRoll = config.preRollMilliseconds

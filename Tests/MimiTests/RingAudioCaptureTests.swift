@@ -64,17 +64,21 @@ final class RingAudioCaptureTests: XCTestCase {
         capture.onPressBegan = { events.append("began") }
         capture.onPressEnded = { events.append("ended") }
         capture.onPressCancelled = { events.append("cancelled") }
+        capture.onReleaseRequested = { events.append("release") }
 
         func event(_ marker: RingRecordingMarker) -> RingNotification {
             .recordingEvent(RingRecordingEvent(timestampMs: 0, marker: marker, sessionID: 1, packetCount: 0))
         }
+        // Single press dictates. Double press dictates nothing; its STOP hands
+        // the Ring to the phone.
         capture.handle(event(.start))
         capture.handle(event(.stop))
         capture.handle(event(.altStart))
+        capture.handle(event(.stop))
         capture.handle(event(.cancel))
         await Task.yield()
         await Task.yield()
-        XCTAssertEqual(events, ["began", "ended", "began", "cancelled"])
+        XCTAssertEqual(events, ["began", "ended", "release", "cancelled"])
     }
 }
 

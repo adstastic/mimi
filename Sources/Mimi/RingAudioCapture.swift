@@ -17,6 +17,10 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
     @MainActor var onPressBegan: @MainActor () -> Void = {}
     @MainActor var onPressEnded: @MainActor () -> Void = {}
     @MainActor var onPressCancelled: @MainActor () -> Void = {}
+    /// A double press ended. The host should release the Ring.
+    @MainActor var onReleaseRequested: @MainActor () -> Void = {}
+    /// Set on ALT_START so the matching STOP releases instead of ending dictation.
+    private var releaseOnStop = false
 
     // ponytail: the sample bookkeeping below duplicates AudioCapture.handle(buffer:)
     // and friends. Extract a shared type when a third source appears.
@@ -78,7 +82,9 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
         // the Mac". Double press is off: mimi has no second lane for it. The
         // second colour is wire-format filler while double press is off.
         let white = RingColor(red: 128, green: 128, blue: 128)
-        ble.recordingConfigCommandOverride = .recordingConfig(doublePressEnabled: false, single: white, double: white)
+        // Double press is the hand-off gesture: its STOP releases the Ring so the
+        // phone can take it. Same white, so the wearer sees one Mac colour.
+        ble.recordingConfigCommandOverride = .recordingConfig(doublePressEnabled: true, single: white, double: white)
         readinessCancellable = ble.$readiness
             .combineLatest(ble.$currentCodec)
             .receive(on: RunLoop.main)
@@ -230,8 +236,11 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
                 sessionMaxPause = 0
                 sessionMaxBacklog = 0
                 sessionGapBuckets = [0, 0, 0, 0, 0]
+                releaseOnStop = event.marker == .altStart
                 lock.unlock()
-                Task { @MainActor in self.onPressBegan() }
+                if event.marker == .start {
+                    Task { @MainActor in self.onPressBegan() }
+                }
             case .stop:
                 lock.lock()
                 keepAllSinceStart = false
@@ -242,11 +251,18 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
                 let maxPause = sessionMaxPause
                 let maxBacklog = sessionMaxBacklog
                 let buckets = sessionGapBuckets
+                let release = releaseOnStop
+                releaseOnStop = false
                 lock.unlock()
                 let rate = elapsed > 0 ? Double(packets) / elapsed : 0
                 DebugLog.write(String(format: "ring session %d packets=%d gaps=%d elapsed=%.2fs rate=%.1f/s expected=%d stalls=%d max_pause=%.0fms max_backlog=%d gaps_ms[<5,5-20,20-40,40-80,>80]=%@",
                                       Int(event.sessionID), packets, gaps, elapsed, rate, Int(event.packetCount), stalls, maxPause * 1000, maxBacklog, buckets.map(String.init).joined(separator: ",")))
-                Task { @MainActor in self.onPressEnded() }
+                if release {
+                    DebugLog.write("ring double press: release requested")
+                    Task { @MainActor in self.onReleaseRequested() }
+                } else {
+                    Task { @MainActor in self.onPressEnded() }
+                }
             case .cancel:
                 Task { @MainActor in self.onPressCancelled() }
             }
