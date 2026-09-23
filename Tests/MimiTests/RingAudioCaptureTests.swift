@@ -39,6 +39,25 @@ final class RingAudioCaptureTests: XCTestCase {
         XCTAssertEqual(file.fileFormat.sampleRate, 16_000)
     }
 
+    func testAudioAfterStartIsKeptUntilRecordingBegins() throws {
+        let capture = RingAudioCapture(codec: .pcm16)
+        capture.setPreRoll(milliseconds: 20) // 320 samples, less than the 480 sent after START
+
+        capture.handle(.recordingEvent(RingRecordingEvent(timestampMs: 0, marker: .start, sessionID: 1, packetCount: 0)))
+        capture.handle(pcm16Packet(id: 0, sample: 8_000))
+        capture.handle(pcm16Packet(id: 1, sample: 8_000))
+        capture.handle(pcm16Packet(id: 2, sample: 8_000))
+
+        var replayed: [AVAudioFrameCount] = []
+        capture.beginRecording(bufferHandler: { replayed.append($0.frameLength) }, replayPreRollToHandler: true)
+        XCTAssertEqual(replayed, [480], "everything after START is speech and must not be trimmed")
+
+        capture.handle(pcm16Packet(id: 3, sample: 8_000))
+        let url = try capture.finishRecording()
+        defer { try? FileManager.default.removeItem(at: url) }
+        XCTAssertEqual(try AVAudioFile(forReading: url).length, 640)
+    }
+
     func testMarkersDriveCallbacks() async {
         let capture = RingAudioCapture(codec: .pcm16)
         var events: [String] = []

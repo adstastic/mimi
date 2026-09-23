@@ -46,10 +46,19 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
     /// Frames the Ring produced (100/s) minus frames received, at its worst.
     private var sessionMaxBacklog = 0
 
+    /// Between START and beginRecording every packet is speech, so the pre-roll
+    /// ring must not trim it. Cleared when recording begins or the press ends.
+    private var keepAllSinceStart = false
+
     /// Created on first `start()` so tests and idle launches never touch CoreBluetooth.
     private var ble: BLECentralService?
     private var readinessCancellable: AnyCancellable?
     private var flagsCancellable: AnyCancellable?
+    /// One connect at a time; concurrent start() calls await it.
+    @MainActor private var connectTask: Task<Void, Error>?
+    @MainActor private var pendingDisconnect: Task<Void, Never>?
+    /// releaseNow() restores the flag once per link.
+    @MainActor private var releasedThisLink = false
 
     init(codec: RingCodec = .firmwareDefault) {
         self.codec = codec
@@ -75,6 +84,7 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
             .sink { [weak self] readiness, codec in
                 guard let self else { return }
                 if readiness != self.readiness { DebugLog.write("ring readiness=\(readiness.rawValue)") }
+                if readiness == .audioSubscribed { self.releasedThisLink = false }
                 self.readiness = readiness
                 self.lock.lock()
                 self.codec = codec
@@ -91,6 +101,7 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
         return ble
     }
 
+    /// Capacity plus a clean slate: for a fresh link, and for tests.
     func setPreRoll(milliseconds: Int) {
         lock.lock()
         ringCapacity = max(1, Int(Self.sampleRate * Double(milliseconds) / 1_000))
@@ -99,15 +110,43 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
         latestDBFS = -120
         recentLevels = []
         lastBufferAt = nil
+        keepAllSinceStart = false
+        lock.unlock()
+    }
+
+    /// Capacity only. A press already in flight keeps its samples.
+    private func setPreRollCapacity(milliseconds: Int) {
+        lock.lock()
+        ringCapacity = max(1, Int(Self.sampleRate * Double(milliseconds) / 1_000))
         lock.unlock()
     }
 
     @MainActor
     func start(preRollMilliseconds: Int, inputDeviceID: String?) async throws {
-        setPreRoll(milliseconds: preRollMilliseconds)
-
+        pendingDisconnect?.cancel()
+        pendingDisconnect = nil
         let ble = service()
-        guard ble.readiness != .audioSubscribed else { return }
+        // Every press calls start(). On a live link the START marker and its first
+        // packets may already be in, so keep them.
+        if ble.readiness == .audioSubscribed {
+            setPreRollCapacity(milliseconds: preRollMilliseconds)
+            return
+        }
+        setPreRoll(milliseconds: preRollMilliseconds)
+        if let connectTask {
+            try await connectTask.value
+            return
+        }
+        let task = Task<Void, Error> { @MainActor in
+            defer { self.connectTask = nil }
+            try await self.connect(ble)
+        }
+        connectTask = task
+        try await task.value
+    }
+
+    @MainActor
+    private func connect(_ ble: BLECentralService) async throws {
         DebugLog.write("ring start readiness=\(ble.readiness.rawValue) selected=\(ble.selectedPeripheralID?.uuidString ?? "none")")
         // Firmware 2.8.0 asks for a 30-50 ms connection interval 5 s after connect.
         // macOS sends fewer packets per interval than iOS and drains at ~70/s
@@ -145,10 +184,13 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
     @MainActor
     func release() {
         guard let ble else { return }
+        connectTask?.cancel()
         ble.setCaptureFlags(.requestLinkParams)
         // ponytail: give the flag write a moment to land before the link drops.
-        Task {
+        // start() cancels this so a re-established link is not dropped.
+        pendingDisconnect = Task {
             try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled else { return }
             ble.disconnect()
         }
     }
@@ -157,7 +199,9 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
     /// scheduling, or the flag write never leaves the queue.
     @MainActor
     func releaseNow() {
-        guard let ble, ble.readiness == .audioSubscribed else { return }
+        guard let ble, !releasedThisLink,
+              ble.readiness != .idle, ble.readiness != .disconnected else { return }
+        releasedThisLink = true
         ble.setCaptureFlags(.requestLinkParams)
         Thread.sleep(forTimeInterval: 0.4)
         ble.disconnect()
@@ -174,6 +218,8 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
             case .start, .altStart:
                 lock.lock()
                 decoder = NativeAudioPayloadDecoder()
+                ringSamples = []
+                keepAllSinceStart = true
                 sessionPackets = 0
                 sessionGaps = 0
                 sessionFirstAt = nil
@@ -186,6 +232,7 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
                 Task { @MainActor in self.onPressBegan() }
             case .stop:
                 lock.lock()
+                keepAllSinceStart = false
                 let packets = sessionPackets
                 let gaps = sessionGaps
                 let elapsed = sessionFirstAt.map { Date().timeIntervalSince($0) } ?? 0
@@ -261,7 +308,7 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
             handler = nil
             monitorHandler = monitorBufferHandler
             ringSamples.append(contentsOf: samples)
-            if ringSamples.count > ringCapacity {
+            if !keepAllSinceStart, ringSamples.count > ringCapacity {
                 ringSamples.removeFirst(ringSamples.count - ringCapacity)
             }
         }
@@ -290,6 +337,7 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
         recordingSamples = ringSamples
         recordingBufferHandler = bufferHandler
         recording = true
+        keepAllSinceStart = false
         lock.unlock()
 
         if replayPreRollToHandler,
@@ -330,6 +378,7 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
         recording = false
         recordingSamples = []
         recordingBufferHandler = nil
+        keepAllSinceStart = false
         lock.unlock()
     }
 
@@ -340,6 +389,7 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
         recording = false
         recordingSamples = []
         ringSamples = []
+        keepAllSinceStart = false
         recordingBufferHandler = nil
         monitorBufferHandler = nil
         latestDBFS = -120

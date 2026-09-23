@@ -42,7 +42,13 @@ final class AppModel: ObservableObject {
                 scheduleAmbientModeUpdate()
             }
             if oldValue.inputDeviceID != config.inputDeviceID {
-                connectRingIfSelected()
+                if oldValue.inputDeviceID == RingAudioCapture.deviceID {
+                    // Hand the Ring back so the phone can take it.
+                    ringConnectTask?.cancel()
+                    ring.release()
+                } else {
+                    connectRingIfSelected()
+                }
             }
             if !shortcutRecording,
                oldValue.dictationShortcut != config.dictationShortcut
@@ -120,9 +126,19 @@ final class AppModel: ObservableObject {
             onTranscript: { [weak self] transcript in self?.lastTranscript = transcript },
             onPartialTranscript: { _ in }
         )
-        ring.onPressBegan = { [weak self] in self?.dictationController.hotkeyDown() }
-        ring.onPressEnded = { [weak self] in self?.dictationController.hotkeyUp() }
-        ring.onPressCancelled = { [weak self] in self?.dictationController.cancelRecording() }
+        // Only while the Ring is the selected input, or a press would record from the mic.
+        ring.onPressBegan = { [weak self] in
+            guard let self, self.config.inputDeviceID == RingAudioCapture.deviceID else { return }
+            self.dictationController.hotkeyDown()
+        }
+        ring.onPressEnded = { [weak self] in
+            guard let self, self.config.inputDeviceID == RingAudioCapture.deviceID else { return }
+            self.dictationController.hotkeyUp()
+        }
+        ring.onPressCancelled = { [weak self] in
+            guard let self, self.config.inputDeviceID == RingAudioCapture.deviceID else { return }
+            self.dictationController.cancelRecording()
+        }
         hotkeyMonitor = HotkeyMonitor(
             dictationShortcut: config.dictationShortcut,
             dictationToggleShortcut: config.dictationToggleShortcut,
@@ -213,7 +229,9 @@ final class AppModel: ObservableObject {
         guard permissionStatus.microphone,
               audioPreparationTask == nil,
               !voiceprintBusy,
-              !config.ambientModeEnabled else { return }
+              !config.ambientModeEnabled,
+              // The Ring sends audio only while held; a warm-up buffer never comes.
+              config.inputDeviceID != RingAudioCapture.deviceID else { return }
         audioPreparationTask = Task { @MainActor [weak self] in
             guard let self else { return }
             _ = await self.dictationController.prepareAudio()
