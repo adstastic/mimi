@@ -3,7 +3,7 @@ import Foundation
 import MimiSpeech
 
 protocol AudioCapturing: AnyObject {
-    @MainActor func start(preRollMilliseconds: Int, inputDeviceID: String?) async throws
+    @MainActor func start(preRollMilliseconds: Int, inputDeviceID: String?, echoCancellationEnabled: Bool) async throws
     @MainActor func setMonitorBufferHandler(_ handler: ((AVAudioPCMBuffer) -> Void)?)
     @MainActor func beginRecording(bufferHandler: ((AVAudioPCMBuffer) -> Void)?, replayPreRollToHandler: Bool)
     @MainActor func finishRecording() throws -> URL
@@ -229,7 +229,8 @@ final class DictationController {
             let startedAt = Date()
             try await audioCapture.start(
                 preRollMilliseconds: config.preRollMilliseconds,
-                inputDeviceID: config.inputDeviceID
+                inputDeviceID: config.inputDeviceID,
+                echoCancellationEnabled: config.echoCancellationEnabled
             )
             let ready = await waitForFirstAudioBuffer(
                 recordingGeneration: generation,
@@ -429,7 +430,8 @@ final class DictationController {
                 guard self.recordingGeneration == generation else { return }
                 try await self.audioCapture.start(
                     preRollMilliseconds: plan.config.preRollMilliseconds,
-                    inputDeviceID: plan.config.inputDeviceID
+                    inputDeviceID: plan.config.inputDeviceID,
+                    echoCancellationEnabled: plan.config.echoCancellationEnabled
                 )
                 guard self.recordingGeneration == generation,
                       case .recording = self.state else { return }
@@ -828,7 +830,8 @@ final class DictationController {
                 let config = self.configProvider().normalizedForBackend()
                 try await self.audioCapture.start(
                     preRollMilliseconds: config.preRollMilliseconds,
-                    inputDeviceID: config.inputDeviceID
+                    inputDeviceID: config.inputDeviceID,
+                    echoCancellationEnabled: config.echoCancellationEnabled
                 )
                 guard !Task.isCancelled else { return }
                 self.ambientMicStartedAt = Date()

@@ -106,7 +106,7 @@ final class AudioCapture {
     }
 
     @MainActor
-    func start(preRollMilliseconds: Int, inputDeviceID: String?) async throws {
+    func start(preRollMilliseconds: Int, inputDeviceID: String?, echoCancellationEnabled: Bool) async throws {
         guard try await Self.requestMicrophoneAccess() else {
             throw CaptureError.microphoneDenied
         }
@@ -195,7 +195,7 @@ final class AudioCapture {
             configuredAudioDeviceID = effectiveAudioDeviceID
             inputRouteConfigured = true
             echoCancellation.start(
-                systemAudioReferenceEnabled: AudioInputDevice.shouldUseSystemAudioReferenceForDefaultOutput()
+                systemAudioReferenceEnabled: echoCancellationEnabled && AudioInputDevice.shouldUseSystemAudioReferenceForDefaultOutput()
             )
         } catch {
             engine.stop()

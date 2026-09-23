@@ -197,6 +197,11 @@ private struct GeneralSettingsPane: View {
                     disabled: !config.preferredBackend.capabilities.supportsAmbient
                 )
                 ToggleLine(
+                    "Echo cancellation",
+                    systemImage: "waveform.badge.minus",
+                    isOn: $config.echoCancellationEnabled
+                )
+                ToggleLine(
                     "End shortcut on silence",
                     systemImage: "speaker.slash",
                     isOn: $config.silenceAutoStopEnabled

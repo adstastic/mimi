@@ -502,7 +502,7 @@ final class AppModel: ObservableObject {
             audioCapture.stop()
             if started { restartHotkeyMonitor() }
         }
-        try await audioCapture.start(preRollMilliseconds: 0, inputDeviceID: config.inputDeviceID)
+        try await audioCapture.start(preRollMilliseconds: 0, inputDeviceID: config.inputDeviceID, echoCancellationEnabled: config.echoCancellationEnabled)
         audioCapture.beginRecording(bufferHandler: nil, replayPreRollToHandler: false)
         try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
         return try audioCapture.finishRecording()
