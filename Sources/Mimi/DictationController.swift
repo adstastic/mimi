@@ -567,8 +567,9 @@ final class DictationController {
                 resumeAmbientMonitoringAfterRecording(plan: plan)
             }
             onStatus(resumeAmbient ? "Ambient armed" : "Inserted + copied")
-            overlay.show("Inserted + copied", detail: preview(text))
-            overlay.hide(after: 1_200)
+            // The overlay is the "busy" signal: it goes away the instant the hold
+            // key works again, so no summary card lingers over a ready state.
+            overlay.hide(after: 0)
         } catch {
             guard recordingGeneration == generation else { return }
             let nsError = error as NSError
