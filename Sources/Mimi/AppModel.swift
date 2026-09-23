@@ -412,6 +412,7 @@ final class AppModel: ObservableObject {
         audioPreparationTask?.cancel()
         hotkeyMonitor.stop()
         dictationController.shutdown()
+        ring.releaseNow()
         removeVoiceprintTemporaryAudio()
         history.clear()
     }

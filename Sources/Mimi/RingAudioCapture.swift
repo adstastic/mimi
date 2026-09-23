@@ -33,9 +33,23 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
     private var decoder = NativeAudioPayloadDecoder()
     private var codec: RingCodec
 
+    // Link health per session: the Ring shows red when the Mac drains audio
+    // slower than 100 notifications per second, so measure the rate and gaps.
+    private var sessionPackets = 0
+    private var sessionGaps = 0
+    private var sessionFirstAt: Date?
+    private var sessionLastAt: Date?
+    private var sessionLastPacketID: UInt16?
+    /// Pauses over 150 ms between notifications, and the largest one.
+    private var sessionStalls = 0
+    private var sessionMaxPause: TimeInterval = 0
+    /// Frames the Ring produced (100/s) minus frames received, at its worst.
+    private var sessionMaxBacklog = 0
+
     /// Created on first `start()` so tests and idle launches never touch CoreBluetooth.
     private var ble: BLECentralService?
     private var readinessCancellable: AnyCancellable?
+    private var flagsCancellable: AnyCancellable?
 
     init(codec: RingCodec = .firmwareDefault) {
         self.codec = codec
@@ -61,6 +75,13 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
                 self.codec = codec
                 self.lock.unlock()
             }
+        flagsCancellable = ble.$captureFlagsSupported
+            .combineLatest(ble.$observedCaptureFlags, ble.$captureFlagsError, ble.$firmwareRevision)
+            .receive(on: RunLoop.main)
+            .removeDuplicates { $0 == $1 }
+            .sink { supported, observed, error, firmware in
+                DebugLog.write("ring flags supported=\(supported) observed=\(observed.map { String(format: "0x%04x", $0.rawValue) } ?? "nil") error=\(error ?? "nil") firmware=\(firmware ?? "nil")")
+            }
         self.ble = ble
         return ble
     }
@@ -83,6 +104,11 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
         let ble = service()
         guard ble.readiness != .audioSubscribed else { return }
         DebugLog.write("ring start readiness=\(ble.readiness.rawValue) selected=\(ble.selectedPeripheralID?.uuidString ?? "none")")
+        // Firmware 2.8.0 asks for a 30-50 ms connection interval 5 s after connect.
+        // macOS sends fewer packets per interval than iOS and drains at ~70/s
+        // against the Ring's 100/s, so keep macOS on its own interval while the
+        // Mac holds the Ring. release() puts the flag back for the phone.
+        ble.setCaptureFlags([])
 
         let deadline = Date().addingTimeInterval(Self.connectTimeout)
         while Date() < deadline {
@@ -113,7 +139,24 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
     /// Drops the BLE link. The phone can take the Ring back after this.
     @MainActor
     func release() {
-        ble?.disconnect()
+        guard let ble else { return }
+        ble.setCaptureFlags(.requestLinkParams)
+        // ponytail: give the flag write a moment to land before the link drops.
+        Task {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            ble.disconnect()
+        }
+    }
+
+    /// Quit path: the process is about to exit, so block briefly instead of
+    /// scheduling, or the flag write never leaves the queue.
+    @MainActor
+    func releaseNow() {
+        guard let ble, ble.readiness == .audioSubscribed else { return }
+        ble.setCaptureFlags(.requestLinkParams)
+        Thread.sleep(forTimeInterval: 0.4)
+        ble.disconnect()
+        Thread.sleep(forTimeInterval: 0.1)
     }
 
     // MARK: Notifications
@@ -126,9 +169,28 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
             case .start, .altStart:
                 lock.lock()
                 decoder = NativeAudioPayloadDecoder()
+                sessionPackets = 0
+                sessionGaps = 0
+                sessionFirstAt = nil
+                sessionLastAt = nil
+                sessionLastPacketID = nil
+                sessionStalls = 0
+                sessionMaxPause = 0
+                sessionMaxBacklog = 0
                 lock.unlock()
                 Task { @MainActor in self.onPressBegan() }
             case .stop:
+                lock.lock()
+                let packets = sessionPackets
+                let gaps = sessionGaps
+                let elapsed = sessionFirstAt.map { Date().timeIntervalSince($0) } ?? 0
+                let stalls = sessionStalls
+                let maxPause = sessionMaxPause
+                let maxBacklog = sessionMaxBacklog
+                lock.unlock()
+                let rate = elapsed > 0 ? Double(packets) / elapsed : 0
+                DebugLog.write(String(format: "ring session %d packets=%d gaps=%d elapsed=%.2fs rate=%.1f/s expected=%d stalls=%d max_pause=%.0fms max_backlog=%d",
+                                      Int(event.sessionID), packets, gaps, elapsed, rate, Int(event.packetCount), stalls, maxPause * 1000, maxBacklog))
                 Task { @MainActor in self.onPressEnded() }
             case .cancel:
                 Task { @MainActor in self.onPressCancelled() }
@@ -137,6 +199,21 @@ final class RingAudioCapture: ObservableObject, AudioCapturing, @unchecked Senda
             lock.lock()
             let decoder = decoder
             let codec = codec
+            let now = Date()
+            sessionPackets += 1
+            if sessionFirstAt == nil { sessionFirstAt = now }
+            if let last = sessionLastAt {
+                let pause = now.timeIntervalSince(last)
+                if pause > 0.15 { sessionStalls += 1 }
+                sessionMaxPause = max(sessionMaxPause, pause)
+            }
+            sessionLastAt = now
+            if let first = sessionFirstAt {
+                let produced = Int(now.timeIntervalSince(first) * 100)
+                sessionMaxBacklog = max(sessionMaxBacklog, produced - sessionPackets)
+            }
+            if let last = sessionLastPacketID, packet.packetID != last &+ 1 { sessionGaps += 1 }
+            sessionLastPacketID = packet.packetID
             lock.unlock()
             let pcm: Data
             do {
