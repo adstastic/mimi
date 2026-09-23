@@ -273,7 +273,13 @@ final class DictationController {
         case .preparingAudio:
             state = .idle
             startRecording(mode: .hold)
-        case .recording, .processing:
+        case .processing:
+            // A hardware button (the Ring) lights up regardless, so say why nothing
+            // happens instead of dropping the press silently.
+            DebugLog.write("dictation hotkey down ignored: still processing")
+            overlay.show("Still finishing the last one", detail: "Try again in a moment")
+            overlay.hide(after: 1_500)
+        case .recording:
             break
         }
     }
