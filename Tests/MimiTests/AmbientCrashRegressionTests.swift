@@ -49,6 +49,7 @@ final class AmbientCrashRegressionTests: XCTestCase {
         )
 
         controller.toggleDictation()
+        controller.toggleReleased()
         let started = await waitUntil({ audio.startInputDeviceIDs.count == 1 }, timeout: 1)
         XCTAssertTrue(started)
         controller.hotkeyDown()
@@ -62,6 +63,85 @@ final class AmbientCrashRegressionTests: XCTestCase {
         let stopped = await waitUntil({ inserter.insertedTexts == ["toggle recording"] }, timeout: 1)
         XCTAssertTrue(stopped)
         XCTAssertEqual(audio.finishCount, 1)
+    }
+
+    func testToggleTapLatchesAndNextTapStops() async {
+        let audio = FakeAudioCapture()
+        let asr = FakeASRService()
+        let inserter = FakeTextInserter()
+        let config = Self.toggleTestConfig()
+        asr.batchFinalText = "latched recording"
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: asr,
+            textInserter: inserter,
+            overlay: FakeOverlay(),
+            status: StatusSink(),
+            missingInputTimeout: 10
+        )
+
+        controller.toggleDictation(at: 100)
+        controller.toggleReleased(at: 100.05)
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertTrue(controller.isRecording, "A toggle tap must latch recording")
+        XCTAssertEqual(audio.finishCount, 0)
+
+        controller.toggleDictation(at: 101)
+        let stopped = await waitUntil({ inserter.insertedTexts == ["latched recording"] }, timeout: 1)
+        XCTAssertTrue(stopped, "The next toggle press must unlatch and transcribe")
+        controller.toggleReleased(at: 101.05)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(audio.startInputDeviceIDs.count, 1, "The unlatching release must not start a new recording")
+    }
+
+    func testToggleLongPressStopsOnRelease() async {
+        let audio = FakeAudioCapture()
+        let config = Self.toggleTestConfig()
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: FakeASRService(),
+            overlay: FakeOverlay(),
+            status: StatusSink(),
+            missingInputTimeout: 10
+        )
+
+        controller.toggleDictation(at: 100)
+        controller.toggleReleased(at: 100.5)
+
+        let stopped = await waitUntil({ audio.finishCount == 1 }, timeout: 1)
+        XCTAssertTrue(stopped, "Releasing the toggle shortcut after a hold must stop recording")
+    }
+
+    func testToggleTapUsesKeyEventTimesNotHandlerDelay() async {
+        let audio = FakeAudioCapture()
+        let config = Self.toggleTestConfig()
+        let controller = makeController(
+            configProvider: { config },
+            audio: audio,
+            asr: FakeASRService(),
+            overlay: FakeOverlay(),
+            status: StatusSink(),
+            missingInputTimeout: 10
+        )
+
+        controller.toggleDictation(at: 100)
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        controller.toggleReleased(at: 100.05)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertTrue(controller.isRecording, "A delayed handler must not turn a 50 ms tap into a hold")
+        XCTAssertEqual(audio.finishCount, 0)
+        controller.cancelRecording()
+    }
+
+    private static func toggleTestConfig() -> MimiConfig {
+        var config = MimiConfig.defaults
+        config.preferredBackend = .mlxParakeetV2
+        config.silenceAutoStopEnabled = false
+        config.voiceprintEnabled = false
+        return config
     }
 
     func testModelChangesPrepareSelectedBackendsWithoutRecording() async {

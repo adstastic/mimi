@@ -12,8 +12,8 @@ final class HotkeyMonitorTests: XCTestCase {
         ]
         for (hold, toggle) in shortcuts {
             var actions: [String] = []
-            let handled = expectation(description: "Hold down/up and two toggle presses")
-            handled.expectedFulfillmentCount = 4
+            let handled = expectation(description: "Hold down/up and two toggle presses and releases")
+            handled.expectedFulfillmentCount = 6
             let monitor = HotkeyMonitor(
                 dictationShortcut: hold,
                 dictationToggleShortcut: toggle,
@@ -21,7 +21,8 @@ final class HotkeyMonitorTests: XCTestCase {
                 correctionShortcut: .correctionDefault,
                 onDictationDown: { actions.append("hold.down"); handled.fulfill() },
                 onDictationUp: { actions.append("hold.up"); handled.fulfill() },
-                onDictationToggle: { actions.append("toggle"); handled.fulfill() },
+                onDictationToggle: { _ in actions.append("toggle"); handled.fulfill() },
+                onDictationToggleUp: { _ in actions.append("toggle.up"); handled.fulfill() },
                 onAmbientToggle: {},
                 onCorrection: {},
                 onCancel: {}
@@ -38,6 +39,7 @@ final class HotkeyMonitorTests: XCTestCase {
             XCTAssertEqual(actions.filter { $0 == "hold.down" }.count, 1)
             XCTAssertEqual(actions.filter { $0 == "hold.up" }.count, 1)
             XCTAssertEqual(actions.filter { $0 == "toggle" }.count, 2)
+            XCTAssertEqual(actions.filter { $0 == "toggle.up" }.count, 2)
 
             monitor.update(
                 dictationShortcut: hold,
@@ -48,11 +50,11 @@ final class HotkeyMonitorTests: XCTestCase {
             try send(toggle, down: true, to: monitor)
             try send(toggle, down: false, to: monitor)
             try await Task.sleep(nanoseconds: 30_000_000)
-            XCTAssertEqual(actions.count, 4, "Clearing toggle must disable it")
+            XCTAssertEqual(actions.count, 6, "Clearing toggle must disable it")
         }
     }
 
-    func testShortcutConflictsKeepHoldThenTogglePriority() async throws {
+    func testToggleShortcutTakesPriorityOverSharedShortcuts() async throws {
         for toggle in [MimiShortcut.rightCommand, .ambientToggleDefault, .correctionDefault, .pastePresetDefault] {
             var actions: [String] = []
             let handled = expectation(description: "Only highest-priority shortcut fires")
@@ -63,7 +65,7 @@ final class HotkeyMonitorTests: XCTestCase {
                 correctionShortcut: .correctionDefault,
                 onDictationDown: { actions.append("hold"); handled.fulfill() },
                 onDictationUp: {},
-                onDictationToggle: { actions.append("toggle"); handled.fulfill() },
+                onDictationToggle: { _ in actions.append("toggle"); handled.fulfill() },
                 onAmbientToggle: { actions.append("ambient") },
                 onCorrection: { actions.append("correction") },
                 onPastePresetCycle: { actions.append("preset") },
@@ -72,7 +74,7 @@ final class HotkeyMonitorTests: XCTestCase {
             try send(toggle, down: true, to: monitor)
             try send(toggle, down: false, to: monitor)
             await fulfillment(of: [handled], timeout: 1)
-            XCTAssertEqual(actions, [toggle == .rightCommand ? "hold" : "toggle"])
+            XCTAssertEqual(actions, ["toggle"])
         }
     }
 
