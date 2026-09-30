@@ -303,7 +303,7 @@ final class DictationController {
         case .recording:
             Task { await stopAndTranscribe(reason: .stopped) }
         case .processing:
-            break
+            DebugLog.write("dictation toggle ignored: still processing")
         }
     }
 
