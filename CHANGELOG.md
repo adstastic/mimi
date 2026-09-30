@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Echo cancellation toggle (`echoCancellationEnabled`, default on) in Settings and config. Turn it off for an input that never hears the speakers, such as a virtual microphone: the pipeline then adds only convergence noise and eats the first word.
+- The Toggle dictation shortcut also records while held. Tap it to latch and unlatch recording, or hold it and release to stop.
 
 ### Changed
 

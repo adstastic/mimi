@@ -297,7 +297,7 @@ public struct MimiConfig: Codable, Equatable, Sendable {
     public var silenceDetectionMode: SilenceDetectionMode
     public var minUtteranceMilliseconds: Int
     public var preRollMilliseconds: Int
-    // Retained for old configs; separate shortcuts no longer use tap duration.
+    // Toggle presses shorter than this latch recording; longer presses record while held.
     public var tapThresholdMilliseconds: Int
     // TODO(ponytail): remove stored legacy mirror; decode hotkeyKeyCode locally only for old configs.
     public var hotkeyKeyCode: Int

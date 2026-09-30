@@ -103,6 +103,8 @@ extension OverlayWindowController: OverlayShowing {}
 final class DictationController {
     private enum RecordingMode {
         case hold
+        // Toggle shortcut still down: a tap latches into .toggle, a longer hold stops on release.
+        case togglePressed(pressedAt: TimeInterval)
         case toggle
         case ambient
     }
@@ -290,17 +292,30 @@ final class DictationController {
         Task { await stopAndTranscribe(reason: .released) }
     }
 
-    func toggleDictation() {
+    // Times are NSEvent timestamps (system uptime), so main-thread stalls cannot turn a tap into a hold.
+    func toggleDictation(at timestamp: TimeInterval = ProcessInfo.processInfo.systemUptime) {
         switch state {
         case .idle:
-            startRecording(mode: .toggle)
+            startRecording(mode: .togglePressed(pressedAt: timestamp))
         case .preparingAudio:
             state = .idle
-            startRecording(mode: .toggle)
+            startRecording(mode: .togglePressed(pressedAt: timestamp))
         case .recording:
             Task { await stopAndTranscribe(reason: .stopped) }
         case .processing:
             break
+        }
+    }
+
+    func toggleReleased(at timestamp: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        guard case .recording(.togglePressed(let pressedAt), let plan) = state else { return }
+        let elapsedMs = Int((timestamp - pressedAt) * 1_000)
+        if elapsedMs < plan.config.tapThresholdMilliseconds {
+            DebugLog.write("dictation toggle tap latched elapsedMs=\(elapsedMs)")
+            state = .recording(.toggle, plan)
+        } else {
+            DebugLog.write("dictation toggle hold released elapsedMs=\(elapsedMs)")
+            Task { await stopAndTranscribe(reason: .released) }
         }
     }
 

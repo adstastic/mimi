@@ -445,7 +445,7 @@ private struct ShortcutSettingsPane: View {
             } header: {
                 Text("Global Shortcuts")
             } footer: {
-                Text("Hold records until you release the shortcut. Toggle starts or stops recording with each press. Select a pencil to change a shortcut.")
+                Text("Hold records until you release the shortcut. Toggle starts or stops recording with each tap, or records while held. Select a pencil to change a shortcut.")
             }
 
             ShortcutConflictWarnings(config: config)
@@ -459,7 +459,7 @@ private struct ShortcutConflictWarnings: View {
 
     var body: some View {
         if config.dictationToggleShortcut == config.dictationShortcut {
-            WarningLabel("Toggle dictation is ignored because it matches Hold to dictate.")
+            WarningLabel("Hold to dictate is ignored because it matches Toggle dictation.")
         }
         if config.ambientToggleShortcut == config.dictationShortcut
             || config.ambientToggleShortcut == config.dictationToggleShortcut {
