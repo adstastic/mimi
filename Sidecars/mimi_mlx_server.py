@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11,<3.13"
-# dependencies = ["parakeet-mlx==0.5.1"]
+# dependencies = ["parakeet-mlx==0.5.1", "mlx>=0.24.2"]
 # ///
 
 import contextlib
@@ -35,6 +35,8 @@ def main():
             model = from_pretrained(MODEL_ID, dtype=mx.bfloat16, cache_dir=CACHE_DIR)
             # Materialize lazy weights before announcing readiness, not on first dictation.
             mx.eval(model.parameters())
+            mx.synchronize()
+            mx.clear_cache()
             decoding_config = DecodingConfig(decoding=Greedy(), sentence=SentenceConfig())
     except Exception as exc:
         emit({"event": "error", "message": f"failed to load {MODEL_ID}: {exc}"})
@@ -79,6 +81,9 @@ def main():
         except Exception as exc:
             emit({"event": "error", "id": request_id, "message": str(exc)})
             traceback.print_exc(file=sys.stderr)
+        finally:
+            mx.synchronize()
+            mx.clear_cache()
 
     return 0
 
