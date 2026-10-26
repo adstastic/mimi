@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.16] - 2026-10-25
+
+### Fixed
+
+- MLX dictation now releases unused GPU buffers after model loading and each recording, including failed transcriptions.
+
 ## [0.1.15] - 2026-09-30
 
 ### Added
@@ -165,7 +171,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configurable microphone, silence detection, shortcuts, and Return after paste.
 - Local-only operation with no account or telemetry.
 
-[Unreleased]: https://github.com/adstastic/mimi/compare/v0.1.15...HEAD
+[Unreleased]: https://github.com/adstastic/mimi/compare/v0.1.16...HEAD
+[0.1.16]: https://github.com/adstastic/mimi/compare/v0.1.15...v0.1.16
 [0.1.15]: https://github.com/adstastic/mimi/compare/v0.1.14...v0.1.15
 [0.1.14]: https://github.com/adstastic/mimi/compare/v0.1.13...v0.1.14
 [0.1.13]: https://github.com/adstastic/mimi/compare/v0.1.12...v0.1.13
