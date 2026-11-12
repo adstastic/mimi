@@ -41,18 +41,10 @@ actor ASRService {
         }
     }
 
-    private var process: Process?
-    private var inputPipe: Pipe?
-    private var outputPipe: Pipe?
-    private var errorPipe: Pipe?
-    private var outputReaderTask: Task<Void, Never>?
-    private var errorReaderTask: Task<Void, Never>?
-    private var outputBuffer = Data()
-    private var ready = false
-    private var readyContinuations: [CheckedContinuation<Void, Error>] = []
-    private var pending: [String: CheckedContinuation<String, Error>] = [:]
+    private var workers: [ASRBackend: MLXSidecar] = [:]
+    private var selectedBackend: ASRBackend = .mlxParakeetV2
     private let appleBackend: any AppleSpeechServing
-    private let makeMLXProcess: @Sendable () throws -> Process
+    private let makeMLXProcess: @Sendable (ASRBackend) throws -> Process
     private var appleStreamStarting = false
     private var appleStreamActive = false
     private var applePendingBuffers: [AVAudioPCMBuffer] = []
@@ -62,7 +54,7 @@ actor ASRService {
 
     init(
         appleBackend: any AppleSpeechServing = AppleSpeechTranscriberBackend(),
-        makeMLXProcess: @escaping @Sendable () throws -> Process = { try ASRService.makeMLXProcess() },
+        makeMLXProcess: @escaping @Sendable (ASRBackend) throws -> Process = { try MLXSidecar.makeProcess(backend: $0) },
         onStatus: @escaping @Sendable (String) -> Void = { _ in }
     ) {
         self.appleBackend = appleBackend
@@ -71,14 +63,42 @@ actor ASRService {
     }
 
     func prepare(backend: ASRBackend = .mlxParakeetV2) async throws {
+        selectedBackend = backend
         switch backend {
-        case .mlxParakeetV2:
-            try await prepareMLX()
+        case .mlxParakeetV2, .mlxQwen3ASR17B:
+            try await worker(for: backend).prepare()
         case .appleSpeechTranscriber:
-            onStatus("Preparing Apple SpeechTranscriber…")
+            reportStatus("Preparing Apple SpeechTranscriber…", backend: backend)
             try await appleBackend.prepare()
-            onStatus("Apple SpeechTranscriber ready")
+            reportStatus("Apple SpeechTranscriber ready", backend: backend)
         }
+    }
+
+    func transcribe(
+        audioURL: URL,
+        backend: ASRBackend = .mlxParakeetV2,
+        context: String = ""
+    ) async throws -> String {
+        switch backend {
+        case .appleSpeechTranscriber:
+            return try await transcribeApple(audioURL: audioURL)
+        case .mlxParakeetV2, .mlxQwen3ASR17B:
+            return try await worker(for: backend).transcribe(audioURL: audioURL, context: context)
+        }
+    }
+
+    private func worker(for backend: ASRBackend) -> MLXSidecar {
+        if let worker = workers[backend] { return worker }
+        let worker = MLXSidecar(backend: backend, makeProcess: makeMLXProcess) { [weak self] status in
+            await self?.reportStatus(status, backend: backend)
+        }
+        workers[backend] = worker
+        return worker
+    }
+
+    private func reportStatus(_ status: String, backend: ASRBackend) {
+        guard backend == selectedBackend else { return }
+        onStatus(status)
     }
 
     func transcribeApple(audioURL: URL) async throws -> String {
@@ -176,222 +196,5 @@ actor ASRService {
         } else {
             appleLifecycleWaiters.removeFirst().resume()
         }
-    }
-
-    private func prepareMLX() async throws {
-        if ready {
-            onStatus("MLX Parakeet v2 ready")
-            return
-        }
-        if process == nil {
-            try launchSidecar()
-        }
-        if ready {
-            onStatus("MLX Parakeet v2 ready")
-            return
-        }
-
-        try await withCheckedThrowingContinuation { continuation in
-            readyContinuations.append(continuation)
-        }
-    }
-
-    func transcribe(audioURL: URL) async throws -> String {
-        try await prepare()
-        guard let inputPipe else { throw ASRError.processNotRunning }
-
-        let requestID = UUID().uuidString
-        return try await withCheckedThrowingContinuation { continuation in
-            pending[requestID] = continuation
-            let payload: [String: Any] = [
-                "id": requestID,
-                "command": "transcribe",
-                "path": audioURL.path
-            ]
-
-            do {
-                let data = try JSONSerialization.data(withJSONObject: payload)
-                inputPipe.fileHandleForWriting.write(data)
-                inputPipe.fileHandleForWriting.write(Data([0x0A]))
-            } catch {
-                pending.removeValue(forKey: requestID)
-                continuation.resume(throwing: error)
-            }
-        }
-    }
-
-    private static func makeMLXProcess() throws -> Process {
-        let uvPath = try findUVPath()
-        let sidecarURL = try findSidecarURL()
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: uvPath)
-        process.arguments = ["run", "--python", "3.12", "--script", sidecarURL.path]
-
-        var environment = ProcessInfo.processInfo.environment
-        environment["PYTHONUNBUFFERED"] = "1"
-        environment["PATH"] = [
-            "/opt/homebrew/bin",
-            "/opt/homebrew/sbin",
-            "/usr/local/bin",
-            "/usr/bin",
-            "/bin",
-            "/usr/sbin",
-            "/sbin",
-            environment["PATH"] ?? ""
-        ].joined(separator: ":")
-        environment["MIMI_PARAKEET_MODEL"] = environment["MIMI_PARAKEET_MODEL"] ?? "mlx-community/parakeet-tdt-0.6b-v2"
-        process.environment = environment
-        return process
-    }
-
-    private func launchSidecar() throws {
-        let process = try makeMLXProcess()
-        onStatus("Loading MLX Parakeet v2…")
-
-        let stdin = Pipe()
-        let stdout = Pipe()
-        let stderr = Pipe()
-        process.standardInput = stdin
-        process.standardOutput = stdout
-        process.standardError = stderr
-        inputPipe = stdin
-        outputPipe = stdout
-        errorPipe = stderr
-
-        outputReaderTask = Task.detached { [weak self, stdout] in
-            while !Task.isCancelled {
-                let data = stdout.fileHandleForReading.availableData
-                guard !data.isEmpty else { break }
-                await self?.consumeOutput(data)
-            }
-        }
-
-        errorReaderTask = Task.detached { [stderr] in
-            while !Task.isCancelled {
-                let data = stderr.fileHandleForReading.availableData
-                guard !data.isEmpty else { break }
-                if let text = String(data: data, encoding: .utf8) {
-                    NSLog("%@ MLX: %@", AppBrand.name, text.trimmingCharacters(in: .whitespacesAndNewlines))
-                }
-            }
-        }
-
-        process.terminationHandler = { [weak self] process in
-            Task { await self?.handleTermination(status: process.terminationStatus) }
-        }
-
-        try process.run()
-        self.process = process
-    }
-
-    private func consumeOutput(_ data: Data) {
-        outputBuffer.append(data)
-
-        while let newline = outputBuffer.firstIndex(of: 0x0A) {
-            let lineData = outputBuffer[..<newline]
-            outputBuffer.removeSubrange(...newline)
-            guard !lineData.isEmpty, let line = String(data: lineData, encoding: .utf8) else { continue }
-            handleLine(line)
-        }
-    }
-
-    private func handleLine(_ line: String) {
-        guard let data = line.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let event = object["event"] as? String
-        else {
-            onStatus("Unexpected MLX output")
-            return
-        }
-
-        NSLog("%@ MLX event: %@", AppBrand.name, event)
-
-        switch event {
-        case "loading":
-            onStatus("Loading MLX Parakeet v2…")
-        case "ready":
-            ready = true
-            onStatus("Ready")
-            for continuation in readyContinuations {
-                continuation.resume()
-            }
-            readyContinuations.removeAll()
-        case "result":
-            guard let id = object["id"] as? String else { return }
-            let text = object["text"] as? String ?? ""
-            pending.removeValue(forKey: id)?.resume(returning: text)
-        case "error":
-            let message = object["message"] as? String ?? "MLX sidecar error"
-            if let id = object["id"] as? String, let continuation = pending.removeValue(forKey: id) {
-                continuation.resume(throwing: ASRError.sidecarError(message))
-            } else {
-                for continuation in readyContinuations {
-                    continuation.resume(throwing: ASRError.sidecarError(message))
-                }
-                readyContinuations.removeAll()
-                onStatus("MLX error")
-            }
-        default:
-            break
-        }
-    }
-
-    private func handleTermination(status: Int32) {
-        ready = false
-        outputReaderTask?.cancel()
-        errorReaderTask?.cancel()
-        process = nil
-        inputPipe = nil
-        outputPipe = nil
-        errorPipe = nil
-        outputReaderTask = nil
-        errorReaderTask = nil
-        let error = ASRError.sidecarError("MLX sidecar exited with status \(status).")
-        for continuation in readyContinuations {
-            continuation.resume(throwing: error)
-        }
-        readyContinuations.removeAll()
-        for continuation in pending.values {
-            continuation.resume(throwing: error)
-        }
-        pending.removeAll()
-        onStatus("MLX stopped")
-    }
-
-    private static func findUVPath() throws -> String {
-        if let override = ProcessInfo.processInfo.environment["MIMI_UV_PATH"], FileManager.default.isExecutableFile(atPath: override) {
-            return override
-        }
-
-        let candidates = [
-            "/Users/adi/.local/bin/uv",
-            "/opt/homebrew/bin/uv",
-            "/usr/local/bin/uv",
-            "/usr/bin/uv"
-        ]
-
-        if let path = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
-            return path
-        }
-        throw ASRError.uvNotFound
-    }
-
-    private static func findSidecarURL() throws -> URL {
-        let fileManager = FileManager.default
-        let bundleCandidate = Bundle.main.resourceURL?
-            .appendingPathComponent("Sidecars", isDirectory: true)
-            .appendingPathComponent("mimi_mlx_server.py")
-        if let bundleCandidate, fileManager.fileExists(atPath: bundleCandidate.path) {
-            return bundleCandidate
-        }
-
-        let repoCandidate = URL(fileURLWithPath: fileManager.currentDirectoryPath)
-            .appendingPathComponent("Sidecars", isDirectory: true)
-            .appendingPathComponent("mimi_mlx_server.py")
-        if fileManager.fileExists(atPath: repoCandidate.path) {
-            return repoCandidate
-        }
-
-        throw ASRError.sidecarNotFound
     }
 }

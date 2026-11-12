@@ -663,6 +663,76 @@ final class AmbientCrashRegressionTests: XCTestCase {
         controller.cancelRecording()
     }
 
+    func testMLXBatchUsesRecordingBackendAndCanonicalVocabularySnapshot() async throws {
+        for (backend, toggled) in [(ASRBackend.mlxParakeetV2, false), (.mlxQwen3ASR17B, false), (.mlxQwen3ASR17B, true)] {
+            let audio = FakeAudioCapture()
+            let asr = FakeASRService()
+            let inserter = FakeTextInserter()
+            let status = StatusSink()
+            var config = MimiConfig.defaults
+            config.preferredBackend = backend
+            config.silenceAutoStopEnabled = false
+            config.voiceprintEnabled = false
+            config.vocabulary = [
+                VocabularyEntry(from: ["pie torch"], to: "PyTorch"),
+                VocabularyEntry(from: ["shimi"], to: "Mimi")
+            ]
+            asr.batchFinalText = "pie torch and shimi"
+            let history = HistoryStore()
+            let controller = makeController(
+                configProvider: { config }, audio: audio, asr: asr,
+                textInserter: inserter, history: history, overlay: FakeOverlay(),
+                status: status, missingInputTimeout: 10
+            )
+            if toggled {
+                controller.toggleDictation(at: 100)
+                controller.toggleReleased(at: 100.05)
+            } else {
+                controller.hotkeyDown()
+            }
+            let started = await waitUntil({ status.values.last == "Recording…" }, timeout: 1)
+            XCTAssertTrue(started)
+            XCTAssertTrue(controller.isRecording)
+            config.preferredBackend = .appleSpeechTranscriber
+            config.vocabulary = [VocabularyEntry(from: ["other"], to: "Wrong")]
+            if toggled {
+                controller.toggleDictation(at: 101)
+            } else {
+                controller.hotkeyUp()
+            }
+            let pasted = await waitUntil({ !inserter.insertedTexts.isEmpty }, timeout: 1)
+            XCTAssertTrue(pasted)
+            XCTAssertTrue(asr.snapshotEvents().contains("transcribe.backend=\(backend.rawValue)"))
+            XCTAssertTrue(asr.snapshotEvents().contains("transcribe.context=Vocabulary: PyTorch, Mimi."))
+            XCTAssertFalse(asr.snapshotEvents().contains("transcribe.apple"))
+            XCTAssertEqual(inserter.insertedTexts, ["PyTorch and Mimi"])
+            XCTAssertEqual(history.latest?.backend, backend)
+            XCTAssertEqual(history.latest?.sourceText, "pie torch and shimi")
+        }
+    }
+
+    func testQwenBatchWithoutVocabularyUsesEmptyContext() async throws {
+        let asr = FakeASRService()
+        let inserter = FakeTextInserter()
+        let status = StatusSink()
+        var config = MimiConfig.defaults
+        config.preferredBackend = .mlxQwen3ASR17B
+        config.silenceAutoStopEnabled = false
+        config.voiceprintEnabled = false
+        asr.batchFinalText = "hello"
+        let controller = makeController(
+            configProvider: { config }, audio: FakeAudioCapture(), asr: asr,
+            textInserter: inserter, overlay: FakeOverlay(), status: status, missingInputTimeout: 10
+        )
+        controller.hotkeyDown()
+        let started = await waitUntil({ status.values.last == "Recording…" }, timeout: 1)
+        XCTAssertTrue(started)
+        controller.hotkeyUp()
+        let pasted = await waitUntil({ !inserter.insertedTexts.isEmpty }, timeout: 1)
+        XCTAssertTrue(pasted)
+        XCTAssertTrue(asr.snapshotEvents().contains("transcribe.context="))
+    }
+
     func testReleaseDuringColdStartWaitsForFirstAudioBuffer() async throws {
         let audio = FakeAudioCapture()
         let asr = FakeASRService()
@@ -1990,7 +2060,9 @@ private final class FakeASRService: ASRServicing {
         record("stream.cancel.end")
     }
 
-    func transcribe(audioURL: URL) async throws -> String {
+    func transcribe(audioURL: URL, backend: ASRBackend, context: String) async throws -> String {
+        record("transcribe.backend=\(backend.rawValue)")
+        record("transcribe.context=\(context)")
         record("transcribe")
         record("transcribe.path=\(audioURL.path)")
         if shouldHoldTranscription() {

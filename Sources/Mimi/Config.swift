@@ -153,12 +153,15 @@ private struct LegacyVocabularyEntry: Decodable {
 
 public enum ASRBackend: String, CaseIterable, Codable, Equatable, Sendable {
     case mlxParakeetV2
+    case mlxQwen3ASR17B
     case appleSpeechTranscriber
 
     var displayName: String {
         switch self {
         case .mlxParakeetV2:
             "MLX Parakeet v2"
+        case .mlxQwen3ASR17B:
+            "MLX Qwen3-ASR 1.7B"
         case .appleSpeechTranscriber:
             "Apple SpeechTranscriber"
         }
@@ -226,7 +229,7 @@ public struct ASRBackendCapabilities: Equatable, Sendable {
 extension ASRBackend {
     public var capabilities: ASRBackendCapabilities {
         switch self {
-        case .mlxParakeetV2:
+        case .mlxParakeetV2, .mlxQwen3ASR17B:
             ASRBackendCapabilities(
                 supportsAmbient: false,
                 supportedSilenceDetectionModes: [.audioLevel],
