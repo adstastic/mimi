@@ -6,6 +6,8 @@ Current usable path:
 
 - Apple SpeechTranscriber streaming backend by default
 - MLX Parakeet v2 English ASR sidecar fallback (`parakeet-mlx` via `uv`)
+- MLX Qwen3-ASR 1.7B model choice (`mlx-qwen3-asr` 0.4.4 through `uv`)
+- Qwen and Parakeet transcribe complete recordings from hold or toggle dictation, without live partials or ambient mode
 - selected speech model preloads at launch and on model changes, without microphone capture
 - separate global dictation shortcuts:
   - Hold to dictate: hold Right Command, speak, release to transcribe/insert
@@ -22,7 +24,7 @@ Current usable path:
 - canonical user-editable config at `~/.config/mimi/config.json`
 - no telemetry, no cloud app service
 
-Apple SpeechTranscriber may download Apple-managed on-device speech assets. MLX fallback may download the local model from Hugging Face through `uv`/`parakeet-mlx`. After caches/assets exist, dictation is local.
+Apple SpeechTranscriber can download Apple-managed on-device speech assets. The MLX sidecars use `uv` to install dependencies and download model weights from Hugging Face on first use. Once dependencies and model weights are cached, audio inference is fully local.
 
 ## Config
 
@@ -47,7 +49,7 @@ Vocabulary pairs group observed forms under exact output:
 }
 ```
 
-`to` also acts as a case-insensitive self-alias, preserving canonical casing. Delete a pairing to disable it.
+`to` also acts as a case-insensitive self-alias, preserving canonical casing. Qwen receives these canonical terms as vocabulary hints. Existing vocabulary corrections still apply to final transcripts from every model. Delete a pairing to disable it.
 
 ### Dictation shortcuts
 
@@ -99,8 +101,9 @@ scripts/smoke_streaming.sh
 Model preload regression checks (no model download):
 
 ```bash
-swift test
+swift test --enable-xctest --disable-swift-testing --filter MimiTests
 uv run --no-project Tests/test_mlx_preload.py
+uv run --no-project Tests/test_qwen_sidecar.py
 ```
 
 Prototype voiceprint extraction:

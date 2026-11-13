@@ -25,7 +25,7 @@ protocol ASRServicing: AnyObject {
     func appendAppleBuffer(_ buffer: AVAudioPCMBuffer) async throws
     func finishAppleStream() async throws -> String
     func cancelAppleStream() async
-    func transcribe(audioURL: URL) async throws -> String
+    func transcribe(audioURL: URL, backend: ASRBackend, context: String) async throws -> String
 }
 
 @MainActor
@@ -257,8 +257,10 @@ final class DictationController {
         Task {
             do {
                 try await asrService.prepare(backend: backend)
+                guard configProvider().preferredBackend == backend else { return }
                 onStatus("Ready — hold Right Command to dictate")
             } catch {
+                guard configProvider().preferredBackend == backend else { return }
                 onStatus("ASR error: \(error.localizedDescription)")
                 overlay.show(AppBrand.errorTitle, detail: error.localizedDescription)
             }
@@ -696,8 +698,14 @@ final class DictationController {
 
     private func transcribe(audioURL: URL, plan: RecordingPlan, useAppleStreamFinal: Bool) async throws -> String {
         switch plan.config.preferredBackend {
-        case .mlxParakeetV2:
-            return try await asrService.transcribe(audioURL: audioURL)
+        case .mlxParakeetV2, .mlxQwen3ASR17B:
+            let terms = plan.config.vocabulary.map(\.to)
+            let context = terms.isEmpty ? "" : "Vocabulary: \(terms.joined(separator: ", "))."
+            return try await asrService.transcribe(
+                audioURL: audioURL,
+                backend: plan.config.preferredBackend,
+                context: context
+            )
         case .appleSpeechTranscriber:
             if useAppleStreamFinal && plan.usesAppleStream {
                 return try await asrService.finishAppleStream()

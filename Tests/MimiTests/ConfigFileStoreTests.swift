@@ -3,6 +3,24 @@ import XCTest
 @testable import Mimi
 
 final class ConfigFileStoreTests: XCTestCase {
+    func testQwenBackendRoundTripsWithoutChangingDefaultsOrOtherSettings() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        try Data(#"{"preferredBackend":"mlxQwen3ASR17B","dictationShortcut":{"keyCode":62,"modifierFlagsRaw":262144},"vocabulary":[{"from":["pie torch"],"to":"PyTorch"}]}"#.utf8)
+            .write(to: fixture.configURL)
+        let store = MimiConfigFileStore(fileURL: fixture.configURL, legacyDefaults: fixture.defaults)
+        let config = store.loadInitial()
+        XCTAssertTrue(store.isWritable, store.errorDescription ?? "")
+        XCTAssertEqual(config.preferredBackend.rawValue, "mlxQwen3ASR17B")
+        XCTAssertEqual(config.preferredBackend.displayName, "MLX Qwen3-ASR 1.7B")
+        XCTAssertEqual(config.preferredBackend.capabilities, ASRBackend.mlxParakeetV2.capabilities)
+        XCTAssertEqual(config.dictationShortcut.keyCode, 62)
+        XCTAssertEqual(config.vocabulary, [VocabularyEntry(from: ["pie torch"], to: "PyTorch")])
+        XCTAssertEqual(MimiConfig.defaults.preferredBackend, .appleSpeechTranscriber)
+        try store.save(config)
+        XCTAssertEqual(try store.reload(), config)
+    }
+
     func testLegacyShortcutBecomesHoldAndToggleRoundTripsIndependently() throws {
         let fixture = try Fixture()
         defer { fixture.cleanup() }
