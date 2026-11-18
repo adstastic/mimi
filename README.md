@@ -49,7 +49,7 @@ Vocabulary pairs group observed forms under exact output:
 }
 ```
 
-`to` also acts as a case-insensitive self-alias, preserving canonical casing. Qwen receives these canonical terms as vocabulary hints. Existing vocabulary corrections still apply to final transcripts from every model. Delete a pairing to disable it.
+`to` also acts as a case-insensitive self-alias, preserving canonical casing. Vocabulary corrections apply only after transcription, using the vocabulary saved when recording starts, for every model. Delete a pairing to disable it.
 
 ### Dictation shortcuts
 

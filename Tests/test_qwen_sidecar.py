@@ -44,7 +44,9 @@ class QwenSidecarTests(unittest.TestCase):
             print("inference diagnostic")
             if path == "broken.wav":
                 raise RuntimeError("decode failed")
-            return SimpleNamespace(text=f"transcript {path} café")
+            if path == "spoken-vocabulary.wav":
+                return SimpleNamespace(text="Vocabulary: Cobalt, Marigold, Velvet, Telescope.")
+            return SimpleNamespace(text=kwargs.get("context") or f"transcript {path} café")
 
         def session(**kwargs):
             self.assertEqual(threading.get_ident(), main_thread)
@@ -106,9 +108,9 @@ class QwenSidecarTests(unittest.TestCase):
                 ])
                 self.assertEqual([call for call in calls if isinstance(call, tuple)], [
                     ("Session", {"model": "Qwen/Qwen3-ASR-1.7B"}),
-                    ("transcribe", "first.wav", {"language": "English", "context": "Vocabulary: PyTorch, Mimi."}),
-                    ("transcribe", "broken.wav", {"language": "English", "context": ""}),
-                    ("transcribe", "last.wav", {"language": "English", "context": ""}),
+                    ("transcribe", "first.wav", {"language": "English"}),
+                    ("transcribe", "broken.wav", {"language": "English"}),
+                    ("transcribe", "last.wav", {"language": "English"}),
                 ])
                 self.assertEqual(events[2]["text"], "transcript first.wav café")
                 self.assertEqual(events[2]["id"], 1)
@@ -122,6 +124,34 @@ class QwenSidecarTests(unittest.TestCase):
                 self.assertIn("loading diagnostic", errors)
                 self.assertIn("inference diagnostic", errors)
                 self.assertIn("RuntimeError: decode failed", errors)
+
+    def test_legacy_context_never_reaches_decoder_or_becomes_transcript(self):
+        context = "Vocabulary: Cobalt, Marigold, Velvet, Telescope."
+        requests = [
+            {"id": index, "command": "transcribe", "path": "silence.wav", "context": legacy_context}
+            for index, legacy_context in enumerate((context, None, {"vocabulary": ["Cobalt", "Marigold"]}))
+        ]
+        requests.append({"id": 3, "command": "transcribe", "path": "speech.wav"})
+        code, events, calls, _ = self.run_server(requests)
+        self.assertEqual(code, 0)
+        results = [event for event in events if event["event"] == "result"]
+        self.assertEqual([event["text"] for event in results], [
+            "transcript silence.wav café", "transcript silence.wav café",
+            "transcript silence.wav café", "transcript speech.wav café",
+        ])
+        transcriptions = [call for call in calls if isinstance(call, tuple) and call[0] == "transcribe"]
+        self.assertEqual(len(transcriptions), 4)
+        for _, _, kwargs in transcriptions:
+            self.assertNotIn("context", kwargs)
+
+    def test_audio_derived_vocabulary_list_is_returned_unchanged(self):
+        transcript = "Vocabulary: Cobalt, Marigold, Velvet, Telescope."
+        code, events, _, _ = self.run_server([
+            {"id": 1, "command": "transcribe", "path": "spoken-vocabulary.wav", "context": transcript},
+        ])
+        self.assertEqual(code, 0)
+        self.assertEqual(events[-1]["event"], "result")
+        self.assertEqual(events[-1]["text"], transcript)
 
     def test_load_failure_exits_without_ready(self):
         code, events, _, errors = self.run_server([], fail_load=True)
