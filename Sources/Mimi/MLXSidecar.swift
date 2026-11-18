@@ -43,7 +43,7 @@ actor MLXSidecar {
         }
     }
 
-    func transcribe(audioURL: URL, context: String) async throws -> String {
+    func transcribe(audioURL: URL) async throws -> String {
         try await prepare()
         guard let inputPipe else { throw ASRError.processNotRunning }
         let requestID = UUID().uuidString
@@ -52,8 +52,7 @@ actor MLXSidecar {
             let payload: [String: Any] = [
                 "id": requestID,
                 "command": "transcribe",
-                "path": audioURL.path,
-                "context": context
+                "path": audioURL.path
             ]
             do {
                 var data = try JSONSerialization.data(withJSONObject: payload)

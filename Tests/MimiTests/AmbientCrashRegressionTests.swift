@@ -703,34 +703,11 @@ final class AmbientCrashRegressionTests: XCTestCase {
             let pasted = await waitUntil({ !inserter.insertedTexts.isEmpty }, timeout: 1)
             XCTAssertTrue(pasted)
             XCTAssertTrue(asr.snapshotEvents().contains("transcribe.backend=\(backend.rawValue)"))
-            XCTAssertTrue(asr.snapshotEvents().contains("transcribe.context=Vocabulary: PyTorch, Mimi."))
             XCTAssertFalse(asr.snapshotEvents().contains("transcribe.apple"))
             XCTAssertEqual(inserter.insertedTexts, ["PyTorch and Mimi"])
             XCTAssertEqual(history.latest?.backend, backend)
             XCTAssertEqual(history.latest?.sourceText, "pie torch and shimi")
         }
-    }
-
-    func testQwenBatchWithoutVocabularyUsesEmptyContext() async throws {
-        let asr = FakeASRService()
-        let inserter = FakeTextInserter()
-        let status = StatusSink()
-        var config = MimiConfig.defaults
-        config.preferredBackend = .mlxQwen3ASR17B
-        config.silenceAutoStopEnabled = false
-        config.voiceprintEnabled = false
-        asr.batchFinalText = "hello"
-        let controller = makeController(
-            configProvider: { config }, audio: FakeAudioCapture(), asr: asr,
-            textInserter: inserter, overlay: FakeOverlay(), status: status, missingInputTimeout: 10
-        )
-        controller.hotkeyDown()
-        let started = await waitUntil({ status.values.last == "Recording…" }, timeout: 1)
-        XCTAssertTrue(started)
-        controller.hotkeyUp()
-        let pasted = await waitUntil({ !inserter.insertedTexts.isEmpty }, timeout: 1)
-        XCTAssertTrue(pasted)
-        XCTAssertTrue(asr.snapshotEvents().contains("transcribe.context="))
     }
 
     func testReleaseDuringColdStartWaitsForFirstAudioBuffer() async throws {
@@ -2060,9 +2037,8 @@ private final class FakeASRService: ASRServicing {
         record("stream.cancel.end")
     }
 
-    func transcribe(audioURL: URL, backend: ASRBackend, context: String) async throws -> String {
+    func transcribe(audioURL: URL, backend: ASRBackend) async throws -> String {
         record("transcribe.backend=\(backend.rawValue)")
-        record("transcribe.context=\(context)")
         record("transcribe")
         record("transcribe.path=\(audioURL.path)")
         if shouldHoldTranscription() {

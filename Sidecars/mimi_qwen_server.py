@@ -56,7 +56,7 @@ def main():
 
             started = time.perf_counter()
             with contextlib.redirect_stdout(sys.stderr):
-                result = session.transcribe(path, language="English", context=request.get("context", ""))
+                result = session.transcribe(path, language="English")
             elapsed_ms = int((time.perf_counter() - started) * 1000)
             text = getattr(result, "text", "") or ""
             emit({"event": "result", "id": request_id, "text": text, "elapsed_ms": elapsed_ms})

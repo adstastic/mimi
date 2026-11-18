@@ -69,7 +69,7 @@ final class ASRServiceLifecycleTests: XCTestCase {
         try await service.prepare(backend: .mlxQwen3ASR17B)
 
         let qwenResult = Task {
-            try await service.transcribe(audioURL: URL(fileURLWithPath: "/qwen.wav"), backend: .mlxQwen3ASR17B, context: "Vocabulary: PyTorch.")
+            try await service.transcribe(audioURL: URL(fileURLWithPath: "/qwen.wav"), backend: .mlxQwen3ASR17B)
         }
         let parakeetResult = Task {
             try await service.transcribe(audioURL: URL(fileURLWithPath: "/parakeet.wav"), backend: .mlxParakeetV2)
@@ -80,7 +80,10 @@ final class ASRServiceLifecycleTests: XCTestCase {
         XCTAssertTrue(received)
         let request = try factory.request(.mlxQwen3ASR17B)
         XCTAssertEqual(request["path"] as? String, "/qwen.wav")
-        XCTAssertEqual(request["context"] as? String, "Vocabulary: PyTorch.")
+        XCTAssertEqual(Set(request.keys), Set(["id", "command", "path"]))
+        XCTAssertEqual(request["command"] as? String, "transcribe")
+        XCTAssertNotNil(request["id"] as? String)
+        XCTAssertNil(request["context"])
         XCTAssertEqual(try factory.request(.mlxParakeetV2)["path"] as? String, "/parakeet.wav")
 
         factory.terminate(.mlxParakeetV2)
@@ -239,7 +242,7 @@ final class ASRServiceLifecycleTests: XCTestCase {
         let service = ASRService()
         try await service.prepare(backend: .mlxQwen3ASR17B)
         let text = try await service.transcribe(
-            audioURL: URL(fileURLWithPath: path), backend: .mlxQwen3ASR17B, context: "Vocabulary: Mimi."
+            audioURL: URL(fileURLWithPath: path), backend: .mlxQwen3ASR17B
         )
         XCTAssertFalse(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         print("Qwen smoke transcript: \(text)")

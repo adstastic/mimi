@@ -76,14 +76,13 @@ actor ASRService {
 
     func transcribe(
         audioURL: URL,
-        backend: ASRBackend = .mlxParakeetV2,
-        context: String = ""
+        backend: ASRBackend = .mlxParakeetV2
     ) async throws -> String {
         switch backend {
         case .appleSpeechTranscriber:
             return try await transcribeApple(audioURL: audioURL)
         case .mlxParakeetV2, .mlxQwen3ASR17B:
-            return try await worker(for: backend).transcribe(audioURL: audioURL, context: context)
+            return try await worker(for: backend).transcribe(audioURL: audioURL)
         }
     }
 
