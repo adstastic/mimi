@@ -44,20 +44,23 @@ actor ASRService {
     private var workers: [ASRBackend: MLXSidecar] = [:]
     private var selectedBackend: ASRBackend = .mlxParakeetV2
     private let appleBackend: any AppleSpeechServing
+    private let fluidBackend: FluidSpeechProBackend
     private let makeMLXProcess: @Sendable (ASRBackend) throws -> Process
     private var appleStreamStarting = false
     private var appleStreamActive = false
     private var applePendingBuffers: [AVAudioPCMBuffer] = []
     private var appleLifecycleBusy = false
     private var appleLifecycleWaiters: [CheckedContinuation<Void, Never>] = []
-    private let onStatus: @Sendable (String) -> Void
+    private let onStatus: @Sendable (String, ASRBackend) -> Void
 
     init(
         appleBackend: any AppleSpeechServing = AppleSpeechTranscriberBackend(),
+        fluidBackend: FluidSpeechProBackend = FluidSpeechProBackend(),
         makeMLXProcess: @escaping @Sendable (ASRBackend) throws -> Process = { try MLXSidecar.makeProcess(backend: $0) },
-        onStatus: @escaping @Sendable (String) -> Void = { _ in }
+        onStatus: @escaping @Sendable (String, ASRBackend) -> Void = { _, _ in }
     ) {
         self.appleBackend = appleBackend
+        self.fluidBackend = fluidBackend
         self.makeMLXProcess = makeMLXProcess
         self.onStatus = onStatus
     }
@@ -71,6 +74,8 @@ actor ASRService {
             reportStatus("Preparing Apple SpeechTranscriber…", backend: backend)
             try await appleBackend.prepare()
             reportStatus("Apple SpeechTranscriber ready", backend: backend)
+        case .fluidSpeechPro:
+            try await fluidBackend.prepare()
         }
     }
 
@@ -82,6 +87,8 @@ actor ASRService {
         switch backend {
         case .appleSpeechTranscriber:
             return try await transcribeApple(audioURL: audioURL)
+        case .fluidSpeechPro:
+            return try await fluidBackend.transcribe(audioURL: audioURL)
         case .mlxParakeetV2, .mlxQwen3ASR17B:
             return try await worker(for: backend).transcribe(audioURL: audioURL, context: context)
         }
@@ -98,7 +105,7 @@ actor ASRService {
 
     private func reportStatus(_ status: String, backend: ASRBackend) {
         guard backend == selectedBackend else { return }
-        onStatus(status)
+        onStatus(status, backend)
     }
 
     func transcribeApple(audioURL: URL) async throws -> String {

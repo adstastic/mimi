@@ -46,11 +46,33 @@ final class SettingsSnapshotTests: XCTestCase {
             XCTAssertEqual(size.height, 500, accuracy: 0.5, "\(pane.rawValue) pane height changed")
             print("SETTINGS_\(pane.rawValue.uppercased())_SNAPSHOT_SIZE=\(Int(size.width))x\(Int(size.height))")
         }
+
+        defaults.set(SettingsPane.general.rawValue, forKey: SettingsPane.selectionDefaultsKey)
+        config.preferredBackend = .fluidSpeechPro
+        config.showLiveTranscript = true
+        config.normalizeForBackend()
+        let fluidReadySize = try render(
+            makeSettingsView(config: config),
+            to: "/tmp/mimi-settings-fluid-ready-snapshot.png"
+        )
+        XCTAssertEqual(fluidReadySize.width, 500, accuracy: 0.5)
+        XCTAssertEqual(fluidReadySize.height, 500, accuracy: 0.5)
+        let progress = Progress.discreteProgress(totalUnitCount: 650_000_000)
+        progress.kind = .file
+        progress.fileOperationKind = .downloading
+        progress.completedUnitCount = 273_000_000
+        let size = try render(
+            makeSettingsView(config: config, fluidDownloadProgress: progress),
+            to: "/tmp/mimi-settings-fluid-download-snapshot.png"
+        )
+        XCTAssertEqual(size.width, 500, accuracy: 0.5)
+        XCTAssertEqual(size.height, 500, accuracy: 0.5)
     }
 
-    private func makeSettingsView(config: MimiConfig) -> SettingsView {
+    private func makeSettingsView(config: MimiConfig, fluidDownloadProgress: Progress? = nil) -> SettingsView {
         SettingsView(
             config: .constant(config),
+            fluidDownloadProgress: fluidDownloadProgress,
             permissionStatus: PermissionStatus(microphone: true, accessibility: true, inputMonitoring: true),
             inputDevices: [AudioInputDevice(id: "studio-mic", name: "Studio Microphone")],
             voiceprintStatus: "Enrolled — 256D threshold 0.78",

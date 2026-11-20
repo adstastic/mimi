@@ -102,6 +102,21 @@ final class ConfigDefaultsTests: XCTestCase {
         XCTAssertFalse(ASRBackend.mlxParakeetV2.capabilities.supportsSilenceDetectionMode(.speechActivity))
     }
 
+    func testFluidSpeechProIsAnOptInBatchBackend() throws {
+        let backend = ASRBackend.fluidSpeechPro
+        XCTAssertTrue(ASRBackend.allCases.contains(backend))
+        XCTAssertEqual(MimiConfig.defaults.preferredBackend, .appleSpeechTranscriber)
+        let json = Data(#"{"preferredBackend":"fluidSpeechPro","ambientModeEnabled":true,"silenceDetectionMode":"speechActivity"}"#.utf8)
+        var config = try JSONDecoder().decode(MimiConfig.self, from: json)
+        config.normalizeForBackend()
+        XCTAssertEqual(config.preferredBackend, backend)
+        XCTAssertEqual(config.silenceDetectionMode, .audioLevel)
+        XCTAssertFalse(config.ambientModeEnabled)
+        XCTAssertFalse(backend.capabilities.usesStreamingTranscription(
+            isAmbient: true, silenceDetectionMode: .speechActivity, showLiveTranscript: true
+        ))
+    }
+
     func testLegacyAutomaticSilenceModeDecodesToConcreteMode() throws {
         let json = #""automatic""#
 

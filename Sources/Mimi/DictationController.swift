@@ -140,6 +140,13 @@ final class DictationController {
         case processing
     }
 
+    private enum FluidPreparation {
+        case notStarted
+        case preparing
+        case failed
+        case ready
+    }
+
     private struct TranscriptionAudio {
         let url: URL
         let useAppleStreamFinal: Bool
@@ -164,6 +171,7 @@ final class DictationController {
     private let missingInputTimeout: TimeInterval
 
     private var state: State = .idle
+    private var fluidPreparation: FluidPreparation = .notStarted
     private var recordingGeneration = 0
     private var silenceTask: Task<Void, Never>?
     private var ambientTask: Task<Void, Never>?
@@ -253,16 +261,34 @@ final class DictationController {
 
     func prepareASR() {
         let backend = configProvider().preferredBackend
-        onStatus("Preparing \(backend.displayName)…")
+        let preparingStatus = "Preparing \(backend.displayName)…"
+        let readyStatus = "Ready — hold Right Command to dictate"
+        let isFluid = backend == .fluidSpeechPro
+        if isFluid {
+            switch fluidPreparation {
+            case .ready:
+                onStatus(readyStatus)
+                return
+            case .preparing:
+                onStatus(preparingStatus)
+                return
+            case .notStarted, .failed:
+                fluidPreparation = .preparing
+            }
+        }
+        onStatus(preparingStatus)
         Task {
             do {
                 try await asrService.prepare(backend: backend)
+                if isFluid { fluidPreparation = .ready }
                 guard configProvider().preferredBackend == backend else { return }
-                onStatus("Ready — hold Right Command to dictate")
+                onStatus(readyStatus)
             } catch {
+                if isFluid { fluidPreparation = .failed }
                 guard configProvider().preferredBackend == backend else { return }
                 onStatus("ASR error: \(error.localizedDescription)")
                 overlay.show(AppBrand.errorTitle, detail: error.localizedDescription)
+                if isFluid { overlay.hide(after: 2_000) }
             }
         }
     }
@@ -270,13 +296,10 @@ final class DictationController {
     func hotkeyDown() {
         DebugLog.write("dictation hotkey down")
         switch state {
-        case .idle:
+        case .idle, .preparingAudio:
             startRecording(mode: .hold)
         case .recording(.ambient, _):
             Task { await stopAndTranscribe(reason: .stopped) }
-        case .preparingAudio:
-            state = .idle
-            startRecording(mode: .hold)
         case .processing:
             // A hardware button (the Ring) lights up regardless, so say why nothing
             // happens instead of dropping the press silently.
@@ -297,10 +320,7 @@ final class DictationController {
     // Times are NSEvent timestamps (system uptime), so main-thread stalls cannot turn a tap into a hold.
     func toggleDictation(at timestamp: TimeInterval = ProcessInfo.processInfo.systemUptime) {
         switch state {
-        case .idle:
-            startRecording(mode: .togglePressed(pressedAt: timestamp))
-        case .preparingAudio:
-            state = .idle
+        case .idle, .preparingAudio:
             startRecording(mode: .togglePressed(pressedAt: timestamp))
         case .recording:
             Task { await stopAndTranscribe(reason: .stopped) }
@@ -422,11 +442,19 @@ final class DictationController {
     }
 
     private func startRecording(mode: RecordingMode, speechAlreadyDetected: Bool = false) {
+        let config = configProvider()
+        if config.preferredBackend == .fluidSpeechPro, fluidPreparation != .ready {
+            prepareASR()
+            overlay.show("Preparing Fluid Speech Pro…", detail: "Press the shortcut again when ready.")
+            overlay.hide(after: 2_000)
+            return
+        }
+
         recordingGeneration &+= 1
         let generation = recordingGeneration
         let isAmbient = if case .ambient = mode { true } else { false }
         let plan = RecordingPlan(
-            config: configProvider(),
+            config: config,
             isAmbient: isAmbient,
             ambientUpdateGeneration: ambientUpdateGeneration
         )
@@ -698,7 +726,7 @@ final class DictationController {
 
     private func transcribe(audioURL: URL, plan: RecordingPlan, useAppleStreamFinal: Bool) async throws -> String {
         switch plan.config.preferredBackend {
-        case .mlxParakeetV2, .mlxQwen3ASR17B:
+        case .mlxParakeetV2, .mlxQwen3ASR17B, .fluidSpeechPro:
             let terms = plan.config.vocabulary.map(\.to)
             let context = terms.isEmpty ? "" : "Vocabulary: \(terms.joined(separator: ", "))."
             return try await asrService.transcribe(
