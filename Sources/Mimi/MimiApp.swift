@@ -37,6 +37,7 @@ struct MimiApp: App {
         Window("\(AppBrand.name) Settings", id: Self.settingsWindowID) {
             SettingsView(
                 config: $appModel.config,
+                fluidDownloadProgress: appModel.fluidDownloadProgress,
                 permissionStatus: appModel.permissionStatus,
                 inputDevices: appModel.inputDevices,
                 voiceprintStatus: appModel.voiceprintStatus,

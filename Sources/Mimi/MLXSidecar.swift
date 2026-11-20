@@ -201,7 +201,7 @@ actor MLXSidecar {
         switch backend {
         case .mlxParakeetV2: name = "mimi_mlx_server.py"
         case .mlxQwen3ASR17B: name = "mimi_qwen_server.py"
-        case .appleSpeechTranscriber: throw ASRError.sidecarNotFound
+        case .appleSpeechTranscriber, .fluidSpeechPro: throw ASRError.sidecarNotFound
         }
         let fileManager = FileManager.default
         let bundleCandidate = Bundle.main.resourceURL?

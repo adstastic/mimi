@@ -155,6 +155,7 @@ public enum ASRBackend: String, CaseIterable, Codable, Equatable, Sendable {
     case mlxParakeetV2
     case mlxQwen3ASR17B
     case appleSpeechTranscriber
+    case fluidSpeechPro
 
     var displayName: String {
         switch self {
@@ -164,6 +165,8 @@ public enum ASRBackend: String, CaseIterable, Codable, Equatable, Sendable {
             "MLX Qwen3-ASR 1.7B"
         case .appleSpeechTranscriber:
             "Apple SpeechTranscriber"
+        case .fluidSpeechPro:
+            "Fluid Speech Pro"
         }
     }
 }
@@ -229,7 +232,7 @@ public struct ASRBackendCapabilities: Equatable, Sendable {
 extension ASRBackend {
     public var capabilities: ASRBackendCapabilities {
         switch self {
-        case .mlxParakeetV2, .mlxQwen3ASR17B:
+        case .mlxParakeetV2, .mlxQwen3ASR17B, .fluidSpeechPro:
             ASRBackendCapabilities(
                 supportsAmbient: false,
                 supportedSilenceDetectionModes: [.audioLevel],

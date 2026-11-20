@@ -49,7 +49,7 @@ final class ASRServiceLifecycleTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         let factory = MLXFixtureFactory(directory: directory)
         defer { factory.stop() }
-        let service = ASRService(makeMLXProcess: { backend in try factory.make(backend) }, onStatus: { factory.recordStatus($0) })
+        let service = ASRService(makeMLXProcess: { backend in try factory.make(backend) }, onStatus: { status, _ in factory.recordStatus(status) })
 
         async let first: Void = service.prepare(backend: .mlxQwen3ASR17B)
         async let second: Void = service.prepare(backend: .mlxQwen3ASR17B)

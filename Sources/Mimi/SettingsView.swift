@@ -51,6 +51,7 @@ struct SettingsView: View {
     @Binding var config: MimiConfig
     @AppStorage(SettingsPane.selectionDefaultsKey) private var selectedPane = SettingsPane.general
 
+    let fluidDownloadProgress: Progress?
     let permissionStatus: PermissionStatus
     let inputDevices: [AudioInputDevice]
     let voiceprintStatus: String
@@ -98,6 +99,7 @@ struct SettingsView: View {
         case .general:
             GeneralSettingsPane(
                 config: $config,
+                fluidDownloadProgress: fluidDownloadProgress,
                 permissionStatus: permissionStatus,
                 inputDevices: inputDevices,
                 refreshPermissions: refreshPermissions,
@@ -160,6 +162,7 @@ private struct ConfigErrorBanner: View {
 
 private struct GeneralSettingsPane: View {
     @Binding var config: MimiConfig
+    let fluidDownloadProgress: Progress?
     let permissionStatus: PermissionStatus
     let inputDevices: [AudioInputDevice]
     let refreshPermissions: () -> Void
@@ -172,6 +175,7 @@ private struct GeneralSettingsPane: View {
     }
 
     var body: some View {
+        let supportsLiveTranscript = config.preferredBackend.capabilities.supportsStreamingTranscription
         Form {
             Section {
                 PickerLine("Model", systemImage: "cpu") {
@@ -182,6 +186,17 @@ private struct GeneralSettingsPane: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)
+                }
+
+                if config.preferredBackend == .fluidSpeechPro, let fluidDownloadProgress {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("First download: about 650 MB")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        ProgressView(fluidDownloadProgress)
+                            .progressViewStyle(.linear)
+                            .accessibilityLabel("Downloading Fluid Speech Pro")
+                    }
                 }
 
                 InputDevicePickerLine(
@@ -209,7 +224,8 @@ private struct GeneralSettingsPane: View {
                 ToggleLine(
                     "Show live transcript",
                     systemImage: "text.bubble",
-                    isOn: $config.showLiveTranscript
+                    isOn: supportsLiveTranscript ? $config.showLiveTranscript : .constant(false),
+                    disabled: !supportsLiveTranscript
                 )
                 ToggleLine(
                     "Remove filler words",

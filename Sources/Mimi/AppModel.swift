@@ -6,6 +6,7 @@ import MimiSpeech
 @MainActor
 final class AppModel: ObservableObject {
     @Published private(set) var statusText = "Starting…"
+    @Published private(set) var fluidDownloadProgress: Progress?
     @Published private(set) var lastTranscript: String?
     @Published private(set) var permissionStatus = PermissionStatus.current()
     @Published private(set) var inputDevices = AudioInputDevice.available()
@@ -98,11 +99,17 @@ final class AppModel: ObservableObject {
         inputDevices = loadedInputDevices
         refreshVoiceprintState()
 
-        asrService = ASRService(onStatus: { [weak self] status in
-            Task { @MainActor in
-                self?.applyStatus(status)
+        asrService = ASRService(
+            fluidBackend: FluidSpeechProBackend(onDownloadProgress: { [weak self] progress in
+                self?.fluidDownloadProgress = progress
+            }),
+            onStatus: { [weak self] status, backend in
+                Task { @MainActor in
+                    guard let self, self.config.preferredBackend == backend else { return }
+                    self.applyStatus(status)
+                }
             }
-        })
+        )
         voiceprintVerifier = FileVoiceprintVerifier(service: voiceprintService)
         dictationController = DictationController(
             configProvider: { [weak self] in self?.config ?? .defaults },

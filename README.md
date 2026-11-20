@@ -7,7 +7,8 @@ Current usable path:
 - Apple SpeechTranscriber streaming backend by default
 - MLX Parakeet v2 English ASR sidecar fallback (`parakeet-mlx` via `uv`)
 - MLX Qwen3-ASR 1.7B model choice (`mlx-qwen3-asr` 0.4.4 through `uv`)
-- Qwen and Parakeet transcribe complete recordings from hold or toggle dictation, without live partials or ambient mode
+- Fluid Speech Pro is available under Settings → General → Dictation → Model
+- Fluid Speech Pro and the MLX models transcribe complete recordings from hold or toggle dictation, without live partials or ambient mode
 - selected speech model preloads at launch and on model changes, without microphone capture
 - separate global dictation shortcuts:
   - Hold to dictate: hold Right Command, speak, release to transcribe/insert
@@ -24,7 +25,9 @@ Current usable path:
 - canonical user-editable config at `~/.config/mimi/config.json`
 - no telemetry, no cloud app service
 
-Apple SpeechTranscriber can download Apple-managed on-device speech assets. The MLX sidecars use `uv` to install dependencies and download model weights from Hugging Face on first use. Once dependencies and model weights are cached, audio inference is fully local.
+Apple SpeechTranscriber can download Apple-managed on-device speech assets. The MLX sidecars use `uv` to install dependencies and download model weights from Hugging Face on first use. Fluid Speech Pro downloads its Core ML files from Hugging Face and reuses complete files if the download stops. Fluid Speech Pro transcribes recordings on your Mac without uploading them.
+
+Fluid Speech Pro by FluidVoice. Built on NVIDIA Parakeet TDT 0.6B v3 and Moondream Parakeet Ultra. [Core ML export](https://huggingface.co/FluidVoice-Labs/fluid-speech-pro-coreml), [NVIDIA original](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), [Moondream original](https://huggingface.co/moondream/parakeet-ultra), and [CC BY 4.0 license](https://creativecommons.org/licenses/by/4.0/).
 
 ## Config
 

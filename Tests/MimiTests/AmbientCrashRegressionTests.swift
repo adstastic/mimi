@@ -169,6 +169,106 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertTrue(audio.startInputDeviceIDs.isEmpty)
     }
 
+    func testFluidShortcutsDoNotCaptureUntilPreparedAndCanSwitchToApple() async {
+        let audio = FakeAudioCapture()
+        let preparation = StalledFluidPreparation()
+        let asr = FakeASRService(onPrepare: { backend in
+            if backend == .fluidSpeechPro { try await preparation.waitForRelease() }
+        })
+        let overlay = FakeOverlay()
+        let status = StatusSink()
+        let inserter = FakeTextInserter()
+        asr.appleFinalText = "Apple dictation"
+        asr.batchFinalText = "Fluid dictation"
+        var config = Self.toggleTestConfig()
+        config.preferredBackend = .fluidSpeechPro
+        config.showLiveTranscript = false
+        let controller = makeController(
+            configProvider: { config }, audio: audio, asr: asr,
+            textInserter: inserter, overlay: overlay, status: status, missingInputTimeout: 10
+        )
+        defer { preparation.release() }
+
+        controller.prepareASR()
+        let pending = await waitUntil({ preparation.isPending }, timeout: 1)
+        XCTAssertTrue(pending)
+        controller.hotkeyDown()
+        XCTAssertFalse(controller.isRecording, "Hold must not start before Fluid is ready")
+        controller.hotkeyUp()
+        controller.toggleDictation(at: 100)
+        XCTAssertFalse(controller.isRecording, "Toggle must not start before Fluid is ready")
+        controller.toggleReleased(at: 100.05)
+        XCTAssertEqual(overlay.messages.filter { $0.message == "Preparing Fluid Speech Pro…" }.count, 2)
+        XCTAssertNotNil(overlay.hiddenAfter.last)
+
+        config.preferredBackend = .appleSpeechTranscriber
+        controller.prepareASR()
+        controller.hotkeyDown()
+        let appleStarted = await waitUntil({ overlay.messages.last?.message == "Recording" }, timeout: 1)
+        XCTAssertTrue(appleStarted)
+        XCTAssertEqual(audio.startInputDeviceIDs.count, 1, "Only Apple must have opened the microphone")
+        controller.hotkeyUp()
+        let applePasted = await waitUntil({ inserter.insertedTexts == ["Apple dictation"] }, timeout: 1)
+        XCTAssertTrue(applePasted)
+
+        config.preferredBackend = .fluidSpeechPro
+        controller.prepareASR()
+        preparation.release()
+        let fluidReady = await waitUntil({ status.values.last?.hasPrefix("Ready") == true }, timeout: 1)
+        XCTAssertTrue(fluidReady)
+        XCTAssertFalse(controller.isRecording)
+        XCTAssertEqual(audio.startInputDeviceIDs.count, 1, "Preparation must not replay a rejected shortcut")
+
+        config.preferredBackend = .appleSpeechTranscriber
+        controller.prepareASR()
+        config.preferredBackend = .fluidSpeechPro
+        controller.prepareASR()
+        controller.toggleDictation(at: 101)
+        controller.toggleReleased(at: 101.05)
+        let fluidStarted = await waitUntil({ status.values.last == "Recording…" }, timeout: 1)
+        XCTAssertTrue(fluidStarted, "Switching back to warm Fluid must not block its shortcut")
+        controller.toggleDictation(at: 102)
+        let fluidPasted = await waitUntil({ inserter.insertedTexts == ["Apple dictation", "Fluid dictation"] }, timeout: 1)
+        XCTAssertTrue(fluidPasted)
+        XCTAssertEqual(audio.startInputDeviceIDs.count, 2)
+        XCTAssertEqual(asr.snapshotEvents().filter { $0 == "prepare.fluidSpeechPro" }.count, 1)
+    }
+
+    func testFluidShortcutStartsPreparationAndRetriesOnceAfterFailure() async {
+        var config = Self.toggleTestConfig()
+        config.preferredBackend = .fluidSpeechPro
+        let preparation = StalledFluidPreparation()
+        let asr = FakeASRService(onPrepare: { _ in try await preparation.waitForRelease() })
+        let audio = FakeAudioCapture()
+        let status = StatusSink()
+        let controller = makeController(
+            configProvider: { config }, audio: audio, asr: asr,
+            overlay: FakeOverlay(), status: status, missingInputTimeout: 10
+        )
+        defer { preparation.release() }
+
+        controller.hotkeyDown()
+        controller.hotkeyUp()
+        let firstPending = await waitUntil({ preparation.isPending }, timeout: 1)
+        XCTAssertTrue(firstPending)
+        preparation.release(.failure(URLError(.networkConnectionLost)))
+        let failed = await waitUntil({ status.values.last?.hasPrefix("ASR error:") == true }, timeout: 1)
+        XCTAssertTrue(failed)
+
+        controller.toggleDictation(at: 100)
+        controller.toggleReleased(at: 100.05)
+        controller.hotkeyDown()
+        controller.hotkeyUp()
+        let retryPending = await waitUntil({ preparation.isPending }, timeout: 1)
+        XCTAssertTrue(retryPending)
+        XCTAssertFalse(controller.isRecording)
+        XCTAssertTrue(audio.startInputDeviceIDs.isEmpty)
+        preparation.release()
+        let ready = await waitUntil({ status.values.last?.hasPrefix("Ready") == true }, timeout: 1)
+        XCTAssertTrue(ready)
+        XCTAssertEqual(asr.snapshotEvents().filter { $0 == "prepare.fluidSpeechPro" }.count, 2)
+    }
+
     func testCorrectingLastDictationUpdatesStoreAndClipboardWithoutRepasting() throws {
         let history = HistoryStore()
         history.record(
@@ -663,8 +763,12 @@ final class AmbientCrashRegressionTests: XCTestCase {
         controller.cancelRecording()
     }
 
-    func testMLXBatchUsesRecordingBackendAndCanonicalVocabularySnapshot() async throws {
-        for (backend, toggled) in [(ASRBackend.mlxParakeetV2, false), (.mlxQwen3ASR17B, false), (.mlxQwen3ASR17B, true)] {
+    func testBatchUsesRecordingBackendAndCanonicalVocabularySnapshot() async throws {
+        let routes: [(ASRBackend, Bool)] = [
+            (.mlxParakeetV2, false), (.mlxQwen3ASR17B, false), (.mlxQwen3ASR17B, true),
+            (.fluidSpeechPro, false), (.fluidSpeechPro, true),
+        ]
+        for (backend, toggled) in routes {
             let audio = FakeAudioCapture()
             let asr = FakeASRService()
             let inserter = FakeTextInserter()
@@ -672,6 +776,7 @@ final class AmbientCrashRegressionTests: XCTestCase {
             var config = MimiConfig.defaults
             config.preferredBackend = backend
             config.silenceAutoStopEnabled = false
+            config.showLiveTranscript = true
             config.voiceprintEnabled = false
             config.vocabulary = [
                 VocabularyEntry(from: ["pie torch"], to: "PyTorch"),
@@ -684,6 +789,11 @@ final class AmbientCrashRegressionTests: XCTestCase {
                 textInserter: inserter, history: history, overlay: FakeOverlay(),
                 status: status, missingInputTimeout: 10
             )
+            if backend == .fluidSpeechPro {
+                controller.prepareASR()
+                let ready = await waitUntil({ status.values.last?.hasPrefix("Ready") == true }, timeout: 1)
+                XCTAssertTrue(ready)
+            }
             if toggled {
                 controller.toggleDictation(at: 100)
                 controller.toggleReleased(at: 100.05)
@@ -705,6 +815,7 @@ final class AmbientCrashRegressionTests: XCTestCase {
             XCTAssertTrue(asr.snapshotEvents().contains("transcribe.backend=\(backend.rawValue)"))
             XCTAssertTrue(asr.snapshotEvents().contains("transcribe.context=Vocabulary: PyTorch, Mimi."))
             XCTAssertFalse(asr.snapshotEvents().contains("transcribe.apple"))
+            XCTAssertFalse(asr.snapshotEvents().contains("stream.start"))
             XCTAssertEqual(inserter.insertedTexts, ["PyTorch and Mimi"])
             XCTAssertEqual(history.latest?.backend, backend)
             XCTAssertEqual(history.latest?.sourceText, "pie torch and shimi")
@@ -1058,7 +1169,7 @@ final class AmbientCrashRegressionTests: XCTestCase {
         XCTAssertEqual(inserter.postPasteDelays, [375])
     }
 
-    func testVocabularyCorrectionMatchesAppleAndParakeetFinalPaths() async throws {
+    func testVocabularyCorrectionMatchesAllBackendFinalPaths() async throws {
         for backend in ASRBackend.allCases {
             let audio = FakeAudioCapture()
             let asr = FakeASRService()
@@ -1091,6 +1202,11 @@ final class AmbientCrashRegressionTests: XCTestCase {
                 transcript: { transcripts.append($0) },
                 missingInputTimeout: 10
             )
+            if backend == .fluidSpeechPro {
+                controller.prepareASR()
+                let ready = await waitUntil({ status.values.last?.hasPrefix("Ready") == true }, timeout: 1)
+                XCTAssertTrue(ready)
+            }
 
             controller.hotkeyDown()
             let started = await waitUntil({ audio.startInputDeviceIDs == [nil] }, timeout: 1.0)
@@ -1925,7 +2041,23 @@ private final class FakeAudioCapture: AudioCapturing {
     }
 }
 
+@MainActor
+private final class StalledFluidPreparation {
+    private var pending: [CheckedContinuation<Void, Error>] = []
+    var isPending: Bool { !pending.isEmpty }
+
+    func waitForRelease() async throws {
+        try await withCheckedThrowingContinuation { pending.append($0) }
+    }
+
+    func release(_ result: Result<Void, Error> = .success(())) {
+        for continuation in pending { continuation.resume(with: result) }
+        pending.removeAll()
+    }
+}
+
 private final class FakeASRService: ASRServicing {
+    private let onPrepare: @Sendable (ASRBackend) async throws -> Void
     private let lock = NSLock()
     private var events: [String] = []
     private var eventHandlers: [AppleSpeechTranscriberBackend.EventHandler] = []
@@ -1939,6 +2071,10 @@ private final class FakeASRService: ASRServicing {
     var batchFinalText = ""
     private var pendingCancel: CheckedContinuation<Void, Never>?
     private var pendingTranscription: CheckedContinuation<Void, Never>?
+
+    init(onPrepare: @escaping @Sendable (ASRBackend) async throws -> Void = { _ in }) {
+        self.onPrepare = onPrepare
+    }
 
     func holdCancels() {
         lock.lock()
@@ -2004,6 +2140,7 @@ private final class FakeASRService: ASRServicing {
 
     func prepare(backend: ASRBackend) async throws {
         record("prepare.\(backend.rawValue)")
+        try await onPrepare(backend)
     }
 
     func transcribeApple(audioURL: URL) async throws -> String {
